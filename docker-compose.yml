@@ -1,0 +1,16 @@
+version: '3'
+networks:
+  bbsvx-net:
+    driver: bridge
+services:
+  bbsvx:
+    image: bbsvx:latest
+    ports:
+      - "10300"
+    environment:
+      - DOCKER_COMPOSE=true
+    networks:
+      - bbsvx-net
+    volumes:
+      - ./logs:/logs
+  

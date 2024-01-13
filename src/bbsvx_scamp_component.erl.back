@@ -1,0 +1,129 @@
+%%%-----------------------------------------------------------------------------
+%%% @doc
+%%% Gen Server built from template.
+%%% @author yan
+%%%
+%%% This is an implementation of scamp alforithms :
+%%% https://people.maths.bris.ac.uk/~maajg/ieeetocs03-scamp.pdf
+%%% @end
+%%%-----------------------------------------------------------------------------
+
+-module(bbsvx_scamp_component).
+
+-author("yan").
+
+-behaviour(gen_server).
+
+%%%=============================================================================
+%%% Export and Defs
+%%%=============================================================================
+
+%% External API
+-export([start_link/0]).
+%% Callbacks
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
+         code_change/3]).
+
+-define(SERVER, ?MODULE).
+
+%% Loop state
+-record(state,
+        {my_id :: binary(),
+         ontology_namespace :: binary(),
+         partial_view :: [binary()],
+         in_view :: [binary()],
+         c :: integer()}).
+-record(subscription, {node_id :: binary(), ontology_namespace :: binary()}).
+
+%%%=============================================================================
+%%% API
+%%%=============================================================================
+
+-spec start_link() ->
+                    {ok, pid()} | {error, {already_started, pid()}} | {error, Reason :: any()}.
+start_link() ->
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+
+%%%=============================================================================
+%%% Gen Server Callbacks
+%%%=============================================================================
+
+init([MyNodeId, ContactNodes, Ontology]) ->
+    State = #state{partial_view = [MyNodeId], my_id = MyNodeId, ontology_namespace = OntologyNamespace},
+    {ok, State}.
+
+handle_call({new_subscription, NodeId}, _From, State) ->
+    lists:foreach(fun(NodeId) ->
+                     bbsvx_connections_service:send(NodeId,
+                                                    State#state.ontology_namespace,
+                                                    {subscribe,
+                                                     NodeId,
+                                                     State#state.ontology_namespace})
+                  end,
+                  State#state.partial_view),
+    lists:foreach(fun(NodeId) ->
+                    bbsvx_connections_service:send(NodeId,
+                                                   State#state.ontology_namespace,
+                                                   {subscribe,
+                                                    NodeId,
+                                                    State#state.ontology_namespace})
+                 end,
+                 get_random_sample(State#state.c, Peers)),
+    {reply, ok, State};
+handle_call({forward_susbcription, #subscription{node_id = NodeId}}, _From, State) ->
+    P = 1 / (1 + length(State#state.partial_view)),
+    case quickrand:strong_float() < P of
+        false ->
+           {reply, ok, State#state{partial_view = State#state.partial_view ++ [NodeId]}};
+       true ->
+           bbsvx_connections_service:send(NodeId,
+                                          State#state.ontology_namespace,
+                                          {subscribe, NodeId, State#state.ontology_namespace})
+    end,
+    {reply, ok, State};
+handle_call(_Request, _From, State) ->
+    Reply = ok,
+    {reply, Reply, State}.
+
+handle_cast(_Msg, State) ->
+    {noreply, State}.
+
+handle_info(_Info, State) ->
+    {noreply, State}.
+
+terminate(_Reason, _State) ->
+    ok.
+
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
+
+%%%=============================================================================
+%%% Internal functions
+%%%=============================================================================
+
+get_random_sample(Num, Peers) ->
+    get_random_sample(Num, Peers, []).
+
+get_random_sample(0, _Peers, Acc) ->
+    Acc;
+get_random_sample(_N, [], Acc) ->
+    %% No more peers in list
+    Acc;
+get_random_sample(N, Peers, Acc) ->
+    L = length(Peers),
+    Index = quickrand:strong_uniform(L) - 1,
+    {A, [Selected | B]} = lists:split(Index, Peers),
+    get_random_sample(N - 1, A ++ B, Acc ++ [Selected]).
+
+%%%=============================================================================
+%%% Eunit Tests
+%%%=============================================================================
+
+-ifdef(TEST).
+
+-include_lib("eunit/include/eunit.hrl").
+
+example_test() ->
+    ?assertEqual(true, true).
+
+-endif.
