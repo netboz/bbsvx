@@ -55,7 +55,7 @@ stop() ->
 %%%=============================================================================
 
 init([#goal{} = Goal]) ->
-    Data = data, 
+    Data = #state{}, 
     {ok, parsing, Data}.
 
 terminate(_Reason, _State, _Data) ->

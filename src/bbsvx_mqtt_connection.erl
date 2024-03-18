@@ -195,19 +195,15 @@ connected(info, {unsubscribe, Topic}, #state{} = State) ->
     %% Check if we still have a subscription to this topic
     case lists:member(Topic, NewSubscriptions) of
         true ->
-            logger:info("BBSVX mqtt connection : Still subscribed to ~p, not unsubscribing. Subscriptions :~p",
-                        [Topic, NewSubscriptions]),
             {keep_state, State#state{subscriptions = NewSubscriptions}};
         false ->
             case emqtt:unsubscribe(State#state.connection, #{}, [Topic]) of
                 {ok, _Props, _} ->
-                    logger:info("BBSVX mqtt connection : Sending unsubscribe message for topic ~p",
-                                [Topic]),
                     {keep_state, State#state{subscriptions = NewSubscriptions}, []};
                 {error, Reason} ->
-                    %% TODO: Check logic here. Should we keep the subscription in the state?
                     logger:error("BBSVX mqtt connection : Failed to unsubscribe from ~p: ~p",
                                  [Topic, Reason]),
+                    %% TODO: Check logic here. Should we keep the subscription in the state?
                     {keep_state, State, []}
             end
     end;
@@ -293,12 +289,12 @@ process_incoming_message([<<"ontologies">>, <<"in">>, Namespace, MyNodeId],
                                       port = TargetPort,
                                       node_id = TargetNodeId} =
                               TargetNode,
-                          NetworkSize},
+                          NetworkSize, Leader},
                          #state{my_id = MyNodeId} = State) ->
     logger:info("bbsvx mqtt connection : Contact request accepted from : ~p ~p ~p",
                 [Namespace, TargetNodeId, {TargetHost, TargetPort}]),
     gproc:send({p, l, {?MODULE, TargetNodeId, Namespace}},
-               {connection_accepted, Namespace, TargetNode, NetworkSize}),
+               {connection_accepted, Namespace, TargetNode, NetworkSize, Leader}),
     State;
 %% Process forwarded subscription requests
 % process_incoming_message([<<"ontologies">>, <<"in">>, Namespace, SenderNodeId], {forwarded_subscription, SubscriberNodeId, {Host, Port}}, #state{my_id = MyId} = State) ->
@@ -309,22 +305,16 @@ process_incoming_message([<<"ontologies">>, <<"in">>, Namespace, MyNodeId],
 process_incoming_message([<<"ontologies">>, <<"in">>, Namespace, MyNodeId],
                          {inview_join_accepted,
                           Namespace,
-                          #node_entry{host = TargetHost,
-                                      port = TargetPort,
-                                      node_id = TargetNodeId} =
+                          #node_entry{node_id = TargetNodeId} =
                               TargetNode},
                          #state{my_id = MyNodeId, target_client_id = TargetNodeId} = State) ->
-    logger:info("bbsvx mqtt connection : Got inview_join_accepted : ~p ~p ~p",
-                [Namespace, MyNodeId, {TargetHost, TargetPort}]),
     gproc:send({p, l, {?MODULE, TargetNodeId, Namespace}},
                {inview_join_accepted, Namespace, TargetNode}),
     State;
 %% manage exchange out reception of messages
-process_incoming_message([<<"ontologies">>, <<"in">>, Namespace, MyNodeId],
+process_incoming_message([<<"ontologies">>, <<"in">>, Namespace, _MyId],
                          {partial_view_exchange_out, Namespace, SenderNode, SamplePartial},
                          #state{} = State) ->
-    logger:info("bbsvx mqtt connection ~p: Got partial_view_exchange_out : ~p",
-                [{Namespace, MyNodeId}, {SenderNode, SamplePartial}]),
     gproc:send({p, l, {?MODULE, State#state.target_client_id, Namespace}},
                {partial_view_exchange_out, Namespace, SenderNode, SamplePartial}),
     State;
@@ -332,8 +322,6 @@ process_incoming_message([<<"ontologies">>, <<"in">>, Namespace, MyNodeId],
 process_incoming_message([<<"ontologies">>, <<"in">>, Namespace, _MyNodeId],
                          {empty_inview, Node},
                          #state{} = State) ->
-    logger:info("bbsvx mqtt connection : Got empty inview message : ~p ~p",
-                [Namespace, Node]),
     gproc:send({p, l, {ontology, Namespace}}, {empty_inview, Node}),
     State;
 process_incoming_message(Onto, Payload, State) ->
@@ -350,8 +338,6 @@ process_incoming_message(Onto, Payload, State) ->
 
 -spec msg_handler(mqtt:msg(), pid()) -> pid().
 msg_handler(Msg, Pid) ->
-    logger:info("BBSVX mqtt connection : msg_handler called with Msg: ~p, Pid: ~p",
-                [binary_to_term(maps:get(payload, Msg)), Pid]),
     gen_statem:cast(Pid,
                     {incoming_mqtt_message,
                      maps:get(qos, Msg),

@@ -11,6 +11,9 @@ _vendor
 .erlang.cookie
 ebin
 log
+*.log
+Mnesia.*
+ejabberd.log.*
 erl_crash.dump
 .rebar
 logs

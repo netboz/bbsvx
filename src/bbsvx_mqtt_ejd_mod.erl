@@ -133,14 +133,13 @@ process_publish(_Usr, [<<"ontologies">>, <<"in">>, Namespace, _FromClientId], {e
     ok;
 %% Reception of empty inview messages
 process_publish(_Usr, [<<"ontologies">>, <<"in">>, Namespace, _FromClientId], {empty_inview, Node}) ->
-    logger:info("BBSVX ejabberd mod : Got empty inview message ~p", [Node]),
     gproc:send({p, l, {ontology, Namespace}}, {empty_inview, Node}),
     ok;
 process_publish(_Usr, [<<"ontologies">>, <<"in">>, Namespace, _FromClientId], {left_inview, Namespace, #node_entry{} = Node}) ->
     gproc:send({p, l, {ontology, Namespace}}, {remove_from_view, inview, Node}),
     ok;
 process_publish(_Usr, [<<"ontologies">>, <<"in">>, Namespace, _FromClientId],  {leader_election_info, _Namespace, Payload}) ->
-    gproc:send({n, l, {bbsvx_actor_leader_manager, Namespace}}, {leader_election_info, _Namespace, Payload}),
+    gproc:send({n, l, {leader_manager, Namespace}}, {leader_election_info, _Namespace, Payload}),
     ok;
 process_publish(Usr, Topic, Payload) ->
     logger:info("BBSVX ejabberd mod : Unmanaged message ~p ~p ~p",

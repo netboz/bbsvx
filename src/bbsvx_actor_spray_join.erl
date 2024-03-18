@@ -59,17 +59,16 @@ stop() ->
 init([Type,
       Namespace,
       MyNode,
-      #node_entry{host = TargetHost, port = TargetPort, node_id = TargetNodeId} = TargetNode]) ->
+      #node_entry{host = TargetHost,
+                  port = TargetPort,
+                  node_id = TargetNodeId} =
+          TargetNode]) ->
     %% Look if there is already an openned connection to the target node
     case gproc:where({n, l, {bbsvx_mqtt_connection, TargetNodeId}}) of
         undefined ->
             logger:info("~p : No connection to ~p", [?MODULE, TargetNode]),
             %% No connection, subscribe to connection events and open it
-            gproc:reg({p,
-                       l,
-                       {bbsvx_mqtt_connection,
-                        TargetHost,
-                        TargetPort}}),
+            gproc:reg({p, l, {bbsvx_mqtt_connection, TargetHost, TargetPort}}),
             case supervisor:start_child(bbsvx_sup_mqtt_connections, [MyNode, TargetNode]) of
                 {ok, ConnectionPid} ->
                     {ok,
@@ -116,10 +115,14 @@ connecting(enter, _, State) ->
 %% Manage connection to self
 connecting(info,
            {connection_to_self, TargetNode},
-           #state{namespace = Namespace} = State) ->
+           #state{namespace = Namespace, type = contact} = State) ->
     logger:warning("~p : Connection to self ~p", [?MODULE, TargetNode]),
     gproc:send({p, l, {ontology, Namespace}}, {connection_to_self, TargetNode}),
-
+    %% TODO: Startup of next agents shouldn't be done here, it is here during development
+    %% Start epto agent
+    supervisor:start_child(bbsvx_sup_epto_agents, [Namespace, 15, 16]),
+    %% Start leader election agent
+    supervisor:start_child(bbsvx_sup_leader_managers, [Namespace, 8, 50, 100, 200]),
     {stop, normal, State};
 connecting(info,
            {connection_ready,
@@ -127,7 +130,9 @@ connecting(info,
                         port = TargetPort,
                         node_id = TargetNodeId} =
                 TargetNode},
-           #state{namespace = Namespace, target_node = #node_entry{host = TargetHost, port = TargetPort}} = State) ->
+           #state{namespace = Namespace,
+                  target_node = #node_entry{host = TargetHost, port = TargetPort}} =
+               State) ->
     logger:info("~p : Connection to ~p ready", [?MODULE, TargetNode]),
 
     gproc:reg({p, l, {bbsvx_mqtt_connection, TargetNodeId, Namespace}}),
@@ -174,8 +179,14 @@ subscribing(enter,
                     {publish, InviewNamespace, {inview_join_request, State#state.my_node}}),
     keep_state_and_data;
 %% Contact request accepted
-subscribing(info, {connection_accepted, Namespace, TargetNode, _NetworkSize}, State) ->
+subscribing(info,
+            {connection_accepted, Namespace, TargetNode, _NetworkSize, _Leader},
+            State) ->
     logger:info("~p : connected to ~p", [?MODULE, {State#state.target_node, Namespace}]),
+    %% Start epto agent
+    supervisor:start_child(bbsvx_sup_epto_agents, [Namespace, 15, 16]),
+    %% Start leader election agent
+    supervisor:start_child(bbsvx_sup_leader_managers, [Namespace, 8, 50, 100, 200]),
     %% As contact node automatically adds us to its inview, we can now
     %% add it to our outview
     gproc:send({p, l, {ontology, Namespace}}, {add_to_view, outview, TargetNode}),

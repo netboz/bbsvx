@@ -88,14 +88,7 @@ init([Namespace, Options]) ->
 
     %% Register to events for this ontolgy namespace
     gproc:reg({p, l, {ontology, Namespace}}),
-    %% start epto agent
-    supervisor:start_child(bbsvx_sup,
-                           #{id => bbsvx_epto_service,
-                             start => {bbsvx_epto_service, start_link, [<<"bbsvx:root">>, 15, 16]},
-                             restart => permanent,
-                             shutdown => brutal_kill,
-                             type => worker,
-                             modules => [bbsvx_epto_service]}),
+    
     {ok,
      running,
      #state{namespace = Namespace,

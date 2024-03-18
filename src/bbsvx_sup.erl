@@ -55,6 +55,20 @@ init([]) ->
            shutdown => brutal_kill,
            type => supervisor,
            modules => [bbsvx_sup_spray_view_agents]},
+         %% Start epto agents Supervisor
+        #{id => bbsvx_sup_epto_agents,
+           start => {bbsvx_sup_epto_agents, start_link, []},
+           restart => permanent,
+           shutdown => brutal_kill,
+           type => supervisor,
+           modules => [bbsvx_sup_epto_agents]},
+          %% Start leader managers Supervisor
+          #{id => bbsvx_sup_leader_managers,
+           start => {bbsvx_sup_leader_managers, start_link, []},
+           restart => permanent,
+           shutdown => brutal_kill,
+           type => supervisor,
+           modules => [bbsvx_sup_leader_managers]},
          %% Start network service
          #{id => bbsvx_connections_service,
            start => {bbsvx_connections_service, start_link, [LocalIp, 1883]},

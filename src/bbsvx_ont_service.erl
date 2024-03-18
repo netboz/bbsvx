@@ -107,14 +107,6 @@ handle_call({new_ontology, #ontology{namespace = Namespace}, _Options}, _From, S
                             [{contact_nodes,
                               [#node_entry{host = <<"bbsvx_bbsvx_root_1">>, port = 1883}]}]]),
     
-    %% Start leader election agent
-    supervisor:start_child(bbsvx_sup,
-                           #{id => bbsvx_actor_leader_manager,
-                             start => {bbsvx_actor_leader_manager, start_link, [Namespace, 8, 50, 100, 200]}, %%Namespace, Diameter, DeltaC, DeltaE, DeltaD
-                             restart => permanent,
-                             shutdown => brutal_kill,
-                             type => worker,
-                             modules => [bbsvx_actor_leader_manager]}),
     {reply, Reply, State};
 handle_call({store_goal, Goal}, _From, State) ->
     %% Insert the goal into the database or perform any necessary operations

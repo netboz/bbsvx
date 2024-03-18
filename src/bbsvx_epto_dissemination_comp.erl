@@ -94,9 +94,8 @@ handle_call(next_round, _From, #state{namespace = Namespace} = State) ->
     NewBall =
         maps:map(fun(_EvtId, #event{ttl = EvtTtl} = Evt) -> Evt#event{ttl = EvtTtl + 1} end,
                  State#state.next_ball),
-    SprayViewPid = gproc:where({n, l, {bbsvx_actor_spray_view, Namespace}}),
     {ok, Peers} =
-        case gen_statem:call(SprayViewPid, get_views) of
+        case gen_statem:call({via, gproc, {n, l, {bbsvx_actor_spray_view, Namespace}}}, get_views) of
             {ok, {[], []}} ->
                 %            logger:warning(" Epto Disseminator ~p, No view found",
                 %                          [State#state.ontology]),

@@ -37,8 +37,8 @@ start(_StartType, _StartArgs) ->
     prometheus_httpd:start(),
     R = bbsvx_sup:start_link(),
     %% Create a test spray agent for testing under ontolgy namespace <<"bbsvx:root">>
-    gen_server:call(bbsvx_ont_service, {new_ontology, #ontology{namespace = <<"bbsvx::root">>}, []}),
-
+    %%timer:sleep(5000),
+    %%gen_server:call(bbsvx_ont_service, {new_ontology, #ontology{namespace = <<"bbsvx::root">>}, []}),
     R.
 
 stop(_State) ->

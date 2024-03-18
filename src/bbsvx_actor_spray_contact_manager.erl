@@ -95,6 +95,8 @@ acking(enter, _, #state{namespace = Namespace} = State) ->
                           "/",
                           State#state.candidate_node#node_entry.node_id]),
     MyId = State#state.my_node#node_entry.node_id,
+    %% Get current leader
+    {ok, Leader} = bbsvx_actor_leader_manager:get_leader(Namespace),
     %% Acknowledge the contact request
     mod_mqtt:publish({MyId, <<"localhost">>, <<"bob3>>">>},
                      #publish{topic = RequesterInviewNamespace,
@@ -102,7 +104,7 @@ acking(enter, _, #state{namespace = Namespace} = State) ->
                                   term_to_binary({connection_accepted,
                                                   Namespace,
                                                   State#state.my_node,
-                                                  0}),
+                                                  0, Leader}),
                               retain = false},
                      ?MAX_UINT32),
     SprayPid = gproc:where({n, l, {bbsvx_actor_spray_view, Namespace}}),
@@ -116,17 +118,17 @@ acking(enter, _, #state{namespace = Namespace} = State) ->
     %% Target topic
     TargetTopic = iolist_to_binary([<<"ontologies/in/">>, Namespace, "/", MyId]),
     %% Get Partial view from spray agent
-    SprayPid = gproc:where({n, l, {bbsvx_actor_spray_view, Namespace}}),
-    {ok, Outview} = gen_statem:call(SprayPid, get_outview),
+    {ok, Outview} = gen_statem:call({via, gproc, {n, l, {bbsvx_actor_spray_view, Namespace}}}, get_outview),
 
     case {InView, Outview} of
         {[], []} ->
-            ok;
+            %% Our outview is empty, we subscribe to the candidate node
+            bbsvx_actor_spray_join:start_link(join_inview, Namespace, State#state.my_node, State#state.candidate_node);
+            
         _ ->
             %% Forward subscriptions to all nodes of the view
             lists:foreach(fun(#node_entry{node_id = NId}) ->
-                             ConPid = gproc:where({n, l, {bbsvx_mqtt_connection, NId}}),
-                             gen_statem:call(ConPid,
+                             gen_statem:call({via, gproc, {n, l, {bbsvx_mqtt_connection, NId}}},
                                              {publish,
                                               TargetTopic,
                                               {forwarded_subscription,
