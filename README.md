@@ -13,7 +13,7 @@ dependencies
 * Erlang/OTP 26.2 or higher.
 * OpenSSL 1.0.0 or higher for encryption.
 
-  abd a few more.
+  and a few more.
 
 Build
 -----
