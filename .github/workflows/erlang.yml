@@ -1,5 +1,6 @@
 name: Erlang CI
-
+env:
+  BUILD_WITHOUT_QUIC: true
 on:
   push:
     branches: [ "main" ]
