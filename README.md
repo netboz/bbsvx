@@ -10,10 +10,10 @@ dependencies
 * Gcc
 * libexpat 1.95 or higher
 * Libyaml 0.1.4 or higher
-* Erlang/OTP 26.2 or higher.
-* OpenSSL 1.0.0 or higher for encryption.
+* Erlang/OTP 26.2 or higher
+* OpenSSL 1.0.0 or higher for encryption
 
-  and a few more.
+  ... and a few more.
 
 Build
 -----
