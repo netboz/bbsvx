@@ -4,8 +4,8 @@
   {vsn, "0.1.0"},
   {registered, []},
   {mod, {bbsvx_app, []}},
-  {applications, [kernel, stdlib, emqtt, mqtree, ejabberd, gproc, erlog, uuid, quickrand]},
+  {applications, [kernel, stdlib, emqtt, mqtree, opentelemetry_api, prometheus, cowboy, jiffy, prometheus_httpd, mnesia, ejabberd, gproc, erlog, uuid, quickrand]},
   {env, []},
-  {modules, []},
+  {modules, [prometheus_httpd]},
   {licenses, ["Apache-2.0"]},
   {links, []}]}.

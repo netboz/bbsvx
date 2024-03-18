@@ -16,7 +16,7 @@
 %%%=============================================================================
 
 %% External API
--export([start_link/1]).
+-export([start_link/2]).
 %% Callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
@@ -27,7 +27,8 @@
 
 %% Loop state
 -record(state,
-        {received = #{} :: map(),
+        {namespace :: binary(),
+         received = #{} :: map(),
          delivered = undefined :: term(),
          last_delivered_ts = 0 :: integer(),
          logical_clock :: pid()}).
@@ -36,18 +37,23 @@
 %%% API
 %%%=============================================================================
 
--spec start_link(LogicalClockPid :: pid()) ->
+-spec start_link(Namespace :: binary(), LogicalClockPid :: pid()) ->
                     {ok, pid()} | {error, {already_started, pid()}} | {error, Reason :: any()}.
-start_link(LogicalClockPid) ->
-    gen_server:start_link({via, gproc, {n, l, ?SERVER}}, ?MODULE, [LogicalClockPid], []).
+start_link(Namespace, LogicalClockPid) ->
+    gen_server:start_link({via, gproc, {n, l, {?SERVER, Namespace}}},
+                          ?MODULE,
+                          [Namespace, LogicalClockPid],
+                          []).
 
 %%%=============================================================================
 %%% Gen Server Callbacks
 %%%=============================================================================
 
-init([LogicalClockPid]) ->
-
-    State = #state{delivered = ordsets:new(), logical_clock = LogicalClockPid},
+init([Namespace, LogicalClockPid]) ->
+    State =
+        #state{namespace = Namespace,
+               delivered = ordsets:new(),
+               logical_clock = LogicalClockPid},
     {ok, State}.
 
 handle_call({order_events, Ball},
@@ -95,8 +101,7 @@ handle_call({order_events, Ball},
 
     {DeliverableEvents, UpdatedMinQueueTs} =
         maps:fold(fun(_EvtId, #event{ts = EvtTs} = Evt, {DeliverableEvents, MQTs}) ->
-                     case gen_server:call(State#state.logical_clock, {is_deliverable, Evt})
-                     of
+                     case gen_server:call(State#state.logical_clock, {is_deliverable, Evt}) of
                          true ->
                              {[Evt | DeliverableEvents], MinQueueTs};
                          _ ->
@@ -120,16 +125,15 @@ handle_call({order_events, Ball},
                      DeliverableEvents),
 
     FilteredReceivedEvents =
-        lists:foldl(fun(#event{id = DelivEvtId}, AccReceived) -> maps:remove(DelivEvtId, AccReceived)
+        lists:foldl(fun(#event{id = DelivEvtId}, AccReceived) ->
+                       maps:remove(DelivEvtId, AccReceived)
                     end,
                     ReceivedPlusBallEvents,
                     FilteredDeliverableEvent),
 
-
     SortedDeliverableEvents = lists:keysort(3, FilteredDeliverableEvent),
 
-    logger:info("Sorted deilverable : ~p", [SortedDeliverableEvents]),
-
+    %logger:info("Sorted deilverable : ~p", [SortedDeliverableEvents]),
     {NewDeliveredEvents, NewLastDeliveredTs} =
         lists:foldl(fun (#event{ts = EvtTs, id = EvtId} = Evt,
                          {AccDelivered, _AccLastDeliveredTs}) ->
@@ -176,7 +180,6 @@ is_above(_MinQueueTs, _EvtTs) ->
 
 deliver(Evt) ->
     logger:info("Delivering ~p", [Evt]),
-   bbsvx_event_service:emit(Evt#event.namespace, Evt),
     {ok, F} = file:open("/logs/" ++ atom_to_list(node()) ++ ".log", [append]),
     file:write(F, iolist_to_binary(Evt#event.payload)),
     file:close(F),

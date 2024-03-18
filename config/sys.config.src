@@ -1,36 +1,24 @@
 [
  {bbsvx, []},
+ {prometheus, [
+  {prometheus_http, [{path, "/metrics"},
+                     {format, auto},
+                     {port, 10300}]}
+  ]},
+  {opentelemetry,
+  [{span_processor, batch},
+   {traces_exporter, otlp}]},
+
+ {opentelemetry_exporter,
+  [{otlp_protocol, grpc},
+   {otlp_endpoint, "http://tempo_collector:4317"}]},
+   
  {kernel,
   [{logger_level, info},
    {logger,
     [{handler,
       default,
       logger_std_h,
-      #{formatter =>
-            {logger_formatter,
-             #{legacy_header => false,
-               single_line => true,
-               %% term_depth => 50,
-               %% time_designator => "T",
-               %% time_offset => 0,
-               template =>
-                   ["=== when=",
-                    time,
-                    " level=",
-                    level,
-                    {pid, [" pid=", pid], []},
-                    " at=",
-                    mfa,
-                    ":",
-                    line,
-                    " ",
-                    {otel_trace_id, ["trace_id=", otel_trace_id, " "], []},
-                    {otel_span_id, ["span_id=", otel_span_id, " "], []},
-                    msg,
-                    "\n"]}},
-        filter_default => stop,
-        filters =>
-            [{remote_gl, {fun logger_filters:remote_gl/2, stop}},
-             {no_domain, {fun logger_filters:domain/2, {log, undefined, []}}},
-             {domain, {fun logger_filters:domain/2, {stop, equal, [sasl]}}},
-             {domain, {fun logger_filters:domain/2, {log, super, [otp]}}}]}}]}]}].
+      #{formatter => {jsonlog, #{
+        json_encode => fun jsonlog_jiffy_encoder:encode/2
+      }}}}]}]}].
