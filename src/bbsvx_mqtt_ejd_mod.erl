@@ -13,8 +13,7 @@
 %%% Global Definitions
 %%%=============================================================================
 -include_lib("ejabberd/include/mqtt.hrl").
-
--behaviour(gen_mod).
+-include("bbsvx_common_types.hrl").
 
 %% gen_mod API callbacks
 -export([start/2, stop/1, depends/2, mod_options/1]).
@@ -54,34 +53,108 @@ handle_register_user(LUser, LServer) ->
 handle_mqtt_publish_hook(Usr, #publish{topic = Topic, payload = Payload}, _Exp) ->
     process_publish(Usr, binary:split(Topic, <<"/">>, [global]), binary_to_term(Payload)),
     ok;
-handle_mqtt_publish_hook(Usr, Pkt, Exp) ->
+handle_mqtt_publish_hook(_Usr, Pkt, Exp) ->
     logger:warning("BBSVX ejabberd mod : Unmanaged packet ~p ~p", [Pkt, Exp]),
     ok.
 
 %% Manage contact requests
-handle_mqtt_subscribe_hook(Usr, <<"welcome">>, _SubOpts, _Id) ->
-    logger:info("BBSVX ejabberd mod : Connection request from ~p", [Usr]),
+handle_mqtt_subscribe_hook(_Usr, <<"welcome">>, _SubOpts, _Id) ->
     ok;
-handle_mqtt_subscribe_hook(Usr, TopicFilter, SubOpts, Id) ->
-    logger:info("bbsvx ejabberd mod : Subscribe request from ~p, TopicFilter: ~p, SubOpts: ~p, Id: ~p",
-                [Usr, TopicFilter, SubOpts, Id]),
+handle_mqtt_subscribe_hook(_Usr, _TopicFilter, _SubOpts, _Id) ->
     ok.
+
+%% Manage unsubscribe requests from inview
 
 handle_mqtt_unsubscribe_hook(Usr, Topic) ->
     logger:info("BBSVX ejabberd mod : Unsubscribe request from ~p, Topic: ~p", [Usr, Topic]),
+    process_unsubscribe(Usr, binary:split(Topic, <<"/">>, [global])),
     ok.
 
-process_publish(Usr,
-                [<<"ontologies">>, <<"contact">>, Namespace, ClientId] = Topic,
-                {join, ClientId, {Host, Port}}) ->
-    logger:info("BBSVX ejabberd mod : Got contact request : ~p ~p ~p", [Namespace, ClientId, {Host, Port}]),
+
+process_publish(_Usr,
+                [<<"ontologies">>, <<"in">>, Namespace, RequesterClientId],
+                {subscribe, #node_entry{node_id = RequesterClientId, host = RequesterHost, port = RequesterPort} = RequesterNode}) ->
+    logger:info("BBSVX ejabberd mod : Got ontology : ~p subscribe request from: ~p ~p",
+                [Namespace, RequesterClientId, {RequesterHost, RequesterPort}]),
+    %% Signal connection service we have an incoming subscribe request to this ontology
+    gproc:send({p, l, {ontology, Namespace}},
+               {contact_request,
+                RequesterNode}),
+    %%bbsvx_connections_service:incoming_contact_request(ClientId, {Host, Port}, Namespace),
+    ok;
+process_publish(_Usr,
+                [<<"ontologies">>, <<"in">>, Namespace, RequesterClientId],
+                {inview_join_request,
+                 #node_entry{host = ReqHost, port = ReqPort} = RequesterNode}) ->
+    logger:info("BBSVX ejabberd mod : Got inview subscribe request : ~p ~p ~p",
+                [Namespace, RequesterClientId, {ReqHost, ReqPort}]),
     %% Signal connection service we have an incoming contact request
-    bbsvx_connections_service:incoming_contact_request(ClientId, {Host, Port}, Namespace),
+    MyId = bbsvx_crypto_service:my_id(),
+    {ok, {MyHost, MyPort}} = bbsvx_connections_service:my_host_port(),
+
+    spawn(fun() ->
+             R = mod_mqtt:publish({MyId, <<"localhost">>, <<"bob3>>">>},
+                                  #publish{topic =
+                                               iolist_to_binary([<<"ontologies/in/">>,
+                                                                 Namespace,
+                                                                 "/",
+                                                                 RequesterClientId]),
+                                           payload =
+                                               term_to_binary({inview_join_accepted,
+                                                               Namespace,
+                                                               #node_entry{node_id = MyId,
+                                                                           host = MyHost,
+                                                                           port = MyPort,
+                                                                           age = 0}}),
+                                           retain = false},
+                                  ?MAX_UINT32),
+             logger:info("BBSVX ejabberd mod : Publish result: ~p", [R])
+          end),
+    gproc:send({p, l, {ontology, Namespace}}, {add_to_view, inview, RequesterNode}),
+    ok;
+%% MAnage incming forward requests
+process_publish(_Usr,
+                [<<"ontologies">>, <<"in">>, Namespace, _ReceivedFromClientId],
+                {forwarded_subscription, Namespace, #node_entry{} = RequesterNode}) ->
+    gproc:send({p, l, {ontology, Namespace}},
+               {forwarded_subscription, Namespace, RequesterNode}),
+    ok;
+process_publish(_Usr,[<<"ontologies">>, <<"in">>, Namespace, _ReceivedFromClientId],{partial_view_exchange_in,Namespace,#node_entry{} = OriginNode,IncomingSamplePartialView}) ->
+    gproc:send({p, l, {ontology, Namespace}},
+               {partial_view_exchange_in,
+                Namespace,
+                #node_entry{} = OriginNode,
+                IncomingSamplePartialView}),
+    ok;
+%% Manage reception of epto messages
+process_publish(_Usr, [<<"ontologies">>, <<"in">>, Namespace, _FromClientId], {epto_message, Namespace, {receive_ball, NewBall}}) ->
+   % logger:info("BBSVX ejabberd mod : Got epto message ~p", [Namespace]),
+    gproc:send({n, l, {bbsvx_epto_dissemination_comp, Namespace}}, {receive_ball, NewBall}),
+    ok;
+%% Reception of empty inview messages
+process_publish(_Usr, [<<"ontologies">>, <<"in">>, Namespace, _FromClientId], {empty_inview, Node}) ->
+    logger:info("BBSVX ejabberd mod : Got empty inview message ~p", [Node]),
+    gproc:send({p, l, {ontology, Namespace}}, {empty_inview, Node}),
+    ok;
+process_publish(_Usr, [<<"ontologies">>, <<"in">>, Namespace, _FromClientId], {left_inview, Namespace, #node_entry{} = Node}) ->
+    gproc:send({p, l, {ontology, Namespace}}, {remove_from_view, inview, Node}),
+    ok;
+process_publish(_Usr, [<<"ontologies">>, <<"in">>, Namespace, _FromClientId],  {leader_election_info, _Namespace, Payload}) ->
+    gproc:send({n, l, {bbsvx_actor_leader_manager, Namespace}}, {leader_election_info, _Namespace, Payload}),
     ok;
 process_publish(Usr, Topic, Payload) ->
-    logger:info("BBSVX ejabberd mod : Process_publish called with Usr: ~p, Topic: ~p, Payload: ~p",
+    logger:info("BBSVX ejabberd mod : Unmanaged message ~p ~p ~p",
                 [Usr, Topic, Payload]),
     ok.
 
-
-
+process_unsubscribe(_Usr, [<<"ontologies">>, <<"in">>, Namespace, FromClientId]) ->
+    logger:info("BBSVX ejabberd mod : Got inview unsubscribe request : ~p ~p",
+                [Namespace, FromClientId]),
+    %gproc:send({p, l, {ontology, Namespace}},
+     %          {remove_from_view, inview, #node_entry{node_id = FromClientId}}),
+    ok;
+%% Catch all    
+process_unsubscribe(Usr, Topic) ->
+    logger:info("BBSVX ejabberd mod : Process_unsubscribe called with Usr: ~p, Topic: ~p",
+                [Usr, Topic]),
+    ok.

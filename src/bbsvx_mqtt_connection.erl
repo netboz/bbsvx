@@ -11,32 +11,43 @@
 
 -behaviour(gen_statem).
 
+-include("bbsvx_common_types.hrl").
+
 %%%=============================================================================
 %%% Export and Defs
 %%%=============================================================================
 
 -define(SERVER, ?MODULE).
--record(message, {nameSpace :: binary(), payload :: binary(), qos :: integer()}).
 
 %% External API
--export([start_link/3, stop/0]).
+-export([start_link/2, stop/0]).
 %% Gen State Machine Callbacks
 -export([init/1, code_change/4, callback_mode/0, terminate/3, handle_event/4]).
 %% State transitions
 -export([waiting_for_id/3, connected/3]).
 %% Hooks
--export([msg_handler/2, disconnected/1]).
+-export([msg_handler/2, disconnected/2]).
 
--record(state, {connection :: pid(), my_id :: binary(), host :: {binary(), integer()}}).
+-record(state,
+        {connection :: pid(),
+         subscriptions = [] :: [binary()],
+         my_id :: binary(),
+         target_host :: {binary(), integer()},
+         target_client_id :: binary()}).
 
 %%%=============================================================================
 %%% API
 %%%=============================================================================
 
--spec start_link(MyId :: binary(), Host :: binary(), Port :: integer()) ->
+-spec start_link(MyNode :: node_entry(), TargetNode :: node_entry()) ->
                     {ok, pid()} | {error, {already_started, pid()}} | {error, Reason :: any()}.
-start_link(MyId, Host, Port) ->
-    gen_statem:start({via, gproc, {n, l, {Host, Port}}}, ?MODULE, [MyId, Host, Port], []).
+start_link(#node_entry{} = MyNode,
+           #node_entry{host = TargetHost, port = TargetPort} = TargetNode) ->
+    logger:info("BBSVX mqtt connection : Starting"),
+    gen_statem:start({via, gproc, {n, l, {?MODULE, TargetHost, TargetPort}}},
+                     ?MODULE,
+                     [MyNode, TargetNode],
+                     []).
 
 -spec stop() -> ok.
 stop() ->
@@ -46,29 +57,40 @@ stop() ->
 %%% Gen State Machine Callbacks
 %%%=============================================================================
 
-init([MyId, Host, Port]) ->
-    logger:info("BBSVX mqtt connection : Starting mqtt connection to ~p:~p    ~p", [Host, Port, MyId]),
+init([#node_entry{node_id = MyId} = MyNode,
+      #node_entry{host = TargetHost, port = TargetPort} = TargetNode]) ->
+    logger:info("BBSVX mqtt connection at ~p: openning mqtt connection to ~p",
+                [MyNode, TargetNode]),
+
     Me = self(),
-    case emqtt:start_link([{host, Host},
-                           {port, Port},
+    case emqtt:start_link([{host, TargetHost},
+                           {port, TargetPort},
                            {clientid, MyId},
                            {proto_ver, v5},
+                           {keepalive, 0},
                            {owner, Me},
                            {msg_handler,
-                            #{disconnected => fun disconnected/1,
+                            #{disconnected => {?MODULE, disconnected, [{TargetHost, TargetPort}]},
                               publish => {?MODULE, msg_handler, [Me]}}}])
     of
         {ok, Pid} ->
             case emqtt:connect(Pid) of
                 {ok, _Props} ->
-                    logger:info("Connected to ~p:~p", [Host, Port]),
+                    logger:info("MQTT connection : Connected to ~p:~p", [TargetHost, TargetPort]),
+                    %%gproc:send({p, l, {?MODULE, TargetHost, TargetPort}},
+                    %%           {connected, {TargetHost, TargetPort}}),
                     emqtt:subscribe(Pid, #{}, [{<<"welcome">>, [{nl, true}]}]),
                     {ok,
                      waiting_for_id,
                      #state{connection = Pid,
                             my_id = MyId,
-                            host = {Host, Port}}, 3000};
+                            target_host = {TargetHost, TargetPort}},
+                     3000};
                 {error, Reason} ->
+                    logger:error("MQTT connection : Failed to connect to ~p:~p: ~p",
+                                 [TargetHost, TargetPort, Reason]),
+                    gproc:send({p, l, {mqtt_connection, TargetHost, TargetPort}},
+                               {connection_failed, Reason, {TargetHost, TargetPort}}),
                     {stop, Reason}
             end;
         {error, Reason} ->
@@ -88,19 +110,39 @@ callback_mode() ->
 %%% State transitions
 %%%=============================================================================
 
-waiting_for_id(cast, {incoming_mqtt_message, _, _, _, _, <<"welcome">>, NodeId}, #state{host = {Host, Port}, my_id = NodeId } =  State) ->
-    logger:info("BBSVX mqtt connection : Connecting to self ~p   ~p", [{Host, Port}, NodeId]),
-    gproc:send({p, l, {Host, Port}}, {connection_to_self, State#state.host, NodeId}),
+waiting_for_id(cast,
+               {incoming_mqtt_message, _, _, _, _, <<"welcome">>, NodeId},
+               #state{target_host = {TargetHost, TargetPort}, my_id = NodeId} = State) ->
+    logger:warning("BBSVX mqtt connection : Connecting to self ~p   ~p",
+                   [{TargetHost, TargetPort}, NodeId]),
+    gproc:send({p, l, {?MODULE, TargetHost, TargetPort}},
+               {connection_to_self,
+                #node_entry{host = TargetHost,
+                            port = TargetPort,
+                            node_id = NodeId}}),
     {stop, normal, State};
-waiting_for_id(cast, {incoming_mqtt_message, _, _, _, _, <<"welcome">>, NodeId}, #state{host = {Host, Port} } =  State) ->
-    logger:info("BBSVX mqtt connection : Received contact ~p node ID  ~p", [{Host, Port}, NodeId]),
-    gproc:reg({n, l, NodeId}, self()),
-    gproc:send({p, l, {Host, Port}}, {connection_ready, State#state.host, NodeId}),
-    {next_state, connected, State#state{my_id = NodeId}};
-waiting_for_id(timeout, _, #state{host = Host} = State) ->
-    gproc:send({p, l, Host}, {node_subscription_timeout, State#state.host}),
+waiting_for_id(cast,
+               {incoming_mqtt_message, _, _, _, _, <<"welcome">>, TargetNodeId},
+               #state{target_host = {TargetHost, TargetPort}} = State) ->
+    logger:info("BBSVX mqtt connection : Connection to node  ~p accepted",
+                [{{TargetHost, TargetPort}, TargetNodeId}]),
+    %% Unsubscribe from welcome topic
+    emqtt:unsubscribe(State#state.connection, #{}, <<"welcome">>),
+    gproc:reg({n, l, {?MODULE, TargetNodeId}}, {TargetHost, TargetPort}),
+    gproc:send({p, l, {?MODULE, TargetHost, TargetPort}},
+               {connection_ready,
+                #node_entry{host = TargetHost,
+                            port = TargetPort,
+                            node_id = TargetNodeId}}),
+    {next_state, connected, State#state{target_client_id = TargetNodeId}};
+waiting_for_id({call, From}, get_target_id, State) ->
+    {keep_state, State, [{reply, From, undefined}]};
+waiting_for_id(timeout,
+               _,
+               #state{target_host = #node_entry{host = TargetHost, port = TargetPort}} = State) ->
+    gproc:send({p, l, {?MODULE, TargetHost, TargetPort}},
+               {node_subscription_timeout, State#state.target_host}),
     {stop, normal, State}.
-
 
 %%-----------------------------------------------------------------------------
 %% @doc
@@ -108,64 +150,109 @@ waiting_for_id(timeout, _, #state{host = Host} = State) ->
 %% @end
 %%-----------------------------------------------------------------------------
 connected(enter, _From, State) ->
-    logger:info("BBSVX mqtt connection : Connected to ~p", [State#state.host]),
-    gproc:reg({n, l, State#state.my_id}),
+    logger:info("BBSVX mqtt connection : Connected to ~p",
+                [{State#state.target_host, State#state.target_client_id}]),
     {next_state, connected, State};
-
 %%-----------------------------------------------------------------------------
 %% @doc
 %% Manage requests to subscribe to a topic.
 %% @end
 %%-----------------------------------------------------------------------------
-connected({call, From}, {subscribe, Topic, QoS}, State) ->
-    logger:info("BBSVX mqtt connection : Subscribing to ~p", [Topic]),
-    case emqtt:subscribe(State#state.connection, #{}, [{Topic,[{nl, true}]}]) of
-        {ok, Props, _} ->
-            {keep_state, State, [{reply, From, {ok, Props}}]};
-        {error, Reason} ->
-            logger:error("Failed to subscribe to ~p: ~p", [Topic, Reason]),
-            {keep_state, State, [{reply, From, {error, Reason}}]}
+connected({call, From},
+          {subscribe, Topic, _Options},
+          #state{subscriptions = Subscriptions} = State) ->
+    logger:info("BBSVX mqtt connection : Subscribing to topic ~p   subscriptions ~p",
+                [Topic, Subscriptions]),
+    
+    case lists:member(Topic, Subscriptions) of
+        true ->
+            logger:info("BBSVX mqtt connection : Already subscribed to ~p, not subscribing again. Subscriptions :~p",
+                        [Topic, Subscriptions]),
+            {keep_state, State#state{subscriptions = [Topic | Subscriptions]}, [{reply, From, ok}]};
+        false ->
+            
+            case emqtt:subscribe(State#state.connection, #{}, [{Topic, [{nl, true}]}]) of
+                {ok, Props, _} ->
+                    logger:info("BBSVX mqtt connection : Not already subsribed to ~p, subscribing",
+                                [Topic]),
+                    {keep_state,
+                     State#state{subscriptions = [Topic | Subscriptions]},
+                     [{reply, From, {ok, Props}}]};
+                {error, Reason} ->
+                    logger:error("Failed to subscribe to ~p: ~p", [Topic, Reason]),
+                    {keep_state, State, [{reply, From, {error, Reason}}]}
+            end
     end;
-
 %%-----------------------------------------------------------------------------
+%% @doc
+%% Manage requests to unsubscribe from a topic.
+%% @end
+%%-----------------------------------------------------------------------------
+connected(info, {unsubscribe, Topic}, #state{} = State) ->
+    logger:info("BBSVX mqtt connection : Unsubscribing from topic ~p  Subscriptions :~p",
+                [Topic, State#state.subscriptions]),
+    NewSubscriptions = lists:delete(Topic, State#state.subscriptions),
+    %% Check if we still have a subscription to this topic
+    case lists:member(Topic, NewSubscriptions) of
+        true ->
+            logger:info("BBSVX mqtt connection : Still subscribed to ~p, not unsubscribing. Subscriptions :~p",
+                        [Topic, NewSubscriptions]),
+            {keep_state, State#state{subscriptions = NewSubscriptions}};
+        false ->
+            case emqtt:unsubscribe(State#state.connection, #{}, [Topic]) of
+                {ok, _Props, _} ->
+                    logger:info("BBSVX mqtt connection : Sending unsubscribe message for topic ~p",
+                                [Topic]),
+                    {keep_state, State#state{subscriptions = NewSubscriptions}, []};
+                {error, Reason} ->
+                    %% TODO: Check logic here. Should we keep the subscription in the state?
+                    logger:error("BBSVX mqtt connection : Failed to unsubscribe from ~p: ~p",
+                                 [Topic, Reason]),
+                    {keep_state, State, []}
+            end
+    end;
+%%-----------------------------------------------------------------------------
+%% @doc
+%% Manage requests to get subscribed topics
+%% @end
+%%-----------------------------------------------------------------------------
+connected({call, From}, get_susbscriptions, State) ->
+    Result = State#state.subscriptions,
+    {keep_state, State, [{reply, From, {ok, Result}}]};
+%%-----------------------------------------------------------------------------
+%% @doc
+%% Manage requests to get subscribed topics from MQTT connection process
+%% @end
+%%-----------------------------------------------------------------------------
+connected({call, From}, get_mqtt_susbscriptions, State) ->
+    Result = emqtt:subscriptions(State#state.connection),
+    {keep_state, State, [{reply, From, {ok, Result}}]};
 %% @doc
 %% Manage requests to get target node id
 %% @end
 %%-----------------------------------------------------------------------------
-connected({call, From}, get_id, State) ->
-    {keep_state, State, [{reply, From, State#state.my_id}]};            
-
-
+connected({call, From}, get_target_id, State) ->
+    {keep_state, State, [{reply, From, State#state.target_client_id}]};
 %%-----------------------------------------------------------------------------
 %% @doc
 %% Manage requests to publish a message to a topic.
 %% @end
-
-connected({call, From}, {publish, _NodeId, #message{nameSpace = Namespace, payload = Payload}}, State) ->
+connected({call, From}, {publish, Namespace, Payload}, State) ->
     case emqtt:publish(State#state.connection, Namespace, #{}, term_to_binary(Payload), []) of
         ok ->
             {keep_state, State, [{reply, From, ok}]};
         {error, Reason} ->
-            logger:error("BBSVX mqtt connection : Failed to publish to ~p: ~p", [Namespace, Reason]),
-            {keep_state, State, [{reply, From, {error, Reason}}]}            
+            logger:error("BBSVX mqtt connection : Failed to publish to ~p: ~p",
+                         [Namespace, Reason]),
+            {keep_state, State, [{reply, From, {error, Reason}}]}
     end;
-    
-%%-----------------------------------------------------------------------------
-%% @doc
-%% Return subscribed topics for this connection
-%% @end
-%%-----------------------------------------------------------------------------
-connected({call, From}, get_susbscriptions, State) ->
-    Result = emqtt:subscriptions(State#state.connection),
-    {reply, From, {ok, Result}, State};
-
-
 %%-----------------------------------------------------------------------------
 %% @doc
 %% Handle incoming mqtt messages
 %% @end
 connected(cast, {incoming_mqtt_message, _, _, _, _, Topic, Payload}, State) ->
-    logger:info("BBSVX mqtt connection : Incoming mqtt message ~p ~p ~p", [State#state.my_id, Topic, Payload]),
+    logger:info("BBSVX mqtt connection : Incoming mqtt message ~p ~p ~p",
+                [State#state.my_id, Topic, Payload]),
     process_incoming_message(binary:split(Topic, <<"/">>, [global]), Payload, State),
     {keep_state, State};
 %%-----------------------------------------------------------------------------
@@ -173,7 +260,8 @@ connected(cast, {incoming_mqtt_message, _, _, _, _, Topic, Payload}, State) ->
 %% Catch all
 %% @end
 connected(Type, Message, State) ->
-    logger:info("BBSVX mqtt connection : Unmanaged message in connected state  ~p ~p ~p", [Type, Message, State]),
+    logger:info("BBSVX mqtt connection : Unmanaged message in connected state  ~p ~p ~p",
+                [Type, Message, State]),
     {keep_state, State}.
 
 %%-----------------------------------------------------------------------------
@@ -191,27 +279,67 @@ handle_event(Type, Event, State, Data) ->
 %%% Internal functions
 %%%=============================================================================
 
-
-%%----------------------------------------------------------------------------- 
+%%-----------------------------------------------------------------------------
 %% @doc
 %% Process incoming messages
 %% @end
 %% -----------------------------------------------------------------------------
 
 -spec process_incoming_message([binary()], binary(), #state{}) -> #state{}.
-process_incoming_message([<<"ontologies">>, <<"contact">>, Namespace, NodeId], {connection_accepted, Namespace, TargetNodeId, {TargetHost, TargetPort}}, #state{my_id = TargetNodeId} = State) ->
-    logger:info("bbsvx mqtt connection : Contact request accepted from : ~p ~p ~p", [Namespace, TargetNodeId, {TargetHost, TargetPort}]),
-    gproc:send({p, l, NodeId}, {connection_accepted, Namespace, TargetNodeId, {TargetHost, TargetPort}}),
+process_incoming_message([<<"ontologies">>, <<"in">>, Namespace, MyNodeId],
+                         {connection_accepted,
+                          Namespace,
+                          #node_entry{host = TargetHost,
+                                      port = TargetPort,
+                                      node_id = TargetNodeId} =
+                              TargetNode,
+                          NetworkSize},
+                         #state{my_id = MyNodeId} = State) ->
+    logger:info("bbsvx mqtt connection : Contact request accepted from : ~p ~p ~p",
+                [Namespace, TargetNodeId, {TargetHost, TargetPort}]),
+    gproc:send({p, l, {?MODULE, TargetNodeId, Namespace}},
+               {connection_accepted, Namespace, TargetNode, NetworkSize}),
     State;
 %% Process forwarded subscription requests
-process_incoming_message([<<"ontologies">>, <<"contact">>, Namespace, NodeId], {forwarded_subscription, NodeId, {Host, Port}}, #state{my_id = MyId} = State) ->
-    logger:info("bbsvx mqtt connection : Got contact request : ~p ~p ~p", [Namespace, NodeId, {Host, Port}]),
-    gproc:send({p, l, MyId}, {forwarded_subscription, NodeId, {Host, Port}}),
+% process_incoming_message([<<"ontologies">>, <<"in">>, Namespace, SenderNodeId], {forwarded_subscription, SubscriberNodeId, {Host, Port}}, #state{my_id = MyId} = State) ->
+%     logger:info("bbsvx mqtt connection ~p : Got forwarded subscription request from : ~p    for  ~p", [MyId, SenderNodeId, {Namespace, SubscriberNodeId, {Host, Port}}]),
+%     gproc:send({p, l, {ontology, Namespace}}, {forwarded_subscription, SubscriberNodeId, {Host, Port}}),
+%     State;
+%% Process inview_join_accepted acknoledgements
+process_incoming_message([<<"ontologies">>, <<"in">>, Namespace, MyNodeId],
+                         {inview_join_accepted,
+                          Namespace,
+                          #node_entry{host = TargetHost,
+                                      port = TargetPort,
+                                      node_id = TargetNodeId} =
+                              TargetNode},
+                         #state{my_id = MyNodeId, target_client_id = TargetNodeId} = State) ->
+    logger:info("bbsvx mqtt connection : Got inview_join_accepted : ~p ~p ~p",
+                [Namespace, MyNodeId, {TargetHost, TargetPort}]),
+    gproc:send({p, l, {?MODULE, TargetNodeId, Namespace}},
+               {inview_join_accepted, Namespace, TargetNode}),
+    State;
+%% manage exchange out reception of messages
+process_incoming_message([<<"ontologies">>, <<"in">>, Namespace, MyNodeId],
+                         {partial_view_exchange_out, Namespace, SenderNode, SamplePartial},
+                         #state{} = State) ->
+    logger:info("bbsvx mqtt connection ~p: Got partial_view_exchange_out : ~p",
+                [{Namespace, MyNodeId}, {SenderNode, SamplePartial}]),
+    gproc:send({p, l, {?MODULE, State#state.target_client_id, Namespace}},
+               {partial_view_exchange_out, Namespace, SenderNode, SamplePartial}),
+    State;
+%% manage exchange out reception of messages
+process_incoming_message([<<"ontologies">>, <<"in">>, Namespace, _MyNodeId],
+                         {empty_inview, Node},
+                         #state{} = State) ->
+    logger:info("bbsvx mqtt connection : Got empty inview message : ~p ~p",
+                [Namespace, Node]),
+    gproc:send({p, l, {ontology, Namespace}}, {empty_inview, Node}),
     State;
 process_incoming_message(Onto, Payload, State) ->
-    logger:warning("bbsvx mqtt connection : Got unmanaged message : ~p ~p", [Onto, Payload]),
+    logger:warning("bbsvx mqtt connection : Got unmanaged message : ~p ~p   myID : ~p",
+                   [Onto, Payload, State#state.my_id]),
     State.
-
 
 %%%-----------------------------------------------------------------------------
 %%% @doc
@@ -222,7 +350,8 @@ process_incoming_message(Onto, Payload, State) ->
 
 -spec msg_handler(mqtt:msg(), pid()) -> pid().
 msg_handler(Msg, Pid) ->
-    logger:info("MQTT Msg Handler ~p to ~p", [Msg, Pid]),
+    logger:info("BBSVX mqtt connection : msg_handler called with Msg: ~p, Pid: ~p",
+                [binary_to_term(maps:get(payload, Msg)), Pid]),
     gen_statem:cast(Pid,
                     {incoming_mqtt_message,
                      maps:get(qos, Msg),
@@ -232,8 +361,10 @@ msg_handler(Msg, Pid) ->
                      maps:get(topic, Msg),
                      binary_to_term(maps:get(payload, Msg))}).
 
-disconnected(Data) ->
-    logger:info("DISCONNECTED ~p", [Data]).
+disconnected(Reason, {TargetHost, TargetPort}) ->
+    logger:warning("DISCONNECTED ~p", [{Reason, {TargetHost, TargetPort}}]),
+    gproc:send({p, l, {mqtt_connection, TargetHost, TargetPort}},
+               {connection_failed, Reason, {TargetHost, TargetPort}}).
 
 %%%=============================================================================
 %%% Eunit Tests

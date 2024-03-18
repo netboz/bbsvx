@@ -11,12 +11,14 @@
 
 -behaviour(gen_server).
 
+-include("bbsvx_common_types.hrl").
+
 %%%=============================================================================
 %%% Export and Defs
 %%%=============================================================================
 
 %% External API
--export([start_link/4, test/0, test_func/0]).
+-export([start_link/5, test/0, test_func/0]).
 %% Callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
@@ -28,101 +30,116 @@
 
 %% Loop state
 -record(state,
-        {round_timer :: term(),
+        {namespace :: binary(),
+         round_timer :: term(),
          fanout :: integer(),
          ttl :: integer(),
-         ontology :: binary(),
          next_ball :: map(),
          orderer :: pid(),
          logical_clock_pid :: pid()}).
-
 
 %%%=============================================================================
 %%% API
 %%%=============================================================================
 
--spec start_link(Fanout :: integer(),
+-spec start_link(Namespace :: binary(),
+                 Fanout :: integer(),
                  Ttl :: integer(),
                  Orderer :: pid(),
                  LogicalClock :: pid()) ->
                     {ok, pid()} | {error, {already_started, pid()}} | {error, Reason :: any()}.
-start_link(Fanout, Ttl, Orderer, LogicalClock) ->
-    gen_server:start_link({via, gproc, {n, l, ?SERVER}},
-                                   ?MODULE,
-                                   [Fanout, Ttl, Orderer, LogicalClock],
-                                   []).
+start_link(Namespace, Fanout, Ttl, Orderer, LogicalClock) ->
+    gen_server:start_link({via, gproc, {n, l, {?SERVER, Namespace}}},
+                          ?MODULE,
+                          [Namespace, Fanout, Ttl, Orderer, LogicalClock],
+                          []).
 
 %%%=============================================================================
 %%% Gen Server Callbacks
 %%%=============================================================================
 
-init([Fanout, Ttl, Orderer, LogicalClock]) ->
+init([Namespace, Fanout, Ttl, Orderer, LogicalClock]) ->
     quickrand:seed(),
+
     State =
-        #state{orderer = Orderer,
+        #state{namespace = Namespace,
+               orderer = Orderer,
                logical_clock_pid = LogicalClock,
                fanout = Fanout,
                ttl = Ttl,
                next_ball = #{}},
     {ok, RoundTimer} =
-        timer:apply_interval(?DEFAULT_ROUND_TIME,
-                             gen_server,
-                             call,
-                             [self(), next_round]),
-    logger:info("RoundTimer ~p", [RoundTimer]),
+        timer:apply_interval(?DEFAULT_ROUND_TIME, gen_server, call, [self(), next_round]),
 
     {ok, State#state{round_timer = RoundTimer}}.
 
 handle_call({epto_broadcast, Payload}, _From, #state{next_ball = NextBall} = State) ->
-    logger:info("Broadcast ~p", [Payload]),
-    EvtId = uuid:get_v4(),
+    logger:info("Epto dissemination component : Broadcast ~p", [Payload]),
+
+    EvtId =
+        list_to_binary(uuid:to_string(
+                           uuid:uuid4())),
     Event =
         #event{id = EvtId,
                ts = gen_server:call(State#state.logical_clock_pid, get_clock),
                ttl = 0,
-               source_id = node(),
+               namespace = State#state.namespace,
+               source_id = atom_to_binary(node()),
                payload = Payload},
     {reply, ok, State#state{next_ball = maps:put(EvtId, Event, NextBall)}};
-handle_call(next_round, _From, #state{next_ball = NextBall} = State)
-    when NextBall == #{} ->
-    {reply, ok, State};
-handle_call(next_round, _From, State) ->
-    logger:info("Next round. Ball is ~p", [State#state.next_ball]),
+% handle_call(next_round, _From, #state{next_ball = NextBall} = State)
+%     when NextBall == #{} ->
+%     {reply, ok, State};
+handle_call(next_round, _From, #state{namespace = Namespace} = State) ->
     NewBall =
         maps:map(fun(_EvtId, #event{ttl = EvtTtl} = Evt) -> Evt#event{ttl = EvtTtl + 1} end,
                  State#state.next_ball),
+    SprayViewPid = gproc:where({n, l, {bbsvx_actor_spray_view, Namespace}}),
+    {ok, Peers} =
+        case gen_statem:call(SprayViewPid, get_views) of
+            {ok, {[], []}} ->
+                %            logger:warning(" Epto Disseminator ~p, No view found",
+                %                          [State#state.ontology]),
+                {ok, []};
+            {ok, {_, []}} ->
+                %              logger:warning(" Epto Disseminator ~p, No outview found",
+                %                            [State#state.ontology]),
+                {ok, []};
+            {ok, {_, OutView}} ->
+                {ok, OutView}
+        end,
+    SamplePeers = Peers, %% get_random_sample(State#state.fanout, Peers),
+    %% logger:info("Epto dissemination component : Sample peers ~p", [SamplePeers]),
+    %% Broadcast next ball to sample peers
+    MyId = bbsvx_crypto_service:my_id(),
+    TargetTopic = iolist_to_binary([<<"ontologies/in/">>, Namespace, "/", MyId]),
+    lists:foreach(fun(#node_entry{node_id = NId}) ->
+                     ConPid = gproc:where({n, l, {bbsvx_mqtt_connection, NId}}),
+                     gen_statem:call(ConPid,
+                                     {publish,
+                                      TargetTopic,
+                                      {epto_message, Namespace, {receive_ball, NewBall}}})
+                  end,
+                  SamplePeers),
 
-    {ok, Peers} = partisan_peer_service:members(),
-    SamplePeers = get_random_sample(State#state.fanout, Peers),
-    logger:info("Sample peers ~p", [SamplePeers]),
-    TargetProcesName = atom_to_binary(?MODULE),
-    TargetProcess = <<"#Name", TargetProcesName/binary>>,
-    logger:info("TagetProcess ~p", [TargetProcess]),
-    [partisan:forward_message([Peer | TargetProcess], {receive_ball, NewBall})
-     || Peer <- SamplePeers],
     gen_server:call(State#state.orderer, {order_events, NewBall}),
     {reply, ok, State#state{next_ball = #{}}};
-
 handle_call({set_fanout_ttl, Fanout, Ttl}, _From, State) ->
-    gen_server:call(State#state.logical_clock_pid, {set_ttl, Ttl}), 
+    gen_server:call(State#state.logical_clock_pid, {set_ttl, Ttl}),
     {reply, ok, State#state{fanout = Fanout, ttl = Ttl}};
-
-
 handle_call(_Request, _From, State) ->
-    logger:info("Unmanaged message ~p", [_Request]),
+    logger:info("Epto dissemination component : Unmanaged message ~p", [_Request]),
     Reply = ok,
     {reply, Reply, State}.
 
 handle_cast(_Msg, State) ->
-    logger:info("Unmanaged cast message ~p", [_Msg]),
+    logger:info("Epto dissemination component : Unmanaged cast message ~p", [_Msg]),
     {noreply, State}.
 
-handle_info({receive_ball, Ball}, State) ->
-    logger:info("Processs ~p Received ball", [partisan:self()]),
-
+handle_info({receive_ball, Ball}, #state{namespace = _Namespace} = State) ->
+    %logger:info("Epto dissemination component  ~p : received ball ~p", [Namespace, Ball]),
     %% QUESTION: next event could considerably slow down the ball processing, should be made async ?
     %% gproc:send({p, l, {epto_event, State#state.ontology}}, {received_ball, Ball}),
-
     UpdatedNextBall =
         maps:fold(fun (EvtId, #event{ttl = EvtTtl, ts = EvtTs} = Evt, Acc)
                           when EvtTtl < State#state.ttl ->
@@ -135,17 +152,15 @@ handle_info({receive_ball, Ball}, State) ->
                                   _ ->
                                       Acc
                               end,
-                          gen_server:call(State#state.logical_clock_pid,
-                                                   {update_clock, EvtTs}),
+                          gen_server:call(State#state.logical_clock_pid, {update_clock, EvtTs}),
                           NewAcc;
                       (_EvtId, #event{ts = EvtTs}, Acc) ->
-                          gen_server:call(State#state.logical_clock_pid,
-                                                   {update_clock, EvtTs}),
+                          gen_server:call(State#state.logical_clock_pid, {update_clock, EvtTs}),
                           Acc
                   end,
                   State#state.next_ball,
                   Ball),
-    logger:info("New Ball ~p", [UpdatedNextBall]),
+    %logger:info("Epto dissemination component: New Ball ~p", [UpdatedNextBall]),
     {noreply, State#state{next_ball = UpdatedNextBall}};
 handle_info(_Info, State) ->
     logger:info("Unmanaged info message ~p", [_Info]),
@@ -162,35 +177,26 @@ code_change(_OldVsn, State, _Extra) ->
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
-get_random_sample(Num, Peers) ->
-    get_random_sample(Num, Peers, []).
-
-get_random_sample(0, _Peers, Acc) ->
-    Acc;
-get_random_sample(_N, [], Acc) ->
-    %% No more peers in list
-    Acc;
-get_random_sample(N, Peers, Acc) ->
-    L = length(Peers),
-    Index = quickrand:strong_uniform(L) - 1,
-    {A, [Selected | B]} = lists:split(Index, Peers),
-    get_random_sample(N - 1, A ++ B, Acc ++ [Selected]).
 
 test() ->
-    timer:apply_interval(4000,
-                         ?MODULE,
-                         test_func,
-                         []).
+    timer:apply_interval(4000, ?MODULE, test_func, []).
 
 %%%=============================================================================
 %%% Eunit Tests
 %%%=============================================================================
 test_func() ->
-    case rand:uniform(3) of 
+    case rand:uniform(3) of
         1 ->
-            Node = lists:flatten(io_lib:format("~p",[node()])),
-            Index = lists:flatten(io_lib:format("~p",[time()])),
-            gen_server:call(?MODULE, {epto_broadcast,  iolist_to_binary([Index, <<"-MSG-">>, Node, <<"\n">>])});
+            Node =
+                lists:flatten(
+                    io_lib:format("~p", [node()])),
+            Index =
+                lists:flatten(
+                    io_lib:format("~p", [time()])),
+            Comp = gproc:where({n, l, {?SERVER, <<"bbsvx:root">>}}),
+            gen_server:call(Comp,
+                            {epto_broadcast,
+                             iolist_to_binary([Index, <<"-MSG-">>, Node, <<"\n">>])});
         _ ->
             ok
     end.

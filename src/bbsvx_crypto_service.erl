@@ -14,7 +14,7 @@
 %%%=============================================================================
 
 %% External API
--export([start_link/0, my_id/0]).
+-export([start_link/0, my_id/0, sign/1, get_public_key/0]).
 
 %% Callbacks
 -export([
@@ -26,13 +26,10 @@
     code_change/3
 ]).
 
--define(SERVER, ?MODULE).
-
-%% Loop state
 -record(state, {
     privkey :: binary(),
     pubkey :: binary(),
-    id :: binary()
+    node_id :: binary()
 }).
 
 %%%=============================================================================
@@ -53,13 +50,14 @@ start_link() ->
 
 -spec my_id() -> binary().
 my_id() ->
-    case gproc:where({n, l, ?MODULE}) of
-        undefined -> 
-            logger:error("Crypto service not started"),
-            undefined;
-        P ->
-            gen_server:call(P, my_id)
-    end.
+    gen_server:call({via, gproc, {n, l, ?MODULE}}, my_id).
+
+-spec sign(binary()) -> binary().
+sign(Data) ->
+    gen_server:call({via, gproc, {n, l, ?MODULE}}, {sign, Data}).
+-spec get_public_key() -> binary().
+get_public_key() ->
+    gen_server:call({via, gproc, {n, l, ?MODULE}}, get_public_key).
 
 %%%=============================================================================
 %%% Gen Server Callbacks
@@ -69,11 +67,18 @@ init([]) ->
     logger:info("Starting crypto service"),
     %% Create a private ets table to store the data loaded from DETS
     {PubKey, PrivKey} = crypto:generate_key(eddsa, ed25519),
-    logger:info("Generated keys ~p ~p", [PubKey, PrivKey]),
-    {ok, #state{privkey = PrivKey, pubkey = PubKey, id = base64:encode(PubKey, #{padding => false, mode => urlsafe})}}.
+    logger:info("Generated keys.", []),
+    {ok, #state{privkey = PrivKey, pubkey = PubKey, node_id = base64:encode(PubKey, #{padding => false, mode => urlsafe})}}.
 
 handle_call(my_id, _From, State) ->
-    {reply, State#state.id, State};
+    {reply, State#state.node_id, State};
+
+handle_call({sign, Data}, _From, #state{pubkey = PubKey, privkey = PrivKey} = State) ->
+    logger:info("Signing data ~p", [Data]),
+    Signature = public_key:sign(Data, none, {ed_pri, ed25519, PubKey, PrivKey}, []),
+    {reply, Signature, State};
+handle_call(get_public_key, _From, State) ->
+    {reply, State#state.pubkey, State};
 
 handle_call(_Request, _From, State) ->
     Reply = ok,

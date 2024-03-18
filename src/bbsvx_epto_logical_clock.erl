@@ -16,39 +16,35 @@
 %%%=============================================================================
 
 %% External API
--export([start_link/1]).
+-export([start_link/2]).
 %% Callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
 
--define(SERVER, ?MODULE).
-
 -include("bbsvx_epto.hrl").
 
 %% Loop state
--record(state, {logical_clock = 0 :: integer(), ttl :: integer()}).
+-record(state, {namespace :: binary(), logical_clock = 0 :: integer(), ttl :: integer()}).
 
 %%%=============================================================================
 %%% API
 %%%=============================================================================
 
--spec start_link(Ttl :: integer()) ->
+-spec start_link(Namespace :: binary(), Ttl :: integer()) ->
                     {ok, pid()} | {error, {already_started, pid()}} | {error, Reason :: any()}.
-start_link(Ttl) ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [Ttl], []).
+start_link(Namespace, Ttl) ->
+    gen_server:start_link({via, gproc, {n, l, {?MODULE, Namespace}}}, ?MODULE, [Namespace, Ttl], []).
 
 %%%=============================================================================
 %%% Gen Server Callbacks
 %%%=============================================================================
 
-init([Ttl]) ->
-
-    State = #state{ttl = Ttl},
+init([Namespace, Ttl]) ->
+    State = #state{namespace = Namespace, ttl = Ttl},
     {ok, State}.
 
 handle_call({set_ttl, Ttl}, _From, State) ->
     {reply, ok, State#state{ttl = Ttl}};
-
 handle_call({is_deliverable, Event}, _From, State) ->
     Reply = Event#event.ttl > State#state.ttl,
     {reply, Reply, State};
