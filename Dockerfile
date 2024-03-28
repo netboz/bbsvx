@@ -1,58 +1,71 @@
-# Build stage 0
-FROM erlang:26.2-alpine
+# Build stage
+FROM erlang:26.2-alpine AS build
 
-# Set working directory
-RUN mkdir /buildroot
+# Build the image used to buimd the release
+RUN apk update && apk add --no-cache \
+    openssl-dev \
+    ncurses-libs \
+    libstdc++ \
+    git \
+    build-base \
+    bash \
+    expat-dev \
+    zlib-dev \
+    libexpat \
+    cmake \
+    yaml-dev \
+    automake \
+    autoconf \
+    erlang-dev
 WORKDIR /buildroot
-RUN mkdir src include config log
+RUN mkdir src include config priv log
+
+COPY rebar.config ./rebar.config
+COPY rebar.lock ./rebar.lock
+ENV BUILD_WITHOUT_QUIC=true
+RUN rebar3 compile
+
+## Copy needed files and build the release
+FROM build as builded
+# Set working directory
+WORKDIR /buildroot
 COPY src ./src
 COPY include ./include
 COPY config ./config
 COPY priv ./priv
-COPY rebar.config ./rebar.config
-COPY rebar.lock ./rebar.lock
 COPY ejabberd.yml ./_build/default/rel/bbsvx/ejabberd.yml
+COPY ./priv/scripts/run.sh ./run.sh
 
-
-RUN apk update
-# Install some libs
-RUN apk add --no-cache openssl-dev && \
-    apk add --no-cache ncurses-libs && \
-    apk add --no-cache libstdc++ && \
-    apk add --no-cache git && \
-    apk add --no-cache libsodium-dev && \
-    apk add --no-cache build-base && \
-    apk add --no-cache cargo && \
-    apk add --no-cache bash && \
-    apk add --no-cache expat-dev && \
-    apk add --no-cache zlib-dev && \
-    apk add --no-cache libexpat && \
-    apk add --no-cache cmake && \
-    apk add --no-cache yaml-dev && \
-    apk add --no-cache automake && \
-    apk add --no-cache autoconf && \
-    apk add --no-cache erlang-dev
-# And build the release
-
+# Build the release
 ENV BUILD_WITHOUT_QUIC=true
+RUN rebar3 compile && \
+    rebar3 release
+## Build the runtime image
+FROM erlang:26.2-alpine AS run
+RUN apk update && apk add --no-cache \
+    openssl-dev \
+    ncurses-libs \
+    expat-dev \
+    libstdc++ \
+    bash \
+    zlib-dev \
+    libexpat \
+    yaml-dev \
+    erlang-dev
 
+## Copy the release from the build stage to the runtime image
+FROM run
 
-RUN rebar3 get-deps
-# Run configure script in ejabberd deps directory
-RUN ls _build/default/lib/ejabberd
-RUN cd _build/default/lib/ejabberd && ./autogen.sh && ./configure && cd -
-RUN rebar3 compile
-RUN rebar3 release
+# Copy only the necessary files from the build stage
 
-# Build stage 1
-#FROM erlang:alpine 
+COPY --from=builded /buildroot/_build/default/rel/bbsvx /bbsvx
+COPY --from=builded /buildroot/config /bbsvx/config
+COPY --from=builded /buildroot/priv /bbsvx/priv
+COPY --from=builded /buildroot/run.sh /bbsvx/run.sh
 
-# Install the released application
-WORKDIR /buildroot
-RUN ls
-#COPY /buildroot/_build/default/rel/plpod .
-#COPY /buildroot/config /plpod/config
 # Expose relevant ports
 EXPOSE 10300
- #EXPOSE 8443
-CMD ["sh", "./priv/scripts/run.sh", "foreground"]
+#EXPOSE 8443
+
+# Run the application
+CMD ["sh", "/bbsvx/run.sh", "foreground"]

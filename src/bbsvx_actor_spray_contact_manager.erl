@@ -20,7 +20,6 @@
 %%%=============================================================================
 
 -define(SERVER, ?MODULE).
--define(MAX_UINT32, 4294967295).
 
 %% External API
 -export([start_link/3, stop/0]).

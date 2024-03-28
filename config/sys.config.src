@@ -1,24 +1,16 @@
 [
  {bbsvx, []},
- {prometheus, [
-  {prometheus_http, [{path, "/metrics"},
-                     {format, auto},
-                     {port, 10300}]}
-  ]},
-  {opentelemetry,
-  [{span_processor, batch},
-   {traces_exporter, otlp}]},
-
+ {prometheus, [{prometheus_http, [{path, "/metrics"}, {format, auto}, {port, 10300}]}]},
+{opentelemetry, [{span_processor, batch}, {traces_exporter, otlp}]},
  {opentelemetry_exporter,
-  [{otlp_protocol, grpc},
-   {otlp_endpoint, "http://tempo_collector:4317"}]},
-   
+  [{otlp_protocol, grpc}, {otlp_endpoint, "http://tempo_collector:4317"}]},
  {kernel,
   [{logger_level, info},
    {logger,
     [{handler,
       default,
       logger_std_h,
-      #{formatter => {jsonlog, #{
-        json_encode => fun jsonlog_jiffy_encoder:encode/2
-      }}}}]}]}].
+      #{formatter =>  {jsonformat, #{new_line => true}}}}]}]},
+ {bbsvx, [{root_ontology_contact, [{host, <<"bbsvx_bbsvx_root_1">>}, {port, 1883}]}]}
+].
+

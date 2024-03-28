@@ -12,7 +12,7 @@
 -behaviour(gen_statem).
 
 -include("bbsvx_common_types.hrl").
-
+-include_lib("ejabberd/include/mqtt.hrl").
 %%%=============================================================================
 %%% Export and Defs
 %%%=============================================================================
@@ -77,6 +77,8 @@ init([Namespace, Options]) ->
     case proplists:get_value(contact_nodes, Options) of
         undefined ->
             ok;
+        [] ->
+            ok;    
         [_ | _] = ContactNodes ->
             %% Choose a random node from the contact nodes
             ContactNode =
@@ -88,7 +90,7 @@ init([Namespace, Options]) ->
 
     %% Register to events for this ontolgy namespace
     gproc:reg({p, l, {ontology, Namespace}}),
-    
+
     {ok,
      running,
      #state{namespace = Namespace,
@@ -97,7 +99,63 @@ init([Namespace, Options]) ->
                             host = Host,
                             port = Port}}}.
 
-terminate(_Reason, _State, _Data) ->
+terminate(_Reason, #state{namespace = Namespace}, State) ->
+    %% Notify outview we are leaving the node
+    OutView = State#state.out_view,
+    InViewNameSpace =
+        iolist_to_binary([<<"ontologies/in/">>,
+                          Namespace,
+                          "/",
+                          State#state.my_node#node_entry.node_id]),
+    lists:foreach(fun(Node) ->
+                     gen_statem:call({via, gproc, {n, l, Node#node_entry.node_id}},
+                                     {publish,
+                                      InViewNameSpace,
+                                      {disconnecting, State#state.namespace, State#state.my_node}})
+                  end,
+                  OutView),
+    %% Unsubscribe the nodes from the outview
+    lists:foreach(fun(Node) ->
+                     gen_statem:call({via, gproc, {n, l, {bbsvx_mqtt_connection, Node#node_entry.node_id}}},
+                                     {unsubscribe, InViewNameSpace})
+                  end,
+                  OutView),
+    %% Send disconnecting message to the inview
+    InView = State#state.in_view,
+    lists:foreach(fun(Node) ->
+                    Topic =
+                        iolist_to_binary([<<"ontologies/in/">>,
+                                          State#state.namespace,
+                                          "/",
+                                          Node#node_entry.node_id]),
+                     mod_mqtt:publish({State#state.my_node#node_entry.node_id,
+                                       <<"localhost">>,
+                                       <<"bob3">>},
+                                      #publish{topic = Topic,
+                                               payload = term_to_binary({disconnecting,
+                                                                         State#state.namespace,
+                                                                         State#state.my_node}),
+                                               retain = false},
+                                      ?MAX_UINT32)
+                  end,
+                  InView),
+
+    %% Unsubscribe the nodes from the inview
+    lists:foreach(fun(Node) ->
+                    Topic = iolist_to_binary([<<"ontologies/in/">>, Namespace, "/", Node#node_entry.node_id]),
+                     mod_mqtt:unsubscribe({Node#node_entry.node_id,
+                                           <<"localhost">>,
+                                           <<"bob3">>},
+                                          Topic)
+                  end,
+                  InView),
+    %% Maybe terminate epto service
+    supervisor:terminate_child(bbsvx_sup_epto_agents,
+                               {via, gproc, {n, l, {bbsvx_epto_service, Namespace}}}),
+
+    %% Terminate leader manager
+    supervisor:terminate_child(bbsvx_sup_leader_agents,
+                               {via, gproc, {n, l, {bbsvx_actor_leader_manager, Namespace}}}),
     void.
 
 code_change(_Vsn, State, Data, _Extra) ->
@@ -313,6 +371,38 @@ running(info,
                           Namespace,
                           OriginNode,
                           IncomingSamplePartialView}]}};
+%% Manage reception of disconnection messages
+running(info,
+        {disconnection, #node_entry{node_id = DisconnectedNodeId} = Node},
+        #state{out_view = OutView} = State) ->
+    logger:info("spray Agent ~p : Running state, Got disconnection message from ~p",
+                [State#state.namespace, Node]),
+
+    %% Count and remove all occurences of disparting node_id from our outview
+    {Count, NewOutView} =
+        lists:foldl(fun(#node_entry{node_id = NodeId} = N, {Count, Acc}) ->
+                       case NodeId of
+                           DisconnectedNodeId ->
+                               {Count + 1, Acc};
+                           _ ->
+                               {Count, [N | Acc]}
+                       end
+                    end,
+                    {0, []},
+                    OutView),
+    lists:foldl(fun(C) ->
+                   case rand:uniform() of
+                       N when N > 1 / (length(NewOutView) + C) ->
+                           DuplicatedNode = lists:nth(round(N * length(NewOutView)), NewOutView),
+                           NewOutView ++ [DuplicatedNode#node_entry{age = 0}];
+                       _ ->
+                           NewOutView
+                   end
+                end,
+                NewOutView,
+                lists:seq(1, Count)),
+    %% Remove the node from our inview
+    {keep_state, State#state{out_view = NewOutView}};
 running(info,
         {'DOWN', MonitorRef, process, PidTerminating, _Info},
         #state{my_node = MyNode,

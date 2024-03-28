@@ -10,6 +10,7 @@ _vendor
 *.swo
 .erlang.cookie
 ebin
+doc
 log
 *.log
 Mnesia.*
@@ -22,3 +23,7 @@ logs
 rebar3.crashdump
 *~
 ejabberd.log
+docker/prometheus/data
+docker/tempo/data
+positions.yaml
+settings.json
