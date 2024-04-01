@@ -36,7 +36,6 @@
 -export([responding/3, wait_exchange_out/3]).
 -export([get_random_sample/1, get_big_random_sample/1, get_oldest_node/1]).
 
--define(MAX_UINT32, 4294967295).
 -define(EXCHANGE_OUT_TIMEOUT, 3000).
 
 -record(state,
@@ -314,7 +313,7 @@ get_random_sample(View) ->
     %% Shuffle the view
     Shuffled = [X || {_, X} <- lists:sort([{rand:uniform(), N} || N <- View])],
     %% split the view in two
-    {_Sample, _Rest} = lists:split(round(length(View) / 2) - 1, Shuffled).
+    {_Sample, _Rest} = lists:split((length(View) div 2) - 1, Shuffled).
 
 %% get_big_random_sample/1
 %% Like get_random_sample/1 but doesn't substract 1 when halving view size
@@ -326,7 +325,7 @@ get_big_random_sample(View) ->
     %% Shuffle the view
     Shuffled = [X || {_, X} <- lists:sort([{rand:uniform(), N} || N <- View])],
     %% split the view in two
-    {_Sample, _Rest} = lists:split(round(length(View) / 2), Shuffled).
+    {_Sample, _Rest} = lists:split(length(View) div 2, Shuffled).
 
 %%-----------------------------------------------------------------------------
 %% @doc

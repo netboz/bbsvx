@@ -20,8 +20,6 @@
 -export([handle_register_user/2, handle_mqtt_publish_hook/3, handle_mqtt_subscribe_hook/4,
          handle_mqtt_unsubscribe_hook/2]).
 
--define(MAX_UINT32, 4294967295).
-
 start(Host, Opts) ->
     logger:info("bbsx_mqtt_ejd_mod:start/2 called with Host: ~p, Opts: ~p", [Host, Opts]),
 
@@ -140,6 +138,10 @@ process_publish(_Usr, [<<"ontologies">>, <<"in">>, Namespace, _FromClientId], {l
     ok;
 process_publish(_Usr, [<<"ontologies">>, <<"in">>, Namespace, _FromClientId],  {leader_election_info, _Namespace, Payload}) ->
     gproc:send({n, l, {leader_manager, Namespace}}, {leader_election_info, _Namespace, Payload}),
+    ok;
+%% Manage disconnection message
+process_publish(_Usr, [<<"ontologies">>, <<"in">>, Namespace, _FromClientId], {disconnection, Namespace, #node_entry{} = Node}) ->
+    gproc:send({p, l, {ontology, Namespace}}, {disconnection, Node}),
     ok;
 process_publish(Usr, Topic, Payload) ->
     logger:info("BBSVX ejabberd mod : Unmanaged message ~p ~p ~p",

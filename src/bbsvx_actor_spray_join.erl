@@ -24,7 +24,7 @@
 %% Gen State Machine Callbacks
 -export([init/1, code_change/4, callback_mode/0, terminate/3]).
 %% State transitions
--export([connecting/3, subscribing/3]).
+-export([connecting/3, waiting_for_id/3, subscribing/3]).
 
 -record(state,
         {namespace :: binary(),
@@ -66,27 +66,19 @@ init([Type,
     %% Look if there is already an openned connection to the target node
     case gproc:where({n, l, {bbsvx_mqtt_connection, TargetNodeId}}) of
         undefined ->
-            logger:info("~p : No connection to ~p", [?MODULE, TargetNode]),
-            %% No connection, subscribe to connection events and open it
             gproc:reg({p, l, {bbsvx_mqtt_connection, TargetHost, TargetPort}}),
-            case supervisor:start_child(bbsvx_sup_mqtt_connections, [MyNode, TargetNode]) of
-                {ok, ConnectionPid} ->
-                    {ok,
+            logger:info("~p : No connection to ~p", [?MODULE, TargetNode]),
+            {ok,
                      connecting,
-                     #state{connection_pid = ConnectionPid,
-                            type = Type,
+                     #state{type = Type,
                             namespace = Namespace,
                             my_node = MyNode,
                             target_node = TargetNode}};
-                {error, Reason} ->
-                    logger:warning("~p : Could not start connection to ~p : ~p",
-                                   [?MODULE, TargetNode, Reason]),
-                    {stop, Reason}
-            end;
         ConnectionPid ->
             logger:info("~p : Connection to ~p already openned", [?MODULE, TargetNode]),
             %% Connection already openned
             %%
+            gproc:reg({p, l, {bbsvx_mqtt_connection, TargetHost, TargetPort}}),
             gproc:reg({p, l, {bbsvx_mqtt_connection, TargetNodeId, Namespace}}),
             {ok,
              subscribing,
@@ -111,9 +103,26 @@ callback_mode() ->
 %%%=============================================================================
 connecting(enter, _, State) ->
     logger:info("~p : Connecting to ~p", [?MODULE, State#state.target_node]),
+            %% No connection, subscribe to connection events and open it
+            case supervisor:start_child(bbsvx_sup_mqtt_connections, [State#state.my_node, State#state.target_node]) of
+                {ok, ConnectionPid} ->
+                    gen_statem:cast(self(), connection_started),
+                    {keep_state,
+                     State#state{connection_pid = ConnectionPid}};
+                {error, Reason} ->
+                    logger:warning("~p : Could not open connection to ~p : ~p",
+                                   [?MODULE, State#state.target_node, Reason]),
+                    {stop, normal}
+            end;
+connecting(timeout, _, State) ->
+    logger:warning("~p : Connection to ~p timed out", [?MODULE, State#state.target_node]),
+    {stop, normal, State};
+connecting(cast, connection_started, State) ->
+    {next_state, waiting_for_id, State}.
+waiting_for_id(enter, _, _) ->
     keep_state_and_data;
 %% Manage connection to self
-connecting(info,
+waiting_for_id(info,
            {connection_to_self, TargetNode},
            #state{namespace = Namespace, type = contact} = State) ->
     logger:warning("~p : Connection to self ~p", [?MODULE, TargetNode]),
@@ -124,7 +133,7 @@ connecting(info,
     %% Start leader election agent
     supervisor:start_child(bbsvx_sup_leader_managers, [Namespace, 8, 50, 100, 200]),
     {stop, normal, State};
-connecting(info,
+waiting_for_id(info,
            {connection_ready,
             #node_entry{host = TargetHost,
                         port = TargetPort,

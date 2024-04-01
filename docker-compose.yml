@@ -1,4 +1,3 @@
-version: '3'
 networks:
   bbsvx-net:
     driver: bridge
@@ -17,6 +16,13 @@ services:
         - DOCKER_COMPOSE=true
       networks:
         - bbsvx-net
+      logging:
+        driver: loki
+        options:
+          loki-url: "http://127.0.0.1:3100/loki/api/v1/push"
+          mode: non-blocking
+          max-buffer-size: 4m
+          loki-retries: "3"
       volumes:
         - ./docker/logs:/logs
       labels:
@@ -39,6 +45,13 @@ services:
       - DOCKER_COMPOSE=true
     networks:
       - bbsvx-net
+    logging:
+        driver: loki
+        options:
+          loki-url: "http://127.0.0.1:3100/loki/api/v1/push"
+          mode: non-blocking
+          max-buffer-size: 4m
+          loki-retries: "3"
     volumes:
       - ./docker/logs:/logs
     depends_on:
@@ -52,7 +65,7 @@ services:
     hostname: prometheus
     volumes:
       - ./docker/prometheus/etc/:/etc/prometheus/
-      - ./docker/prometheus/data:/prometheus
+      - prometheus_data:/prometheus
       - /var/run/docker.sock:/var/run/docker.sock
 
     user: root
@@ -63,22 +76,15 @@ services:
       - '--enable-feature=exemplar-storage'
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--log.level=error'
     ports:
       - 9090:9090
     links:
       - alertmanager:alertmanager 
-#      - pushgateway:pushgateway
-
-#      - pushgateway
     networks:
       - bbsvx-net
     restart: always
-#    deploy:
-#      placement:
-#        constraints:
-#          - node.hostname == ${HOSTNAME}
 
-  
 
   alertmanager:
     image: prom/alertmanager
@@ -102,23 +108,13 @@ services:
     hostname: loki_collector
     ports:
       - "3100:3100"
-    command: -config.file=/etc/loki/local-config.yaml
+    command: 
+      - '-config.file=/etc/loki/local-config.yaml'
     volumes:
       - ./docker/loki/conf:/etc/loki
     networks:
       - bbsvx-net
-  promtail:
-    image: grafana/promtail:latest
-    volumes:
-      - /var/lib/docker/containers:/var/lib/docker/containers
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ./docker/promtail/conf/promtail.yaml:/etc/promtail/promtail.yaml
-      - ./docker/promtail/positions:/var/run/promtail
-    command: -config.file=/etc/promtail/promtail.yaml
-    depends_on:
-      - loki
-    networks:
-      - bbsvx-net
+  
   tempo:
     image: grafana/tempo:latest
     command: [ "-config.file=/etc/tempo.yaml" ]
@@ -156,10 +152,14 @@ services:
     ports:
       - 3000:3000
     volumes:
-      - ./docker/grafana/data:/var/lib/grafana
+      - grafana_data:/var/lib/grafana
       - ./docker/grafana/provisioning:/etc/grafana/provisioning/
     env_file:
       - ./docker/grafana/config.monitoring
     networks:
       - bbsvx-net
     restart: always
+volumes:
+  grafana_data: {}
+  prometheus_data: {}
+  promtail_data: {}

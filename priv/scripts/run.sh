@@ -36,4 +36,4 @@ echo "HOSTNAME: ${HOSTNAME}"
 
 RELNAME="`dirname \"$0\"`"/${APP}
 echo "Starting ${RELNAME}..."
-exec _build/default/rel/bbsvx/bin/bbsvx foreground "$@"
+exec /bbsvx/bin/bbsvx foreground "$@"
