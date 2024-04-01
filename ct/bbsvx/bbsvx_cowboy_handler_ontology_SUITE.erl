@@ -43,14 +43,17 @@ init_per_testcase(_TestName, Config) ->
     file:copy("../../../../ejabberd.yml", Cwd ++ "/ejabberd.yml"),
 
     %% Setup mnesia
-    %application:set_env(mnesia, dir, Cwd ++ "/mnesia"),
+    file:make_dir(Cwd ++ "/mnesia"),
+    application:set_env(mnesia, dir, Cwd ++ "/mnesia"),
     S = mnesia:create_schema([node()]),
     ct:pal("Created schema ~p", [S]),
     T = mnesia:start(),
     ct:pal("Started mnesia ~p", [T]),
-    ok = mnesia:wait_for_tables([schema], 30000),
-    P = mnesia:change_table_copy_type(schema, node(), disc_copies),
-
+    %ok = mnesia:wait_for_tables([schema], 30000),
+    %MyIP = local_ip_v4(),
+  %  P = mnesia:change_table_copy_type(schema, node(), disc_copies),
+    %os:putenv("ERLANG_NODE_ARG","bbsvx@" ++ term_to_list(MyIP)),
+   % net_kernel:start(bbsvx,  #{}),
     H = application:ensure_all_started(ejabberd),
     ct:pal("Started ejabberd ~p", [H]),
     % ct:pal("changed schema ~p", [P]),
@@ -68,8 +71,9 @@ end_per_testcase(_TestName, Config) ->
     ct:pal("End test case ~p", [_TestName]),
     application:stop(bbsvx),
     application:stop(mnesia),
-    R = mnesia:delete_schema([node()]),
-    ct:pal("Deleted schema ~p", [R]),
+    {ok, Cwd} = file:get_cwd(),
+    %X = file:del_dir_r(Cwd ++ "/mnesia"),
+    %ct:pal("Deleted schema ~p", [X]),
     %% ct:pal("Deleted schema ~p", [R]),
     Config.
 
@@ -93,16 +97,16 @@ can_create_local_ontology(_Config) ->
     ?assertEqual(201, ReturnCode).
 
 can_create_shared_ontology(_Config) ->
-    DBody = jiffy:encode(#{namespace => <<"ont_test">>, type => <<"shared">>}),
+    DBody = jiffy:encode(#{namespace => <<"ont_test1">>, type => <<"shared">>}),
     {ok, {{_Version, ReturnCode, _ReasonPhrase}, _Headers, _RetBody}} =
         httpc:request(put,
-                      {"http://localhost:8085/ontologies/ont_test", [], "application/json", DBody},
+                      {"http://localhost:8085/ontologies/ont_test1", [], "application/json", DBody},
                       [],
                       []),
     ?assertEqual(201, ReturnCode).
 
 creating_twice_same_ont_is_idempotent(_Config) ->
-    DBody = jiffy:encode(#{namespace => <<"ont_test">>, type => <<"local">>}),
+    DBody = jiffy:encode(#{namespace => <<"ont_test2">>, type => <<"local">>}),
     {ok, {{_Version, ReturnCode, _ReasonPhrase}, _Headers, _RetBody}} =
         httpc:request(put,
                       {"http://localhost:8085/ontologies/ont_test2", [], "application/json", DBody},
@@ -113,12 +117,20 @@ creating_twice_same_ont_is_idempotent(_Config) ->
     ct:pal("shagshag"),
     {ok, {{_, ReturnCode2, _}, _, RetBody2}} =
         httpc:request(put,
-                      {"http://localhost:8085/ontologies/ont_test", [], "application/json", DBody},
+                      {"http://localhost:8085/ontologies/ont_test2", [], "application/json", DBody},
                       [],
                       []),
     ct:pal("Response ~p", [RetBody2]),
-    ?assertEqual(2000, ReturnCode2).
+    ?assertEqual(200, ReturnCode2).
 
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
+%% internal functions
+local_ip_v4() ->
+    {ok, Addrs} = inet:getifaddrs(),
+    hd([Addr
+        || {_, Opts} <- Addrs, {addr, Addr} <- Opts, size(Addr) == 4, Addr =/= {127, 0, 0, 1}]).
+
+term_to_list(Term) ->
+    lists:flatten(io_lib:format("~p", [Term])).
