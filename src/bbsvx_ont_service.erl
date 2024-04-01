@@ -162,12 +162,14 @@ handle_call({new_ontology,
                             last_update = erlang:system_time(microsecond)},
             logger:info("Onto service : creating ontology ~p", [Ont]),
             case mnesia:create_table(binary_to_atom(Namespace),
-                                     [{attributes, record_info(fields, goal)}, {disc_copies, []}])
+                                     [{attributes, record_info(fields, goal)}])
             of
                 {atomic, ok} ->
+                    logger:info("Onto service : created table ~p", [binary_to_atom(Namespace)]),
                     FinalOnt =
                         case Type of
                             shared ->
+                                logger:info("Onto service : shared ontology type", []),
                                 supervisor:start_child(bbsvx_sup_spray_view_agents,
                                                        [Namespace,
                                                         [{contact_nodes,
@@ -192,9 +194,14 @@ handle_call({new_ontology,
                     %logger:info("Onto service : created table ~p", [TabCreateResult]),
                     {reply, ok, State};
                 {aborted, {already_exists, _}} ->
+                    logger:info("Onto service : table ~p already exists", [binary_to_atom(Namespace)]),
                     {reply, {error, table_already_exists}, State};
                 {aborted, {error, Reason}} ->
-                    {reply, {error, Reason}, State}
+                    logger:error("Onto service : failed to create table ~p with reason : ~p", [binary_to_atom(Namespace), Reason]),
+                    {reply, {error, Reason}, State};
+                Else ->
+                    logger:error("Onto service : unanaged create table ~p result with reason : ~p", [binary_to_atom(Namespace), Else]),
+                    {reply, {error, Else}, State}
             end;
         _ ->
             {reply, {error, already_exists}, State}

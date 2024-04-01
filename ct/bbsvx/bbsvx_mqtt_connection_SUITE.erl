@@ -39,22 +39,34 @@ init_per_suite(Config) ->
     Config.
 
 init_per_testcase(_TestName, Config) ->
-    ct:pal("Config ~p", [Config]),
-
+    application:start(inets),
+    %% Setup ejabberd config file
     {ok, Cwd} = file:get_cwd(),
     ct:pal("CWS Base dir ~p", [file:get_cwd()]),
     application:set_env(ejabberd, config, filename:join([Cwd, "ejabberd.yml"])),
-    application:set_env(mnesia, dir, Cwd),
-
     file:copy("../../../../ejabberd.yml", Cwd ++ "/ejabberd.yml"),
-    R = mnesia:create_schema([node()]),
-    ct:pal("Created schema ~p", [R]),
-    application:ensure_all_started(bbsvx),
+
+    %% Setup mnesia
+    %application:set_env(mnesia, dir, Cwd ++ "/mnesia"),
+    mnesia:create_schema([node()]),
+    T = mnesia:start(),
+    %P = mnesia:change_table_copy_type(schema, node(), disc_copies),
+   % ct:pal("changed schema ~p", [P]),
+
+    %ct:pal("Created schema ~p", [R]),
+    ct:pal("Started mnesia ~p", [T]),
+    A = application:ensure_all_started(bbsvx),
+    ct:pal("Started bbsvx ~p", [A]),
+
     Config.
 
 end_per_testcase(_TestName, Config) ->
     ct:pal("End test case ~p", [_TestName]),
-    F = application:stop(bbsvx),
+    application:stop(bbsvx),
+    application:stop(mnesia),
+    mnesia:delete_schema(node()),
+
+    %% ct:pal("Deleted schema ~p", [R]),
     Config.
 
 end_per_suite(Config) ->

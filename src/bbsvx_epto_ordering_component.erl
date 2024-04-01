@@ -178,6 +178,13 @@ is_above(MinQueueTs, EvtTs) when MinQueueTs > EvtTs ->
 is_above(_MinQueueTs, _EvtTs) ->
     false.
 
+deliver(#event{payload = <<"leader">>}) ->
+    %% Get leader from leader manager
+    {ok, Leader} = bbsvx_actor_leader_manager:get_leader(<<"bbsvx:root">>),
+    {ok, F} = file:open("/logs/leader-" ++ atom_to_list(node()) ++ ".log", [append]),
+    file:write(F, iolist_to_binary(Leader ++ "\n")),
+    file:close(F),
+    ok;
 deliver(Evt) ->
     logger:info("Delivering ~p", [Evt]),
     {ok, F} = file:open("/logs/" ++ atom_to_list(node()) ++ ".log", [append]),

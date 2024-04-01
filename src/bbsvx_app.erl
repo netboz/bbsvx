@@ -8,6 +8,7 @@
 -behaviour(application).
 
 -include("bbsvx_common_types.hrl").
+-include_lib("ejabberd/include/mqtt.hrl").
 
 -export([start/2, stop/1]).
 
@@ -18,9 +19,9 @@ start(_StartType, _StartArgs) ->
     logger:info("BBSvx starting"),
     Dispatch =
         cowboy_router:compile([{'_',
-                                [{"/goals/:namespace/:goal_id", bbsvx_cowboy_handler_goal, []},
-                                 {"/ontologies/:namespace", bbsvx_cowboy_handler_goal, #{}},
-                                 {"/ontologies/:namespace/prove", bbsvx_cowboy_handler_goal, #{}},
+                                [{"/goals/:namespace/:goal_id", bbsvx_cowboy_handler_ontology, []},
+                                 {"/ontologies/:namespace", bbsvx_cowboy_handler_ontology, #{}},
+                                 {"/ontologies/:namespace/prove", bbsvx_cowboy_handler_ontology, #{}},
                                  %% debugging routes
                                  {"/views/:namespace/:view_type",
                                   bbsvx_cowboy_handler_node_service,
@@ -37,6 +38,7 @@ start(_StartType, _StartArgs) ->
                              env => #{dispatch => Dispatch}}),
     prometheus_httpd:start(),
     R = bbsvx_sup:start_link(),
+   
     %% Create a test spray agent for testing under ontolgy namespace <<"bbsvx:root">>
     %%timer:sleep(5000),
     %%gen_server:call(bbsvx_ont_service, {new_ontology, #ontology{namespace = <<"bbsvx::root">>}, []}),
