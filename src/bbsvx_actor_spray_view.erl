@@ -489,25 +489,25 @@ init_metrics(Namespace) ->
                                                               binary:replace(Namespace,
                                                                              <<":">>,
                                                                              <<"_">>)]))},
-                            {help, "Number of nodes in ontology inview"}]),
+                            {help, "Number of timeout occuring during exchange"}]),
     prometheus_counter:new([{name,
                              binary_to_atom(iolist_to_binary([<<"spray_inview_depleted_">>,
                                                               binary:replace(Namespace,
                                                                              <<":">>,
                                                                              <<"_">>)]))},
-                            {help, "Number of nodes in ontology inview"}]),
+                            {help, "Number of times invirew reach 0"}]),
     prometheus_counter:new([{name,
                              binary_to_atom(iolist_to_binary([<<"spray_outview_depleted_">>,
                                                               binary:replace(Namespace,
                                                                              <<":">>,
                                                                              <<"_">>)]))},
-                            {help, "Number of nodes in ontology inview"}]),
+                            {help, "Number of times outview reach 0"}]),
     prometheus_counter:new([{name,
                              binary_to_atom(iolist_to_binary([<<"spray_empty_inview_answered_">>,
                                                               binary:replace(Namespace,
                                                                              <<":">>,
                                                                              <<"_">>)]))},
-                            {help, "Number of nodes in ontology inview"}]).
+                            {help, "Number times this node answered a refuel inview request"}]).
 
 %%%=============================================================================
 %%% Eunit Tests
