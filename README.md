@@ -49,6 +49,6 @@ Best way to see this running is via docker stack.
    ....
    docker compose up  --scale bbsvx_client=16 -d
    ```
-Pls keep an eye on Grafana dashboard, and see the overay evolving.
+Pls keep an eye on Grafana dashboard, and see the overlay evolving.
 
    
