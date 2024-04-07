@@ -14,7 +14,6 @@ services:
         - "9090"
       environment:
         - DOCKER_COMPOSE=true
-        - ERLANG_NODE_ARG=bbsvx@bbsvx_root
         - ERLANG_COOKIE=bbsvx
       networks:
         - bbsvx-net
@@ -45,7 +44,6 @@ services:
       - "9090"
     environment:
       - DOCKER_COMPOSE=true
-      - ERLANG_NODE_ARG=bbsvx@bbsvx_root
       - ERLANG_COOKIE=bbsvx
     networks:
       - bbsvx-net

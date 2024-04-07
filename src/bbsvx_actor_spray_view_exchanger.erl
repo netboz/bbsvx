@@ -137,7 +137,8 @@ responding(enter,
     OriginNodeNamespace =
         iolist_to_binary([<<"ontologies/in/">>, Namespace, "/", OriginNode#node_entry.node_id]),
     %% Send our sample to the origin node
-    logger:info("Actor exchanger ~p : responding state, Sent partial view exchange out to ~p   sample : ~p",
+    logger:info("Actor exchanger ~p : responding state, Sent partial view exchange "
+                "out to ~p   sample : ~p",
                 [Namespace, OriginNode#node_entry.node_id, ReplacedMySample]),
     mod_mqtt:publish({MyNode, <<"localhost">>, <<"bob3>>">>},
                      #publish{topic = OriginNodeNamespace,
@@ -150,7 +151,8 @@ responding(enter,
                      ?MAX_UINT32),
 
     %% Connect to the nodes in the proposed sample
-    logger:info("Actor exchanger ~p : responding state, Connect to nodes in proposed sample ~p",
+    logger:info("Actor exchanger ~p : responding state, Connect to nodes in "
+                "proposed sample ~p",
                 [Namespace, State#state.proposed_sample]),
     lists:foreach(fun(Node) ->
                      bbsvx_actor_spray_join:start_link(join_inview,
@@ -160,13 +162,27 @@ responding(enter,
                   end,
                   State#state.proposed_sample),
     %% Disconnect from the nodes to leave
-    logger:info("Actor exchanger ~p : responding state, Disconnect from nodes to leave ~p",
+    logger:info("Actor exchanger ~p : responding state, Disconnect from nodes "
+                "to leave ~p",
                 [Namespace, MySample]),
 
     lists:foreach(fun(Node) ->
                      %% Remove node from outview
                      gproc:send({p, l, {ontology, State#state.namespace}},
-                                {remove_from_view, outview, Node})
+                                {remove_from_view, outview, Node}),
+                     Topic =
+                         iolist_to_binary([<<"ontologies/in/">>,
+                                           State#state.namespace,
+                                           "/",
+                                           State#state.my_node#node_entry.node_id]),
+
+                     ConPid = gproc:where({n, l, {bbsvx_mqtt_connection, Node#node_entry.node_id}}),
+                     gen_statem:call(ConPid,
+                                     {publish,
+                                      Topic,
+                                      {left_inview, Namespace, State#state.my_node}}),
+                     gproc:send({n, l, {bbsvx_mqtt_connection, Node#node_entry.node_id}},
+                                {unsubscribe, Topic})
                   end,
                   MySample),
 
@@ -228,7 +244,8 @@ wait_exchange_out(enter, _, #state{} = State) ->
                       State#state.namespace,
                       State#state.my_node,
                       FinalSample}}),
-    logger:info("Actor exchanger ~p : Running state, Sent partial view exchange in to ~p   sample : ~p",
+    logger:info("Actor exchanger ~p : Running state, Sent partial view exchange "
+                "in to ~p   sample : ~p",
                 [State#state.namespace, OldestNode, FinalSample]),
     {keep_state,
      State#state{partial_view = PartialView,
@@ -243,7 +260,8 @@ wait_exchange_out(info,
                    #node_entry{node_id = TargetNodeId} = _OriginNode,
                    IncomingSample},
                   State) ->
-    logger:info("Actor exchanger ~p : wait_exchange_out, Got partial view exchange out from ~p",
+    logger:info("Actor exchanger ~p : wait_exchange_out, Got partial view exchange "
+                "out from ~p",
                 [State#state.namespace, TargetNodeId]),
     %% Replace all occurence of our node by the origin node in the incoming sample
     ReplacedIncomingSample =
@@ -256,7 +274,8 @@ wait_exchange_out(info,
                   IncomingSample),
 
     %% Connect to ReplacementIncomingSample nodes
-    logger:info("Actor exchanger ~p : wait_exchange_out, Connect to nodes in incoming sample ~p",
+    logger:info("Actor exchanger ~p : wait_exchange_out, Connect to nodes in "
+                "incoming sample ~p",
                 [State#state.namespace, ReplacedIncomingSample]),
     lists:foreach(fun(Node) ->
                      R = bbsvx_actor_spray_join:start_link(join_inview,
@@ -268,7 +287,8 @@ wait_exchange_out(info,
                   end,
                   ReplacedIncomingSample),
     %% Disconnect from the nodes to leave
-    logger:info("Actor exchanger ~p : wait_exchange_out, Disconnect from nodes to leave ~p",
+    logger:info("Actor exchanger ~p : wait_exchange_out, Disconnect from nodes "
+                "to leave ~p",
                 [State#state.namespace, State#state.to_leave]),
 
     lists:foreach(fun(Node) ->
@@ -313,7 +333,7 @@ get_random_sample(View) ->
     %% Shuffle the view
     Shuffled = [X || {_, X} <- lists:sort([{rand:uniform(), N} || N <- View])],
     %% split the view in two
-    {_Sample, _Rest} = lists:split((length(View) div 2) - 1, Shuffled).
+    {_Sample, _Rest} = lists:split(length(View) div 2 - 1, Shuffled).
 
 %% get_big_random_sample/1
 %% Like get_random_sample/1 but doesn't substract 1 when halving view size

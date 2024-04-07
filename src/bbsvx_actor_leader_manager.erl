@@ -154,10 +154,12 @@ running(info,
                 %% We have valid neighbors
                 %% Pick 3 random, neighbors from valid neighbors
                 RandomNeighbors = pick_three_random(Neighbors),
-                logger:info("Leader manager : valid neighbors ~p", [[N#neighbor.node_id || N <- RandomNeighbors]]),
+                logger:info("Leader manager : valid neighbors ~p",
+                            [[N#neighbor.node_id || N <- RandomNeighbors]]),
                 %% chosen Leader is the most referenced leader among the 3 random neighbors
                 FollowedNeigbor = get_most_referenced_leader(RandomNeighbors),
-                logger:info("Leader manager : chosen leader ~p", [FollowedNeigbor#neighbor.chosen_leader]),
+                logger:info("Leader manager : chosen leader ~p",
+                            [FollowedNeigbor#neighbor.chosen_leader]),
                 %% Get neighbour entry with the highest Ts
                 Tsf = lists:foldl(fun (#neighbor{ts = Tsi}, Acc) when Tsi > Acc ->
                                           Tsi;
@@ -166,7 +168,9 @@ running(info,
                                   end,
                                   0,
                                   ValidNeighbors),
-                {FollowedNeigbor#neighbor.chosen_leader, Tsf, bbsvx_crypto_service:sign(term_to_binary(Tsf))}
+                {FollowedNeigbor#neighbor.chosen_leader,
+                 Tsf,
+                 bbsvx_crypto_service:sign(term_to_binary(Tsf))}
         end,
     {FinalTs, SignedFinalTs} =
         case Vote of
@@ -190,10 +194,16 @@ running(info,
         iolist_to_binary([<<"ontologies/in/">>, State#state.namespace, "/", State#state.my_id]),
     lists:foreach(fun(#node_entry{node_id = NId}) ->
                      ConPid = gproc:where({n, l, {bbsvx_mqtt_connection, NId}}),
-                     gen_statem:call(ConPid,
-                                     {publish,
-                                      TargetTopic,
-                                      {leader_election_info, State#state.namespace, Payload}})
+                     case ConPid of
+                         undefined -> logger:info("Leader manager : no connection for ~p", [NId]);
+                         _ ->
+                             gen_statem:call(ConPid,
+                                             {publish,
+                                              TargetTopic,
+                                              {leader_election_info,
+                                               State#state.namespace,
+                                               Payload}})
+                     end
                   end,
                   Outview),
     logger:info("Leader manager : next round. Vote: ~p, Ts: ~p", [Vote, FinalTs]),
@@ -203,9 +213,15 @@ running(info,
 running(info,
         {leader_election_info, _Namespace, Payload},
         #state{neighbors = Neighbors} = State) ->
-    logger:info("Leader manager ~p received a leader election info ~p   vote :~p",
+    logger:info("Leader manager ~p received a leader election info ~p   vote "
+                ":~p",
                 [State#state.my_id, Payload#neighbor.node_id, Payload#neighbor.chosen_leader]),
-    {keep_state, State#state{neighbors = lists:keystore(Payload#neighbor.node_id, #neighbor.node_id, Neighbors, Payload)}};
+    {keep_state,
+     State#state{neighbors =
+                     lists:keystore(Payload#neighbor.node_id,
+                                    #neighbor.node_id,
+                                    Neighbors,
+                                    Payload)}};
 running({call, From}, get_leader, #state{leader = Leader}) ->
     {keep_state_and_data, [{reply, From, {ok, Leader}}]};
 running(EventType, EventContent, Data) ->
