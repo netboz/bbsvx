@@ -1,7 +1,32 @@
 BBSvx
 =====
 
+
 BBSvx is blockchain powered [BBS](https://github.com/netboz/bbs)
+
+This project is under development and started as a proof of concept.
+
+Integrating blockchain into BBS should permit to :
+
+* Have permanent ontologies.
+* Have permanently running agents ( agents being ontologies )
+* Keep concistency of ontoogies in a distributed environements as agents are interacting with them
+* Benefit from blockchain inherent characteristics : Enhanced security, transparency, tracability etc ...
+
+This blockchain is supported by a P2P overlay network formed by nodes following [SPRAY protocol](https://hal.science/hal-01203363) protocol. This permits to bring up a network where each peer only have a partial view of the whole network, named neighnours. Each node exchange a part of its neighbours with one of them.
+
+Nodes are exchanging messages following [Epto protocol](https://www.dpss.inesc-id.pt/~mm/papers/2015/middleware_epto.pdf). This permits to have a concistent ordering of events among the nodes.
+
+To permit side effects to prolog queries, a leader is elected among the nodes of an ontology.
+
+
+State of advancement
+--------------------
+
+At this moment, are in alpha state :
+  * The Spray network
+  * Epto algorithm messaging
+  * Leader election
 
 dependencies
 ------------
