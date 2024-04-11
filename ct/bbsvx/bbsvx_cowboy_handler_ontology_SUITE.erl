@@ -50,6 +50,8 @@ init_per_testcase(_TestName, Config) ->
     %% Setup mnesia
     file:make_dir(Cwd ++ "/mnesia"),
     application:set_env(mnesia, dir, Cwd ++ "/mnesia"),
+    file:make_dir(Cwd ++ "/mnesia"),
+    application:set_env(mnesia, dir, Cwd ++ "/mnesia"),
     S = mnesia:create_schema([node()]),
     ct:pal("Created schema ~p", [S]),
     T = mnesia:start(),
@@ -196,3 +198,6 @@ updating_an_ont_from_shared_to_local(_Config) ->
 %%% Internal functions
 %%%=============================================================================
 
+
+term_to_list(Term) ->
+    lists:flatten(io_lib:format("~p", [Term])).
