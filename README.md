@@ -1,4 +1,4 @@
-![Alt text](relative%20priv/logos/logo_1.jeg?raw=true "BBSvx")
+![Alt text](https://github.com/netboz/bbsvx/blob/main/priv/logos/logo_1.jpeg?raw=true "BBSvx")
 
 
 BBSvx is blockchain powered [BBS](https://github.com/netboz/bbs)
