@@ -192,10 +192,6 @@ subscribing(info,
             {connection_accepted, Namespace, TargetNode, _NetworkSize, _Leader},
             State) ->
     logger:info("~p : connected to ~p", [?MODULE, {State#state.target_node, Namespace}]),
-    %% Start epto agent
-    supervisor:start_child(bbsvx_sup_epto_agents, [Namespace, 15, 16]),
-    %% Start leader election agent
-    supervisor:start_child(bbsvx_sup_leader_managers, [Namespace, 8, 50, 100, 200]),
     %% As contact node automatically adds us to its inview, we can now
     %% add it to our outview
     gproc:send({p, l, {ontology, Namespace}}, {add_to_view, outview, TargetNode}),

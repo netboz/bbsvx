@@ -119,6 +119,7 @@ get_target_node(NodeId) ->
 
 init([#node_entry{node_id = MyId} = MyNode,
       #node_entry{host = TargetHost, port = TargetPort} = TargetNode]) ->
+        process_flag(trap_exit, true),
     logger:info("BBSVX mqtt connection at ~p: openning mqtt connection to ~p",
                 [MyNode, TargetNode]),
 
@@ -320,6 +321,27 @@ connected(cast, {incoming_mqtt_message, _, _, _, _, Topic, Payload}, State) ->
     {keep_state, State};
 %%-----------------------------------------------------------------------------
 %% @doc
+%% Handle disconnection
+%% @end
+%% -----------------------------------------------------------------------------
+connected({call, _From}, {disconnected, Host, Port}, State) ->
+    logger:warning("~p, BBSVX mqtt connection : Disconnected from ~p:~p", [?MODULE,Host, Port]),
+    logger:info("~p Subscriptions : ~p", [?MODULE, State#state.subscriptions]),
+    %% for all unique susbscription namespaces stored in state, notify the spray
+    %% process that the connection is down.
+    lists:foreach(fun (Topic) ->
+                        Splitted = binary:split(Topic, <<"/">>, [global]),
+                        Namespace = lists:last(Splitted),
+                        logger:info("BBSVX mqtt connection : Notifying spray process of disconnection from ~p",
+                                    [Namespace]),
+                         gproc:send({p, l, {ontology, Namespace}},
+                                    {disconnected, State#state.target_node#node_entry.node_id})
+                  end,
+                  lists:usort(State#state.subscriptions)),
+    emqtt:stop(State#state.connection),  
+    {stop, normal, State};
+%%-----------------------------------------------------------------------------
+%% @doc
 %% Catch all
 %% @end
 connected(Type, Message, State) ->
@@ -416,8 +438,16 @@ msg_handler(Msg, Pid) ->
 
 disconnected(Reason, {TargetHost, TargetPort}) ->
     logger:warning("DISCONNECTED ~p", [{Reason, {TargetHost, TargetPort}}]),
-    gproc:send({p, l, {mqtt_connection, TargetHost, TargetPort}},
-               {connection_failed, Reason, {TargetHost, TargetPort}}).
+    %% Forward disconnected message to the mqtt connection process
+    case gproc:where({n, l, {?MODULE, TargetHost, TargetPort}}) of
+        undefined ->
+            %% This happens when this mqtt connection finish before the emqtt client it embed
+            ok;
+        Pid ->
+            gen_statem:call(Pid, {disconnected, TargetHost, TargetPort})
+    end.
+    %gproc:send({p, l, {mqtt_connection, TargetHost, TargetPort}},
+    %           {connection_failed, Reason, {TargetHost, TargetPort}}).
 
 %%%=============================================================================
 %%% Eunit Tests

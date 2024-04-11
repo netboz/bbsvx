@@ -100,6 +100,7 @@ init([Namespace, Options]) ->
                             port = Port}}}.
 
 terminate(_Reason, #state{namespace = Namespace}, State) ->
+    logger:info("spray Agent ~p : Terminating state", [Namespace]),
     %% Notify outview we are leaving the node
     OutView = State#state.out_view,
     InViewNameSpace =
@@ -205,16 +206,7 @@ running(info,
     NewOutView =
         lists:keydelete(Node#node_entry.node_id, #node_entry.node_id, State#state.out_view),
 
-    Topic =
-        iolist_to_binary([<<"ontologies/in/">>,
-                          State#state.namespace,
-                          "/",
-                          State#state.my_node#node_entry.node_id]),
-
-    ConPid = gproc:where({n, l, {bbsvx_mqtt_connection, Node#node_entry.node_id}}),
-    gen_statem:call(ConPid, {publish, Topic, {left_inview, Namespace, State#state.my_node}}),
-    gproc:send({n, l, {bbsvx_mqtt_connection, Node#node_entry.node_id}},
-               {unsubscribe, Topic}),
+   
     prometheus_gauge:set(binary_to_atom(iolist_to_binary([<<"spray_outview_size_">>,
                                                           binary:replace(Namespace,
                                                                          <<":">>,
@@ -373,7 +365,7 @@ running(info,
                           IncomingSamplePartialView}]}};
 %% Manage reception of disconnection messages
 running(info,
-        {disconnection, #node_entry{node_id = DisconnectedNodeId} = Node},
+        {disconnected, #node_entry{node_id = DisconnectedNodeId} = Node},
         #state{out_view = OutView} = State) ->
     logger:info("spray Agent ~p : Running state, Got disconnection message from ~p",
                 [State#state.namespace, Node]),

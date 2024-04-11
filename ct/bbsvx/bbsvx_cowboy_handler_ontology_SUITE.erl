@@ -22,14 +22,19 @@
 
 -export([all/0, init_per_suite/1, init_per_testcase/2, end_per_testcase/2,
          end_per_suite/1]).
--export([can_create_local_ontology/1, can_create_shared_ontology/1, creating_twice_same_ont_is_idempotent/1]).
+-export([can_create_local_ontology/1, can_create_shared_ontology/1,
+         creating_twice_same_ont_is_idempotent/1, updating_an_ont_from_local_to_shared/1, updating_an_ont_from_shared_to_local/1]).
 
 %%%=============================================================================
 %%% CT Functions
 %%%=============================================================================
 
 all() ->
-    [can_create_local_ontology, can_create_shared_ontology, creating_twice_same_ont_is_idempotent].
+    [can_create_local_ontology,
+     can_create_shared_ontology,
+     creating_twice_same_ont_is_idempotent,
+     updating_an_ont_from_local_to_shared,
+     updating_an_ont_from_shared_to_local].
 
 init_per_suite(Config) ->
     Config.
@@ -45,21 +50,22 @@ init_per_testcase(_TestName, Config) ->
     %% Setup mnesia
     file:make_dir(Cwd ++ "/mnesia"),
     application:set_env(mnesia, dir, Cwd ++ "/mnesia"),
+    file:make_dir(Cwd ++ "/mnesia"),
+    application:set_env(mnesia, dir, Cwd ++ "/mnesia"),
     S = mnesia:create_schema([node()]),
     ct:pal("Created schema ~p", [S]),
     T = mnesia:start(),
     ct:pal("Started mnesia ~p", [T]),
     %ok = mnesia:wait_for_tables([schema], 30000),
     %MyIP = local_ip_v4(),
-  %  P = mnesia:change_table_copy_type(schema, node(), disc_copies),
+    %  P = mnesia:change_table_copy_type(schema, node(), disc_copies),
     %os:putenv("ERLANG_NODE_ARG","bbsvx@" ++ term_to_list(MyIP)),
-   % net_kernel:start(bbsvx,  #{}),
+    % net_kernel:start(bbsvx,  #{}),
     H = application:ensure_all_started(ejabberd),
     ct:pal("Started ejabberd ~p", [H]),
     % ct:pal("changed schema ~p", [P]),
     %%mnesia:wait_for_tables([mqtt_pub, storage_type], infinity),
-
-  % ct:pal("changed schema ~p", [P]),
+    % ct:pal("changed schema ~p", [P]),
     %ct:pal("Created schema ~p", [R]),
     A = application:ensure_all_started(bbsvx),
 
@@ -103,6 +109,18 @@ can_create_shared_ontology(_Config) ->
                       {"http://localhost:8085/ontologies/ont_test1", [], "application/json", DBody},
                       [],
                       []),
+    timer:sleep(50),
+    %% Check spray agent is running
+    Pid = gproc:where({n, l, {bbsvx_actor_spray_view, <<"ont_test1">>}}),
+    ?assertEqual(true, is_pid(Pid)),
+    %% Check epto agent is running
+    Pid1 = gproc:where({n, l, {leader_manager, <<"ont_test1">>}}),
+    ct:pal("Pid1 ~p", [Pid1]),
+    ?assertEqual(true, is_pid(Pid1)),
+    %% Check leader manager is running
+    Pid2 = gproc:where({n, l, {bbsvx_epto_service, <<"ont_test1">>}}),
+    ?assertEqual(true, is_pid(Pid2)),
+    
     ?assertEqual(201, ReturnCode).
 
 creating_twice_same_ont_is_idempotent(_Config) ->
@@ -123,14 +141,63 @@ creating_twice_same_ont_is_idempotent(_Config) ->
     ct:pal("Response ~p", [RetBody2]),
     ?assertEqual(200, ReturnCode2).
 
+updating_an_ont_from_local_to_shared(_Config) ->
+    DBody = jiffy:encode(#{namespace => <<"ont_test3">>, type => <<"local">>}),
+    {ok, {{_, ReturnCode, _}, _, _}} =
+        httpc:request(put,
+                      {"http://localhost:8085/ontologies/ont_test3", [], "application/json", DBody},
+                      [],
+                      []),
+    ?assertEqual(201, ReturnCode),
+    timer:sleep(500),
+    DBody2 = jiffy:encode(#{namespace => <<"ont_test3">>, type => <<"shared">>}),
+    {ok, {{_, ReturnCode2, _}, _, _}} =
+        httpc:request(put,
+                      {"http://localhost:8085/ontologies/ont_test3",
+                       [],
+                       "application/json",
+                       DBody2},
+                      [],
+                      []),
+    ?assertEqual(204, ReturnCode2),
+    timer:sleep(50),    %% check processes are running
+    Pid = gproc:where({n, l, {bbsvx_actor_spray_view, <<"ont_test3">>}}),
+    ?assertEqual(true, is_pid(Pid)),
+    Pid1 = gproc:where({n, l, {leader_manager, <<"ont_test3">>}}),
+    ?assertEqual(true, is_pid(Pid1)),
+    Pid2 = gproc:where({n, l, {bbsvx_epto_service, <<"ont_test3">>}}),
+    ?assertEqual(true, is_pid(Pid2)).
+updating_an_ont_from_shared_to_local(_Config) ->
+    DBody = jiffy:encode(#{namespace => <<"ont_test4">>, type => <<"shared">>}),
+    {ok, {{_, ReturnCode, _}, _, _}} =
+        httpc:request(put,
+                      {"http://localhost:8085/ontologies/ont_test4", [], "application/json", DBody},
+                      [],
+                      []),
+    ?assertEqual(201, ReturnCode),
+    timer:sleep(500),
+    DBody2 = jiffy:encode(#{namespace => <<"ont_test4">>, type => <<"local">>}),
+    {ok, {{_, ReturnCode2, _}, _, _}} =
+        httpc:request(put,
+                      {"http://localhost:8085/ontologies/ont_test4",
+                       [],
+                       "application/json",
+                       DBody2},
+                      [],
+                      []),
+    ?assertEqual(204, ReturnCode2),
+    timer:sleep(50),    %% check processes are running
+    Pid = gproc:where({n, l, {bbsvx_actor_spray_view, <<"ont_test4">>}}),
+    ?assertEqual(undefined, Pid),
+    Pid1 = gproc:where({n, l, {leader_manager, <<"ont_test4">>}}),
+    ?assertEqual(undefined, Pid1),
+    Pid2 = gproc:where({n, l, {bbsvx_epto_service, <<"ont_test4">>}}),
+    ?assertEqual(undefined, Pid2).
+
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
-%% internal functions
-local_ip_v4() ->
-    {ok, Addrs} = inet:getifaddrs(),
-    hd([Addr
-        || {_, Opts} <- Addrs, {addr, Addr} <- Opts, size(Addr) == 4, Addr =/= {127, 0, 0, 1}]).
+
 
 term_to_list(Term) ->
     lists:flatten(io_lib:format("~p", [Term])).

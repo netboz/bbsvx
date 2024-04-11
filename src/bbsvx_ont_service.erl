@@ -127,6 +127,7 @@ init([]) ->
                     logger:error("Onto service : index table ~p load timeout", [?INDEX_TABLE]),
                     {error, index_table_timeout};
                 _ ->
+                    logger:info("Onto service : index table ~p loaded", [?INDEX_TABLE]),
                     {ok, #state{}}
             end;
         false ->
@@ -174,6 +175,11 @@ handle_call({new_ontology,
                                                        [Namespace,
                                                         [{contact_nodes,
                                                           Ont#ontology.contact_nodes}]]),
+                                %% Start epto agent
+                                supervisor:start_child(bbsvx_sup_epto_agents, [Namespace, 15, 16]),
+                                %% Start leader election agent
+                                supervisor:start_child(bbsvx_sup_leader_managers,
+                                                       [Namespace, 8, 50, 100, 200]),
                                 Ont#ontology{type = shared};
                             local ->
                                 logger:info("Onto service : local ontology type", []),
@@ -183,24 +189,46 @@ handle_call({new_ontology,
                         end,
                     logger:info("Final Ont ~p", [FinalOnt]),
                     ok = mnesia:activity(transaction, fun() -> mnesia:write(FinalOnt) end),
-                    %% Write all keys in a file named dump
-                    file:write_file("/home/yan/dump",
-                                    io_lib:format("~p",
-                                                  [mnesia:activity(transaction,
-                                                                   fun() ->
-                                                                      mnesia:dirty_all_keys(ontology)
-                                                                   end)])),
-
+                    
                     %logger:info("Onto service : created table ~p", [TabCreateResult]),
                     {reply, ok, State};
                 {aborted, {already_exists, _}} ->
-                    logger:info("Onto service : table ~p already exists", [binary_to_atom(Namespace)]),
-                    {reply, {error, table_already_exists}, State};
+                    logger:info("Onto service : table ~p already exists",
+                                [binary_to_atom(Namespace)]),
+                                logger:info("Onto service : created table ~p", [binary_to_atom(Namespace)]),
+                                FinalOnt =
+                                    case Type of
+                                        shared ->
+                                            logger:info("Onto service : shared ontology type", []),
+                                            supervisor:start_child(bbsvx_sup_spray_view_agents,
+                                                                   [Namespace,
+                                                                    [{contact_nodes,
+                                                                      Ont#ontology.contact_nodes}]]),
+                                            %% Start epto agent
+                                            supervisor:start_child(bbsvx_sup_epto_agents, [Namespace, 15, 16]),
+                                            %% Start leader election agent
+                                            supervisor:start_child(bbsvx_sup_leader_managers,
+                                                                   [Namespace, 8, 50, 100, 200]),
+                                            Ont#ontology{type = shared};
+                                        local ->
+                                            logger:info("Onto service : local ontology type", []),
+                                            Ont#ontology{type = local};
+                                        _Other ->
+                                            Ont#ontology{type = local}
+                                    end,
+                                logger:info("Final Ont ~p", [FinalOnt]),
+                                ok = mnesia:activity(transaction, fun() -> mnesia:write(FinalOnt) end),
+                                
+                                %logger:info("Onto service : created table ~p", [TabCreateResult]),
+                                {reply, ok, State};
                 {aborted, {error, Reason}} ->
-                    logger:error("Onto service : failed to create table ~p with reason : ~p", [binary_to_atom(Namespace), Reason]),
+                    logger:error("Onto service : failed to create table ~p with reason : ~p",
+                                 [binary_to_atom(Namespace), Reason]),
                     {reply, {error, Reason}, State};
                 Else ->
-                    logger:error("Onto service : unanaged create table ~p result with reason : ~p", [binary_to_atom(Namespace), Else]),
+                    logger:error("Onto service : unanaged create table ~p result with reason "
+                                 ": ~p",
+                                 [binary_to_atom(Namespace), Else]),
                     {reply, {error, Else}, State}
             end;
         _ ->
@@ -232,6 +260,10 @@ handle_call({connect_ontology, Namespace}, _From, State) ->
                    supervisor:start_child(bbsvx_sup_spray_view_agents,
                                           [Namespace,
                                            [{contact_nodes, Ont#ontology.contact_nodes}]]),
+                   %% Start epto agent
+                   supervisor:start_child(bbsvx_sup_epto_agents, [Namespace, 15, 16]),
+                   %% Start leader election agent
+                   supervisor:start_child(bbsvx_sup_leader_managers, [Namespace, 8, 50, 100, 200]),
                    mnesia:write(Ont#ontology{type = shared})
            end
         end,
@@ -250,7 +282,15 @@ handle_call({disconnect_ontology, Namespace}, _From, State) ->
                    logger:info("Onto service : ontology ~p already disconnected", [Namespace]),
                    {error, already_disconnected};
                _ ->
-                   supervisor:terminate_child(bbsvx_sup_spray_view_agents, Namespace),
+                   PidSprayAgent = gproc:where({n, l, {bbsvx_actor_spray_view, Namespace}}),
+                    logger:info("Onto service : terminating spray view agent ~p", [PidSprayAgent]),
+                   ok = supervisor:terminate_child(bbsvx_sup_spray_view_agents, PidSprayAgent),
+                   PidEptoAgent = gproc:where({n, l, {bbsvx_epto_service, Namespace}}),
+                     logger:info("Onto service : terminating epto agent ~p", [PidEptoAgent]),
+                   ok = supervisor:terminate_child(bbsvx_sup_epto_agents, PidEptoAgent),
+                   PidLeaderManager = gproc:where({n, l, {leader_manager, Namespace}}),
+                     logger:info("Onto service : terminating leader manager ~p", [PidLeaderManager]),
+                   ok = supervisor:terminate_child(bbsvx_sup_leader_managers, PidLeaderManager),
                    [Ont] = mnesia:wread({?INDEX_TABLE, Namespace}),
                    mnesia:write(Ont#ontology{type = local})
            end

@@ -95,7 +95,8 @@ handle_call(next_round, _From, #state{namespace = Namespace} = State) ->
         maps:map(fun(_EvtId, #event{ttl = EvtTtl} = Evt) -> Evt#event{ttl = EvtTtl + 1} end,
                  State#state.next_ball),
     {ok, Peers} =
-        case gen_statem:call({via, gproc, {n, l, {bbsvx_actor_spray_view, Namespace}}}, get_views) of
+        case gen_statem:call({via, gproc, {n, l, {bbsvx_actor_spray_view, Namespace}}}, get_views)
+        of
             {ok, {[], []}} ->
                 %            logger:warning(" Epto Disseminator ~p, No view found",
                 %                          [State#state.ontology]),
@@ -114,10 +115,16 @@ handle_call(next_round, _From, #state{namespace = Namespace} = State) ->
     TargetTopic = iolist_to_binary([<<"ontologies/in/">>, Namespace, "/", MyId]),
     lists:foreach(fun(#node_entry{node_id = NId}) ->
                      ConPid = gproc:where({n, l, {bbsvx_mqtt_connection, NId}}),
-                     gen_statem:call(ConPid,
-                                     {publish,
-                                      TargetTopic,
-                                      {epto_message, Namespace, {receive_ball, NewBall}}})
+                     case ConPid of
+                         undefined ->
+                             logger:warning("Epto dissemination component : No connection found for ~p",
+                                            [NId]);
+                         _ ->
+                             gen_statem:call(ConPid,
+                                             {publish,
+                                              TargetTopic,
+                                              {epto_message, Namespace, {receive_ball, NewBall}}})
+                     end
                   end,
                   SamplePeers),
 
