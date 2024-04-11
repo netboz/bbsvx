@@ -1,8 +1,6 @@
 networks:
   bbsvx-net:
     driver: bridge
-  loki-net:
-    external: true
 
 services:
   bbsvx_root:
@@ -13,6 +11,7 @@ services:
         - "8085"
         - "9090"
       environment:
+        - TZ="Europe/Paris"
         - DOCKER_COMPOSE=true
         - ERLANG_COOKIE=bbsvx
       networks:
@@ -36,6 +35,9 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - 9999:8080
+    environment:
+      - TZ="Europe/Paris"
+
   bbsvx_client:
     image: bbsvx:latest
     ports:
@@ -43,6 +45,7 @@ services:
       - "8085"
       - "9090"
     environment:
+      - TZ="Europe/Paris"
       - DOCKER_COMPOSE=true
       - ERLANG_COOKIE=bbsvx
     networks:
@@ -69,7 +72,8 @@ services:
       - ./docker/prometheus/etc/:/etc/prometheus/
       - prometheus_data:/prometheus
       - /var/run/docker.sock:/var/run/docker.sock
-
+    environment:
+      - TZ="Europe/Paris"
     user: root
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
@@ -98,6 +102,8 @@ services:
     networks:
       - bbsvx-net
     restart: always
+    environment:
+      - TZ="Europe/Paris"
     command:
       - '--config.file=/etc/alertmanager/config.yml'
       - '--storage.path=/alertmanager'
@@ -116,6 +122,8 @@ services:
       - ./docker/loki/conf:/etc/loki
     networks:
       - bbsvx-net
+    environment:
+      - TZ="Europe/Paris"
   
   tempo:
     image: grafana/tempo:latest
@@ -123,9 +131,11 @@ services:
     hostname: tempo_collector
     volumes:
       - ./docker/tempo/conf/tempo.yaml:/etc/tempo.yaml
-      - ./docker/tempo/data:/tmp/tempo
+      - tempo_data:/tmp
     networks:
       - bbsvx-net
+    environment:
+      - TZ="Europe/Paris"
     ports:
       - "14268:14268"  # jaeger ingest
       - "3200:3200"   # tempo
@@ -151,6 +161,9 @@ services:
     user: "104"
     depends_on:
       - prometheus
+    environment:
+      - GF_LOG_LEVEL=error
+      - TZ="Europe/Paris"
     ports:
       - 3000:3000
     volumes:
@@ -162,6 +175,7 @@ services:
       - bbsvx-net
     restart: always
 volumes:
+  tempo_data: {}
   grafana_data: {}
   prometheus_data: {}
   promtail_data: {}

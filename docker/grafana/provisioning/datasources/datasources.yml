@@ -54,3 +54,21 @@ datasources:
     serviceMap:
       datasourceUid: 'prometheus'
   version: 1
+- name: Loki
+  type: loki
+  editable: true
+  uid: loki
+  url: http://loki_collector:3100
+  jsonData:
+    httpMethod: GET
+  version: 1
+  access: proxy
+  isDefault: false
+  orgId: 1
+  basicAuth: false
+  withCredentials: false
+  password:
+  user:
+  database:
+  basicAuthUser:
+  basicAuthPassword:
