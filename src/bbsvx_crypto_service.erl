@@ -74,7 +74,7 @@ handle_call(my_id, _From, State) ->
     {reply, State#state.node_id, State};
 
 handle_call({sign, Data}, _From, #state{pubkey = PubKey, privkey = PrivKey} = State) ->
-    logger:info("Signing data ~p", [Data]),
+    %logger:info("Signing data ~p", [Data]),
     Signature = public_key:sign(Data, none, {ed_pri, ed25519, PubKey, PrivKey}, []),
     {reply, Signature, State};
 handle_call(get_public_key, _From, State) ->

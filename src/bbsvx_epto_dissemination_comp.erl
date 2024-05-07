@@ -68,6 +68,11 @@ init([Namespace, Fanout, Ttl, Orderer, LogicalClock]) ->
                fanout = Fanout,
                ttl = Ttl,
                next_ball = #{}},
+
+    %% Register to epto messages received at inview (ejabberd mod )
+    logger:info("Epto dissemination component : Registering to epto messages ~p", [Namespace]),
+    gproc:reg({p, l, {bbsvx_mqtt_ejd_mod, epto_message, Namespace}}),
+
     {ok, RoundTimer} =
         timer:apply_interval(?DEFAULT_ROUND_TIME, gen_server, call, [self(), next_round]),
 
@@ -114,16 +119,15 @@ handle_call(next_round, _From, #state{namespace = Namespace} = State) ->
     MyId = bbsvx_crypto_service:my_id(),
     TargetTopic = iolist_to_binary([<<"ontologies/in/">>, Namespace, "/", MyId]),
     lists:foreach(fun(#node_entry{node_id = NId}) ->
-                     ConPid = gproc:where({n, l, {bbsvx_mqtt_connection, NId}}),
+                     ConPid = gproc:where({n, l, {bbsvx_tcp_connection, Namespace, NId}}),
                      case ConPid of
                          undefined ->
                              logger:warning("Epto dissemination component : No connection found for ~p",
                                             [NId]);
                          _ ->
                              gen_statem:call(ConPid,
-                                             {publish,
-                                              TargetTopic,
-                                              {epto_message, Namespace, {receive_ball, NewBall}}})
+                                             {send,
+                                              {epto_message, {receive_ball, NewBall}}})
                      end
                   end,
                   SamplePeers),

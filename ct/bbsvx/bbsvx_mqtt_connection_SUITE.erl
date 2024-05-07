@@ -43,9 +43,6 @@ init_per_testcase(_TestName, Config) ->
     %% Setup ejabberd config file
     {ok, Cwd} = file:get_cwd(),
     ct:pal("CWS Base dir ~p", [file:get_cwd()]),
-    application:set_env(ejabberd, config, filename:join([Cwd, "ejabberd.yml"])),
-    file:copy("../../../../ejabberd.yml", Cwd ++ "/ejabberd.yml"),
-
     %% Setup mnesia
     %application:set_env(mnesia, dir, Cwd ++ "/mnesia"),
     mnesia:create_schema([node()]),
@@ -161,7 +158,7 @@ subsribing_a_topic_records_it_in_state(_Config) ->
         bbsvx_mqtt_connection:get_target_node(TargetNode),
     ?assertEqual(true, is_process_alive(Pid)),
     ?assertEqual(target_node_id, TargetNodeId),
-    bbsvx_mqtt_connection:subscribe(TargetNodeId, <<"ont1">>),
+    bbsvx_mqtt_connection:join_inview(TargetNodeId, <<"ont1">>),
     {ok, Subscriptions} = bbsvx_mqtt_connection:get_subscriptions(TargetNodeId),
     ct:pal("Subscriptions ~p", [Subscriptions]),
     ?assertEqual(true, lists:member(<<"ont1">>, Subscriptions)),
@@ -218,17 +215,17 @@ subscribing_twice_a_topic_needs_unsubsribe_twice_to_unsubscribe(_Config) ->
     {ok, #node_entry{node_id = TargetNodeId}} =
         bbsvx_mqtt_connection:get_target_node(TargetNode),
     ct:pal("Subscribing to ~p", [TargetNodeId]),
-    bbsvx_mqtt_connection:subscribe(TargetNodeId, <<"ont1">>),
-    bbsvx_mqtt_connection:subscribe(TargetNodeId, <<"ont1">>),
+    bbsvx_mqtt_connection:join_inview(TargetNodeId, <<"ont1">>),
+    bbsvx_mqtt_connection:join_inview(TargetNodeId, <<"ont1">>),
     T1 = persistent_term:get(topics),
     ct:pal("Topics twice ~p", [T1]),
     ?assertEqual([<<"ont1">>], T1),
 
-    bbsvx_mqtt_connection:unsubscribe(TargetNodeId, <<"ont1">>),
+    bbsvx_mqtt_connection:leave_inview(TargetNodeId, <<"ont1">>),
     T2 = persistent_term:get(topics),
     ct:pal("Topics ~p", [T2]),
     ?assertEqual(true, lists:member(<<"ont1">>, T2)),
-    bbsvx_mqtt_connection:unsubscribe(TargetNodeId, <<"ont1">>),
+    bbsvx_mqtt_connection:leave_inview(TargetNodeId, <<"ont1">>),
     timer:sleep(100),
     T3 = persistent_term:get(topics),
     ?assertEqual([], T3),

@@ -12,7 +12,8 @@
 -behaviour(gen_statem).
 
 -include("bbsvx_common_types.hrl").
--include_lib("ejabberd/include/mqtt.hrl").
+-include("bbsvx_tcp_messages.hrl").
+
 %%%=============================================================================
 %%% Export and Defs
 %%%=============================================================================
@@ -21,7 +22,7 @@
 -define(EXCHANGE_TIMEOUT, 10000).
 
 %% External API
--export([start_link/1, start_link/2, stop/0]).
+-export([start_link/1, start_link/2, stop/0, reinit_age/2]).
 %% Gen State Machine Callbacks
 -export([init/1, code_change/4, callback_mode/0, terminate/3]).
 %% State transitions
@@ -52,6 +53,10 @@ start_link(Namespace, Options) ->
                      [Namespace, Options],
                      []).
 
+reinit_age(Namespace, NodeId) ->
+    gen_statem:call({via, gproc, {n, l, {bbsvx_actor_spray_view, Namespace}}},
+                    {reinit_age, NodeId}).
+
 -spec stop() -> ok.
 stop() ->
     gen_statem:stop(?SERVER).
@@ -68,7 +73,7 @@ init([Namespace, Options]) ->
     %% Get our node id
     MyNodeId = bbsvx_crypto_service:my_id(),
     %% Get our host and port
-    {ok, {Host, Port}} = bbsvx_connections_service:my_host_port(),
+    {ok, {Host, Port}} = bbsvx_client_service:my_host_port(),
     MyNode =
         #node_entry{node_id = MyNodeId,
                     host = Host,
@@ -78,18 +83,28 @@ init([Namespace, Options]) ->
         undefined ->
             ok;
         [] ->
-            ok;    
+            ok;
         [_ | _] = ContactNodes ->
             %% Choose a random node from the contact nodes
             ContactNode =
                 lists:nth(
                     rand:uniform(length(ContactNodes)), ContactNodes),
+            logger:info("spray Agent ~p : Starting state, Connecting to contact node ~p",
+                        [Namespace, ContactNode]),
             %% Start a join to the contact node
-            bbsvx_actor_spray_join:start_link(contact, Namespace, MyNode, ContactNode)
+            supervisor:start_child(bbsvx_sup_client_connections,
+                                   [register,
+                                    Namespace,
+                                    MyNode,
+                                    ContactNode#node_entry{host =
+                                                               binary_to_list(ContactNode#node_entry.host)}])
     end,
 
     %% Register to events for this ontolgy namespace
     gproc:reg({p, l, {ontology, Namespace}}),
+
+    %%Register to events from client connections on this namespace
+    gproc:reg({p, l, {bbsvx_client_connection, Namespace}}),
 
     {ok,
      running,
@@ -99,65 +114,16 @@ init([Namespace, Options]) ->
                             host = Host,
                             port = Port}}}.
 
-terminate(_Reason, #state{namespace = Namespace}, State) ->
+terminate(_Reason, _PreviousState, #state{namespace = Namespace} = State) ->
     logger:info("spray Agent ~p : Terminating state", [Namespace]),
     %% Notify outview we are leaving the node
-    OutView = State#state.out_view,
-    InViewNameSpace =
-        iolist_to_binary([<<"ontologies/in/">>,
-                          Namespace,
-                          "/",
-                          State#state.my_node#node_entry.node_id]),
-    lists:foreach(fun(Node) ->
-                     gen_statem:call({via, gproc, {n, l, Node#node_entry.node_id}},
-                                     {publish,
-                                      InViewNameSpace,
-                                      {disconnecting, State#state.namespace, State#state.my_node}})
-                  end,
-                  OutView),
-    %% Unsubscribe the nodes from the outview
-    lists:foreach(fun(Node) ->
-                     gen_statem:call({via, gproc, {n, l, {bbsvx_mqtt_connection, Node#node_entry.node_id}}},
-                                     {unsubscribe, InViewNameSpace})
-                  end,
-                  OutView),
-    %% Send disconnecting message to the inview
-    InView = State#state.in_view,
-    lists:foreach(fun(Node) ->
-                    Topic =
-                        iolist_to_binary([<<"ontologies/in/">>,
-                                          State#state.namespace,
-                                          "/",
-                                          Node#node_entry.node_id]),
-                     mod_mqtt:publish({State#state.my_node#node_entry.node_id,
-                                       <<"localhost">>,
-                                       <<"bob3">>},
-                                      #publish{topic = Topic,
-                                               payload = term_to_binary({disconnecting,
-                                                                         State#state.namespace,
-                                                                         State#state.my_node}),
-                                               retain = false},
-                                      ?MAX_UINT32)
-                  end,
-                  InView),
-
-    %% Unsubscribe the nodes from the inview
-    lists:foreach(fun(Node) ->
-                    Topic = iolist_to_binary([<<"ontologies/in/">>, Namespace, "/", Node#node_entry.node_id]),
-                     mod_mqtt:unsubscribe({Node#node_entry.node_id,
-                                           <<"localhost">>,
-                                           <<"bob3">>},
-                                          Topic)
-                  end,
-                  InView),
     %% Maybe terminate epto service
     supervisor:terminate_child(bbsvx_sup_epto_agents,
                                {via, gproc, {n, l, {bbsvx_epto_service, Namespace}}}),
 
     %% Terminate leader manager
-    supervisor:terminate_child(bbsvx_sup_leader_agents,
-                               {via, gproc, {n, l, {bbsvx_actor_leader_manager, Namespace}}}),
-    void.
+    supervisor:terminate_child(bbsvx_sup_leader_managers,
+                               {via, gproc, {n, l, {bbsvx_actor_leader_manager, Namespace}}}).
 
 code_change(_Vsn, State, Data, _Extra) ->
     {ok, State, Data}.
@@ -168,6 +134,8 @@ callback_mode() ->
 %%%=============================================================================
 %%% State transitions
 %%%=============================================================================
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Add/Join View %%%%%%%%%%%%%%%%%%%%%%%%%%%%
 running(enter, _OldState, State) ->
     case State#state.pid_exchange_timeout of
         undefined ->
@@ -178,138 +146,138 @@ running(enter, _OldState, State) ->
         _ ->
             keep_state_and_data
     end;
-%% Receive contact request
-running(info, {contact_request, TargetNode}, State) ->
-    %% Start a contact manager
-    bbsvx_actor_spray_contact_manager:start_link(State#state.namespace,
-                                                 State#state.my_node,
-                                                 TargetNode),
-    keep_state_and_data;
-%% Remove nodes from outview
 running(info,
-        {remove_from_view, outview, #node_entry{node_id = NodeId} = Node},
-        #state{out_view = [#node_entry{node_id = NodeId}]} = State) ->
-    %% We don't remove the last node from the outview
-    logger:info("spray Agent ~p : Running state, Prenventing empty out view ~p",
-                [{State#state.namespace, Node}, State#state.out_view]),
-    prometheus_counter:inc(binary_to_atom(iolist_to_binary([<<"spray_outview_depleted_">>,
-                                                            binary:replace(State#state.namespace,
-                                                                           <<":">>,
-                                                                           <<"_">>)]))),
-    keep_state_and_data;
-running(info,
-        {remove_from_view, outview, #node_entry{} = Node},
-        #state{namespace = Namespace} = State) ->
-    logger:info("spray Agent ~p : Running state, Removing node ~p from outview",
-                [State#state.namespace, Node]),
-
-    NewOutView =
-        lists:keydelete(Node#node_entry.node_id, #node_entry.node_id, State#state.out_view),
-
-   
+        {connected, _Namespace, RequesterNode, {outview, _}},
+        #state{namespace = Namespace, out_view = OutView} = State) ->
+    logger:info(" --> spray Agent ~p : Running state, Connected to ~p, adding "
+                "to outview",
+                [State#state.namespace, RequesterNode]),
+    NewOutView = [RequesterNode#node_entry{age = 0} | OutView],
     prometheus_gauge:set(binary_to_atom(iolist_to_binary([<<"spray_outview_size_">>,
                                                           binary:replace(Namespace,
                                                                          <<":">>,
                                                                          <<"_">>)])),
                          length(NewOutView)),
     {keep_state, State#state{out_view = NewOutView}};
-%% Remove nodes from inview
 running(info,
-        {remove_from_view, inview, #node_entry{node_id = NodeId} = Node},
-        #state{namespace = Namespace, in_view = [#node_entry{node_id = NodeId}]} = State) ->
-    %% We are removing our last inview node, we should request a new join to us
-    %% to the oldest node in our outview
-    logger:info("spray Agent ~p : Running state, Preventing empty in view ~p",
-                [{State#state.namespace, Node}, State#state.in_view]),
-    prometheus_counter:inc(binary_to_atom(iolist_to_binary([<<"spray_inview_depleted_">>,
-                                                            binary:replace(Namespace,
-                                                                           <<":">>,
-                                                                           <<"_">>)]))),
+        {connected, _Namespace, RequesterNode, {inview, register}},
+        #state{namespace = Namespace,
+               my_node = MyNode,
+               out_view = OutView,
+               in_view = InView} =
+            State) ->
+    NewInView = [RequesterNode#node_entry{age = 0} | InView],
+    logger:info("--> spray Agent ~p : Running state, Connected to ~p, adding "
+                "to inview",
+                [State#state.namespace, RequesterNode]),
+    prometheus_gauge:set(binary_to_atom(iolist_to_binary([<<"spray_inview_size_">>,
+                                                          binary:replace(Namespace,
+                                                                         <<":">>,
+                                                                         <<"_">>)])),
+                         length(NewInView)),
 
-    OldestOutviewNode = get_oldest_node(State#state.out_view),
-    logger:info("spray Agent ~p : Running state, refuel inview request to ~p",
-                [State#state.namespace, OldestOutviewNode]),
-    %% send join request to oldest node in outview
-    ConnPid =
-        gproc:where({n, l, {bbsvx_mqtt_connection, OldestOutviewNode#node_entry.node_id}}),
-
-    gen_server:call(ConnPid,
-                    {publish,
-                     iolist_to_binary([<<"ontologies/in/">>,
-                                       State#state.namespace,
-                                       "/",
-                                       State#state.my_node#node_entry.node_id]),
-                     {empty_inview, State#state.my_node}}),
-    {keep_state, State#state{in_view = []}};
+    %% If our outview is empty, we should request a join to the new node
+    case OutView of
+        [] ->
+            logger:info("spray Agent ~p : Running state, Outview empty, requesting join "
+                        "to ~p",
+                        [State#state.namespace, RequesterNode]),
+            supervisor:start_child(bbsvx_sup_client_connections,
+                                   [join, Namespace, MyNode, RequesterNode]);
+        _ ->
+            logger:info("spray Agent ~p : Running state, Outview not empty, forwarding "
+                        "join request",
+                        [State#state.namespace]),
+            %% Broad forward subscription to all nodes in the outview
+            broadcast_unique(#forward_subscription{namespace = Namespace,
+                                                   subscriber_node = RequesterNode},
+                             OutView)
+    end,
+    {keep_state, State#state{in_view = NewInView}};
 running(info,
-        {remove_from_view, inview, #node_entry{} = Node},
-        #state{namespace = Namespace} = State) ->
-    logger:info("spray Agent ~p : Running state, Removing node ~p from inview",
-                [State#state.namespace, Node]),
-
-    NewInView =
-        lists:keydelete(Node#node_entry.node_id, #node_entry.node_id, State#state.in_view),
+        {connected, _Namespace, RequesterNode, {inview, _}},
+        #state{namespace = Namespace, in_view = InView} = State) ->
+    logger:info("spray Agent ~p : Running state, Connected to ~p, adding to "
+                "inview",
+                [State#state.namespace, RequesterNode]),
+    NewInView = [RequesterNode#node_entry{age = 0} | InView],
     prometheus_gauge:set(binary_to_atom(iolist_to_binary([<<"spray_inview_size_">>,
                                                           binary:replace(Namespace,
                                                                          <<":">>,
                                                                          <<"_">>)])),
                          length(NewInView)),
     {keep_state, State#state{in_view = NewInView}};
-%%Manage empty inview message reception
-running(info, {empty_inview, RequesterNode}, State) ->
-    logger:info("spray Agent ~p : Running state, Got empty inview message from ~p",
-                [State#state.namespace, RequesterNode]),
-    prometheus_counter:inc(binary_to_atom(iolist_to_binary([<<"spray_empty_inview_answered_">>,
-                                                            binary:replace(State#state.namespace,
-                                                                           <<":">>,
-                                                                           <<"_">>)]))),
-    %% Add the node to our outview
-    bbsvx_actor_spray_join:start_link(join_inview,
-                                      State#state.namespace,
-                                      State#state.my_node,
-                                      RequesterNode),
-    keep_state_and_data;
-%% Manage requests to join a view
+%% Manage forwarded subcription requests
 running(info,
-        {add_to_view, inview, #node_entry{} = RequesterNode},
-        #state{namespace = Namespace} = State) ->
-    logger:info("spray Agent ~p : Running state, Adding to inview : ~p",
+        {forwarded_subscription, Namespace, #node_entry{} = RequesterNode},
+        #state{my_node = MyNode} = State) ->
+    logger:info("spray Agent ~p : Running state, Received forwarded subscription "
+                "request from ~p",
                 [State#state.namespace, RequesterNode]),
-
-    NewinView = [RequesterNode#node_entry{age = 0} | State#state.in_view],
+    %% Spawn spray join agent to join the inview of forwarded subscription
+    supervisor:start_child(bbsvx_sup_client_connections,
+                           [join, Namespace, MyNode, RequesterNode]),
+    {keep_state, State};
+%% Diconnection management
+running(info, {connection_terminated, {out, Reason}, Namespace, TargetNode}, State) ->
+    logger:info("spray Agent ~p : Running state, Connection out terminated to "
+                "~p   reason ~p",
+                [Namespace, TargetNode, Reason]),
+    logger:info("Current out view ~p", [State#state.out_view]),
+    NewOutView =
+        lists:keydelete(TargetNode#node_entry.pid, #node_entry.pid, State#state.out_view),
+    prometheus_gauge:set(binary_to_atom(iolist_to_binary([<<"spray_outview_size_">>,
+                                                          binary:replace(Namespace,
+                                                                         <<":">>,
+                                                                         <<"_">>)])),
+                         length(NewOutView)),
+    logger:info("New out view ~p", [NewOutView]),
+    case NewOutView of
+        [] ->
+            logger:info("spray Agent ~p : Running state, Outview depleted",
+                        [State#state.namespace]),
+            prometheus_counter:inc(binary_to_atom(iolist_to_binary([<<"spray_outview_depleted_">>,
+                                                                    binary:replace(Namespace,
+                                                                                   <<":">>,
+                                                                                   <<"_">>)])));
+        _ ->
+            ok
+    end,
+    {keep_state, State#state{out_view = NewOutView}};
+running(info, {connection_terminated, {in, Reason}, Namespace, TargetNode}, State) ->
+    logger:info("spray Agent ~p : Running state, Connection in terminated to "
+                "~p   Reason ~p",
+                [Namespace, TargetNode, Reason]),
+    NewInView =
+        lists:keydelete(TargetNode#node_entry.pid, #node_entry.pid, State#state.in_view),
     prometheus_gauge:set(binary_to_atom(iolist_to_binary([<<"spray_inview_size_">>,
                                                           binary:replace(Namespace,
                                                                          <<":">>,
                                                                          <<"_">>)])),
-                         length(NewinView)),
-    {keep_state, State#state{in_view = NewinView}};
-running(info, {add_to_view, outview, #node_entry{} = RequesterNode}, State) ->
-    logger:info("spray Agent ~p : Running state, Adding to out view ~p",
-                [State#state.namespace, RequesterNode]),
-    NewOutView = [RequesterNode#node_entry{age = 0} | State#state.out_view],
-    prometheus_gauge:set(binary_to_atom(iolist_to_binary([<<"spray_outview_size_">>,
-                                                          binary:replace(State#state.namespace,
-                                                                         <<":">>,
-                                                                         <<"_">>)])),
-                         length(NewOutView)),
-    {keep_state, State#state{out_view = NewOutView}};
-%% Manage forwarded subcription requests
+                         length(NewInView)),
+    case NewInView of
+        [] ->
+            logger:info("spray Agent ~p : Running state, Inview depleted",
+                        [State#state.namespace]),
+            prometheus_counter:inc(binary_to_atom(iolist_to_binary([<<"spray_inview_depleted_">>,
+                                                                    binary:replace(Namespace,
+                                                                                   <<":">>,
+                                                                                   <<"_">>)])));
+        _ ->
+            ok
+    end,
+    {keep_state, State#state{in_view = NewInView}};
 running(info,
-        {forwarded_subscription, Namespace, #node_entry{} = RequesterNode},
-        State) ->
-    logger:info("spray Agent ~p : Running state, Got forwarded subscription request from ~p",
-                [State#state.namespace, RequesterNode]),
-    %% Spawn spray join agent to join the inview of forwarded subscription
-    bbsvx_actor_spray_join:start_link(join_inview,
-                                      Namespace,
-                                      State#state.my_node,
-                                      RequesterNode),
-    {keep_state, State};
+        {connection_error, Reason, Namespace, TargetNode},
+        #state{namespace = Namespace} = State) ->
+    logger:info("spray Agent ~p : Running state, Connection error to ~p  Reason ~p",
+                [State#state.namespace, TargetNode, Reason]),
+    {keep_state, State#state{}};
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Old API
+%% Remove nodes from outview
 %%Exchange management
 %% Exchange with an empty out view
-running(info, spray_loop, #state{out_view = OutView} = State) when length(OutView) =< 1 ->
-    logger:info("spray Agent ~p : Running state, Empty out view, ignoring",
-                [State#state.namespace]),
+running(info, spray_loop, #state{out_view = OutView}) when length(OutView) < 2 ->
     keep_state_and_data;
 running(info,
         spray_loop,
@@ -318,7 +286,6 @@ running(info,
                namespace = Namespace,
                out_view = OutView} =
             State) ->
-    %% Increase age of nodes in outview
     %% Increment age of nodes in out view
     AgedPartialView =
         lists:map(fun(Node) -> Node#node_entry{age = Node#node_entry.age + 1} end, OutView),
@@ -330,8 +297,17 @@ running(info,
     {keep_state,
      State#state{pid_exchanger = {PidExchanger, RefExchanger}, out_view = AgedPartialView}};
 running(info, spray_loop, #state{} = State) ->
-    logger:info("spray Agent ~p : Running state, Concurent spray loop, ignoring",
+    logger:warning("spray Agent ~p : Running state, Concurent spray loop, ignoring",
+                   [State#state.namespace]),
+    keep_state_and_data;
+%% Exchange with an empty in view
+running(info,
+        {partial_view_exchange_in, _Namespace, #node_entry{node_id = OriginNodeId}, _},
+        #state{in_view = [#node_entry{node_id = OriginNodeId, pid = OriginNodePid}]} = State) ->
+    logger:info("spray Agent ~p : Running state, cancelling exchange : empty "
+                "inview",
                 [State#state.namespace]),
+    bbsvx_spray_service:reject_exchange(OriginNodePid, empty_inview),
     keep_state_and_data;
 %% Received partial view exchange in and no exchanger running
 running(info,
@@ -340,7 +316,8 @@ running(info,
          #node_entry{} = OriginNode,
          IncomingSamplePartialView},
         #state{pid_exchanger = undefined, my_node = MyNode} = State) ->
-    logger:info("spray Agent ~p : Running state, Got partial view exchange in from ~p proposing : ~p",
+    logger:info("spray Agent ~p : Running state, Got partial view exchange in "
+                "from ~p proposing : ~p",
                 [State#state.namespace, OriginNode, IncomingSamplePartialView]),
     %% Add the incoming partial view to our inview
     {ok, PidExchanger} =
@@ -354,7 +331,8 @@ running(info,
 running(info,
         {partial_view_exchange_in, Namespace, OriginNode, IncomingSamplePartialView},
         State) ->
-    logger:info("spray Agent ~p : Running state, Caching  partial view exchange in from ~p proposing : ~p",
+    logger:info("spray Agent ~p : Running state, Caching  partial view exchange "
+                "in from ~p proposing : ~p",
                 [State#state.namespace, OriginNode, IncomingSamplePartialView]),
     {keep_state,
      State#state{cached_exchange =
@@ -363,49 +341,14 @@ running(info,
                           Namespace,
                           OriginNode,
                           IncomingSamplePartialView}]}};
-%% Manage reception of disconnection messages
-running(info,
-        {disconnected, #node_entry{node_id = DisconnectedNodeId} = Node},
-        #state{out_view = OutView} = State) ->
-    logger:info("spray Agent ~p : Running state, Got disconnection message from ~p",
-                [State#state.namespace, Node]),
-
-    %% Count and remove all occurences of disparting node_id from our outview
-    {Count, NewOutView} =
-        lists:foldl(fun(#node_entry{node_id = NodeId} = N, {Count, Acc}) ->
-                       case NodeId of
-                           DisconnectedNodeId ->
-                               {Count + 1, Acc};
-                           _ ->
-                               {Count, [N | Acc]}
-                       end
-                    end,
-                    {0, []},
-                    OutView),
-    lists:foldl(fun(C) ->
-                   case rand:uniform() of
-                       N when N > 1 / (length(NewOutView) + C) ->
-                           DuplicatedNode = lists:nth(round(N * length(NewOutView)), NewOutView),
-                           NewOutView ++ [DuplicatedNode#node_entry{age = 0}];
-                       _ ->
-                           NewOutView
-                   end
-                end,
-                NewOutView,
-                lists:seq(1, Count)),
-    %% Remove the node from our inview
-    {keep_state, State#state{out_view = NewOutView}};
 running(info,
         {'DOWN', MonitorRef, process, PidTerminating, _Info},
         #state{my_node = MyNode,
                pid_exchanger = {PidTerminating, MonitorRef},
                cached_exchange =
-                   [{partial_view_exchange_in, Namespace, OriginNode, IncomingSamplePartialView} =
-                        CachedExchange
+                   [{partial_view_exchange_in, Namespace, OriginNode, IncomingSamplePartialView}
                     | OtherCachedExchanges]} =
             State) ->
-    logger:info("spray Agent ~p : Running state, Partial view exchange done procesing cached events ~p",
-                [State#state.namespace, CachedExchange]),
     {ok, PidExchanger} =
         bbsvx_actor_spray_view_exchanger:start_link(responder,
                                                     Namespace,
@@ -422,6 +365,7 @@ running(info,
         #state{pid_exchanger = {PidTerminating, MonitorRef}} = State) ->
     logger:info("spray Agent ~p : Running state, Partial view exchange done",
                 [State#state.namespace]),
+
     {keep_state, State#state{pid_exchanger = undefined}};
 %% Answer get inview request
 running({call, From}, get_outview, #state{out_view = OutView} = State) ->
@@ -435,6 +379,19 @@ running({call, From}, get_inview, #state{in_view = InView} = State) ->
 running({call, From}, get_views, #state{in_view = InView, out_view = OutView} = State) ->
     gen_statem:reply(From, {ok, {InView, OutView}}),
     {keep_state, State};
+running({call, From}, {reinit_age, TargetNodePid}, #state{out_view = OutView} = State) ->
+    logger:info("spray Agent ~p : Running state, Reinit age for ~p",
+                [State#state.namespace, TargetNodePid]),
+    %% Update the age of the outview node designed by NodeId to 0
+    {_, Node, TempOutview} = lists:keytake(TargetNodePid, #node_entry.pid, OutView),
+    NewOutView = [Node#node_entry{age = 0} | TempOutview],
+
+    gen_statem:reply(From, ok),
+    {keep_state, State#state{out_view = NewOutView}};
+running(info, {'EXIT', Pid, shutdown}, State) ->
+    logger:info("spray Agent ~p : Running state, Exchanger ~p shutdown",
+                [State#state.namespace, Pid]),
+    {stop, normal, State};
 running(Type, Event, State) ->
     logger:info("spray Agent ~p : Running state, Unhandled event ~p",
                 [State#state.namespace, {Type, Event}]),
@@ -443,6 +400,17 @@ running(Type, Event, State) ->
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
+
+broadcast(Payload, View) ->
+    lists:foreach(fun(#node_entry{pid = Pid}) -> gen_statem:call(Pid, {send, Payload}) end,
+                  View).
+
+broadcast_unique(Payload, View) ->
+    lists:foreach(fun(#node_entry{pid = Pid}) ->
+                     logger:info("spray Agent: Running state, Forwarding message to ~p", [Pid]),
+                     gen_statem:call(Pid, {send, Payload})
+                  end,
+                  lists:usort(View)).
 
 %%-----------------------------------------------------------------------------
 %% @doc

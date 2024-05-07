@@ -176,10 +176,10 @@ handle_call({new_ontology,
                                                         [{contact_nodes,
                                                           Ont#ontology.contact_nodes}]]),
                                 %% Start epto agent
-                                supervisor:start_child(bbsvx_sup_epto_agents, [Namespace, 15, 16]),
+                                %supervisor:start_child(bbsvx_sup_epto_agents, [Namespace, 15, 16]),
                                 %% Start leader election agent
-                                supervisor:start_child(bbsvx_sup_leader_managers,
-                                                       [Namespace, 8, 50, 100, 200]),
+                                %%supervisor:start_child(bbsvx_sup_leader_managers,
+                                 %%                      [Namespace, 8, 50, 100, 200]),
                                 Ont#ontology{type = shared};
                             local ->
                                 logger:info("Onto service : local ontology type", []),
@@ -205,10 +205,10 @@ handle_call({new_ontology,
                                                                     [{contact_nodes,
                                                                       Ont#ontology.contact_nodes}]]),
                                             %% Start epto agent
-                                            supervisor:start_child(bbsvx_sup_epto_agents, [Namespace, 15, 16]),
+                                            %supervisor:start_child(bbsvx_sup_epto_agents, [Namespace, 15, 16]),
                                             %% Start leader election agent
-                                            supervisor:start_child(bbsvx_sup_leader_managers,
-                                                                   [Namespace, 8, 50, 100, 200]),
+                                            %supervisor:start_child(bbsvx_sup_leader_managers,
+                                             %                      [Namespace, 8, 50, 100, 200]),
                                             Ont#ontology{type = shared};
                                         local ->
                                             logger:info("Onto service : local ontology type", []),
@@ -261,9 +261,9 @@ handle_call({connect_ontology, Namespace}, _From, State) ->
                                           [Namespace,
                                            [{contact_nodes, Ont#ontology.contact_nodes}]]),
                    %% Start epto agent
-                   supervisor:start_child(bbsvx_sup_epto_agents, [Namespace, 15, 16]),
+                   %supervisor:start_child(bbsvx_sup_epto_agents, [Namespace, 15, 16]),
                    %% Start leader election agent
-                   supervisor:start_child(bbsvx_sup_leader_managers, [Namespace, 8, 50, 100, 200]),
+                   %supervisor:start_child(bbsvx_sup_leader_managers, [Namespace, 8, 50, 100, 200]),
                    mnesia:write(Ont#ontology{type = shared})
            end
         end,

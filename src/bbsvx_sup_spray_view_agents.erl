@@ -42,8 +42,8 @@ init([]) ->
     ChildSpecs =
         [#{id => bbsvx_actor_spray_view,
            start => {bbsvx_actor_spray_view, start_link, []},
-           restart => permanent,
-           shutdown => brutal_kill,
+           restart => temporary,
+           shutdown => 100,
            type => worker,
            modules => [bbsvx_actor_spray_view]}],
     {ok, {SupFlags, ChildSpecs}}.

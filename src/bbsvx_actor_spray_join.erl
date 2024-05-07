@@ -12,7 +12,7 @@
 -behaviour(gen_statem).
 
 -include("bbsvx_common_types.hrl").
-
+-include("bbsvx_tcp_messages.hrl").
 %%%=============================================================================
 %%% Export and Defs
 %%%=============================================================================
@@ -24,7 +24,7 @@
 %% Gen State Machine Callbacks
 -export([init/1, code_change/4, callback_mode/0, terminate/3]).
 %% State transitions
--export([connecting/3, waiting_for_id/3, subscribing/3]).
+-export([connecting/3, subscribing/3, increase_inview/3]).
 
 -record(state,
         {namespace :: binary(),
@@ -56,40 +56,17 @@ stop() ->
 %%% Gen State Machine Callbacks
 %%%=============================================================================
 
-init([Type,
-      Namespace,
-      MyNode,
-      #node_entry{host = TargetHost,
-                  port = TargetPort,
-                  node_id = TargetNodeId} =
-          TargetNode]) ->
-    %% Look if there is already an openned connection to the target node
-    case gproc:where({n, l, {bbsvx_mqtt_connection, TargetNodeId}}) of
-        undefined ->
-            gproc:reg({p, l, {bbsvx_mqtt_connection, TargetHost, TargetPort}}),
-            logger:info("~p : No connection to ~p", [?MODULE, TargetNode]),
-            {ok,
-                     connecting,
-                     #state{type = Type,
-                            namespace = Namespace,
-                            my_node = MyNode,
-                            target_node = TargetNode}};
-        ConnectionPid ->
-            logger:info("~p : Connection to ~p already openned", [?MODULE, TargetNode]),
-            %% Connection already openned
-            %%
-            gproc:reg({p, l, {bbsvx_mqtt_connection, TargetHost, TargetPort}}),
-            gproc:reg({p, l, {bbsvx_mqtt_connection, TargetNodeId, Namespace}}),
-            {ok,
-             subscribing,
-             #state{type = Type,
-                    namespace = Namespace,
-                    my_node = MyNode,
-                    target_node = TargetNode,
-                    connection_pid = ConnectionPid}}
-    end.
+init([Type, Namespace, MyNode, TargetNode]) ->
+    {ok,
+     connecting,
+     #state{type = Type,
+            namespace = Namespace,
+            my_node = MyNode,
+            target_node = TargetNode,
+            connection_pid = undefined}}.
 
 terminate(_Reason, _State, _Data) ->
+    logger:info("Terminating ~p", [?MODULE]),
     void.
 
 code_change(_Vsn, State, Data, _Extra) ->
@@ -101,107 +78,103 @@ callback_mode() ->
 %%%=============================================================================
 %%% State transitions
 %%%=============================================================================
-connecting(enter, _, State) ->
-    logger:info("~p : Connecting to ~p", [?MODULE, State#state.target_node]),
-            %% No connection, subscribe to connection events and open it
-            case supervisor:start_child(bbsvx_sup_mqtt_connections, [State#state.my_node, State#state.target_node]) of
-                {ok, ConnectionPid} ->
-                    gen_statem:cast(self(), connection_started),
-                    {keep_state,
-                     State#state{connection_pid = ConnectionPid}};
-                {error, Reason} ->
-                    logger:warning("~p : Could not open connection to ~p : ~p",
-                                   [?MODULE, State#state.target_node, Reason]),
-                    {stop, normal}
-            end;
-connecting(timeout, _, State) ->
-    logger:warning("~p : Connection to ~p timed out", [?MODULE, State#state.target_node]),
-    {stop, normal, State};
-connecting(cast, connection_started, State) ->
-    {next_state, waiting_for_id, State}.
-waiting_for_id(enter, _, _) ->
-    keep_state_and_data;
-%% Manage connection to self
-waiting_for_id(info,
-           {connection_to_self, TargetNode},
-           #state{namespace = Namespace, type = contact} = State) ->
-    logger:warning("~p : Connection to self ~p", [?MODULE, TargetNode]),
-    gproc:send({p, l, {ontology, Namespace}}, {connection_to_self, TargetNode}),
-    %% TODO: Startup of next agents shouldn't be done here, it is here during development
-    %% Start epto agent
-    supervisor:start_child(bbsvx_sup_epto_agents, [Namespace, 15, 16]),
-    %% Start leader election agent
-    supervisor:start_child(bbsvx_sup_leader_managers, [Namespace, 8, 50, 100, 200]),
-    {stop, normal, State};
-waiting_for_id(info,
-           {connection_ready,
-            #node_entry{host = TargetHost,
-                        port = TargetPort,
-                        node_id = TargetNodeId} =
-                TargetNode},
-           #state{namespace = Namespace,
-                  target_node = #node_entry{host = TargetHost, port = TargetPort}} =
+connecting(enter,
+           _,
+           #state{type = Type,
+                  namespace = Namespace,
+                  my_node = MyNode,
+                  target_node =
+                      #node_entry{node_id = TargetNodeId,
+                                  host = TargetHost,
+                                  port = TargetPort} =
+                          TargetNode} =
                State) ->
-    logger:info("~p : Connection to ~p ready", [?MODULE, TargetNode]),
+    case TargetNodeId of
+        undefined ->
+            logger:warning("~p : First connection to ~p", [?MODULE, TargetNode]),
+            gproc:reg({p, l, {bbsvx_tcp_connection, Namespace, TargetHost, TargetPort}}),
+            {ok, ConnectionPid} =
+                supervisor:start_child(bbsvx_sup_tcp_connections,
+                                       [Type, Namespace, MyNode, TargetNode]),
+            {keep_state, State#state{connection_pid = ConnectionPid}};
+        _ ->
+            case gproc:where({n, l, {bbsvx_tcp_connection, Namespace, TargetNodeId}}) of
+                undefined ->
+                    logger:info("~p : Connecting to nodeId ~p but found no connection to it",
+                                   [?MODULE, TargetNode]),
+                    gproc:reg({p, l, {bbsvx_tcp_connection, Namespace, TargetHost, TargetPort}}),
 
-    gproc:reg({p, l, {bbsvx_mqtt_connection, TargetNodeId, Namespace}}),
+                    {ok, ConnectionPid} =
+                        supervisor:start_child(bbsvx_sup_tcp_connections,
+                                               [Type, Namespace, MyNode, TargetNode]),
+                    {keep_state, State#state{connection_pid = ConnectionPid}};
+                ConnPid ->
+                    logger:info("~p : Connection to ~p already openned",
+                                [?MODULE, {TargetNode, Namespace}]),
+                    %% Connection already openned
+                    gen_statem:cast(self(), increase_inview),
+                    {keep_state, State#state{connection_pid = ConnPid}}
+            end
+    end;
+connecting(info, {connection_error, Namespace, Reason}, State) ->
+    logger:warning("~p : Connection to ~p failed : ~p",
+                   [?MODULE, {State#state.target_node, Namespace}, Reason]),
+    {stop, normal, State};
+connecting(info, {connection_refused, Namespace, Reason}, State) ->
+    logger:warning("~p : Connection to ~p refused : ~p",
+                   [?MODULE, {State#state.target_node, Namespace}, Reason]),
+    {stop, normal, State};
+connecting(info,
+           {connected, Namespace, TargetNodeId},
+           #state{namespace = Namespace, target_node = #node_entry{} = TargetNode} = State) ->
+    logger:info("~p : Connected to ~p namespace ~p  TargetnodeID ~p",
+                [?MODULE, Namespace, State#state.target_node, TargetNodeId]),
+    gproc:reg({p, l, {bbsvx_tcp_connection, Namespace, TargetNodeId}}),
     {next_state,
      subscribing,
-     State#state{target_node =
-                     #node_entry{host = TargetHost,
-                                 port = TargetPort,
-                                 node_id = TargetNodeId}}}.
+     State#state{target_node = TargetNode#node_entry{node_id = TargetNodeId}},
+     1000};
+connecting(cast, increase_inview, #state{namespace = Namespace} = State) ->
+    logger:info("~p : Connection to ~p already openned", [?MODULE, State#state.target_node]),
+    gproc:reg({p, l, {bbsvx_tcp_connection, Namespace, increase_inview_ack}}),
+    bbsvx_tcp_connection:increase_inview(Namespace, State#state.target_node#node_entry.node_id),
+    {next_state, increase_inview, State, 1000};
+connecting(timeout, _, State) ->
+    logger:warning("~p : Connection to ~p timed out", [?MODULE, State#state.target_node]),
+    {stop, normal, State}.
 
-subscribing(enter,
-            _,
-            #state{type = contact,
-                   connection_pid = ConnectionPid,
-                   namespace = Namespace,
-                   my_node = #node_entry{node_id = MyNodeId}} =
-                State) ->
-    %% Compute the topic to connect to from Namespace
-    InviewNamespace = <<"ontologies/in/", Namespace/binary, "/", MyNodeId/binary>>,
-    %%% Ask the connection to subscribe to the topic natching ontology namespace
-    %% We request to connection to subscribe to the inview namespace
-    logger:info("~p : Conection pid ~p", [?MODULE, ConnectionPid]),
-    gen_statem:call(ConnectionPid, {subscribe, InviewNamespace, []}),
-    %% We send the contact request to the target node
-    logger:info("~p : Sending contact request to ~p", [?MODULE, State#state.target_node]),
-    gen_statem:call(State#state.connection_pid,
-                    {publish, InviewNamespace, {subscribe, State#state.my_node}}),
+subscribing(enter, _, _) ->
     keep_state_and_data;
-subscribing(enter,
-            _,
-            #state{type = join_inview,
-                   connection_pid = ConnectionPid,
-                   namespace = Namespace,
-                   my_node = #node_entry{node_id = MyNodeId}} =
-                State) ->
-    %% Compute the topic to subscribe to from Namespace
-    InviewNamespace = <<"ontologies/in/", Namespace/binary, "/", MyNodeId/binary>>,
-    %%% Ask the connection to subscribe to the topic natching ontology namespace
-    %% We request to connection to subscribe to the inview namespace
-    gen_statem:call(ConnectionPid, {subscribe, InviewNamespace, []}),
-    %% We send the inview join request to the target node
-    logger:info("~p : Sending subscribe request to ~p", [?MODULE, State#state.target_node]),
-    gen_statem:call(State#state.connection_pid,
-                    {publish, InviewNamespace, {inview_join_request, State#state.my_node}}),
-    keep_state_and_data;
-%% Contact request accepted
 subscribing(info,
-            {connection_accepted, Namespace, TargetNode, _NetworkSize, _Leader},
-            State) ->
-    logger:info("~p : connected to ~p", [?MODULE, {State#state.target_node, Namespace}]),
-    %% As contact node automatically adds us to its inview, we can now
-    %% add it to our outview
+            {contacted, Namespace},
+            #state{namespace = Namespace,
+                   target_node = TargetNode,
+                   type = contact} =
+                State) ->
+    logger:info("~p : Contacted ~p", [?MODULE, State#state.target_node]),
     gproc:send({p, l, {ontology, Namespace}}, {add_to_view, outview, TargetNode}),
     {stop, normal, State};
-%% Subscribe requuest accepted
-subscribing(info, {inview_join_accepted, Namespace, TargetNode}, State) ->
-    logger:info("~p : Subscribed to ~p", [?MODULE, {State#state.target_node, Namespace}]),
-    %% As contact node automatically adds us to its inview, we can now
-    %% add it to our outview
+subscribing(info,
+            {inview_joined, Namespace},
+            #state{namespace = Namespace,
+                   target_node = TargetNode,
+                   type = join_inview} =
+                State) ->
+    logger:info("~p : Joined ~p", [?MODULE, State#state.target_node]),
     gproc:send({p, l, {ontology, Namespace}}, {add_to_view, outview, TargetNode}),
+    {stop, normal, State};
+subscribing(timeout, _, State) ->
+    logger:warning("~p : Subscription to ~p timed out", [?MODULE, State#state.target_node]),
+    {stop, normal, State}.
+
+increase_inview(enter, _, _State) ->
+    keep_state_and_data;
+increase_inview(info, {incoming_event, Namespace, #increase_inview_ack{target_node = TargetNode}}, State) ->
+    logger:info("~p : Increased view ~p   ~p", [?MODULE, TargetNode, Namespace]),
+    gproc:send({p, l, {ontology, Namespace}}, {add_to_view, outview, TargetNode}),
+    {stop, normal, State};
+increase_inview(timeout, _, State) ->
+    logger:warning("~p : Increase inview to ~p timed out", [?MODULE, State#state.target_node]),
     {stop, normal, State}.
 
 %%%=============================================================================

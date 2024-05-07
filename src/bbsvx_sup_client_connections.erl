@@ -5,8 +5,10 @@
 %%% @end
 %%%-----------------------------------------------------------------------------
 
--module(bbsvx_sup_mqtt_connections).
+-module(bbsvx_sup_client_connections).
+
 -author("yan").
+
 -behaviour(supervisor).
 
 %%%=============================================================================
@@ -14,10 +16,7 @@
 %%%=============================================================================
 
 %% External API
--export([
-    start_link/0
-]).
-
+-export([start_link/0]).
 %% Callbacks
 -export([init/1]).
 
@@ -36,17 +35,17 @@ start_link() ->
 %%%=============================================================================
 
 init([]) ->
-    SupFlags = #{strategy => simple_one_for_one,
-                 intensity => 0,
-                 period => 1},
-    ChildSpecs = [
-        #{id => bbsvx_mqtt_connection,
-          start => {bbsvx_mqtt_connection, start_link, []},
-          restart => permanent,
-          shutdown => brutal_kill,
-          type => worker,
-          modules => [bbsvx_mqtt_connection]}
-    ],
+    SupFlags =
+        #{strategy => simple_one_for_one,
+          intensity => 0,
+          period => 1},
+    ChildSpecs =
+        [#{id => bbsvx_client_connection,
+           start => {bbsvx_client_connection, start_link, []},
+           restart => temporary,
+           shutdown => 100,
+           type => worker,
+           modules => [bbsvx_client_connection]}],
     {ok, {SupFlags, ChildSpecs}}.
 
 %%%=============================================================================

@@ -12,6 +12,7 @@
 -include("bbsvx_common_types.hrl").
 
 -export([init/2]).
+
 %%%=============================================================================
 %%% Global Definitions
 %%%=============================================================================
@@ -33,7 +34,6 @@ init(#{method := <<"GET">>, path := <<"/subs/", ClientId/binary>>} = Req0, State
                            Result,
                            Req0),
     {ok, Req, State};
-
 init(#{method := <<"GET">>} = Req0, State) ->
     logger:info("Processing get view request ~p", [Req0]),
     Onto = cowboy_req:binding(namespace, Req0),
@@ -59,7 +59,13 @@ init(#{method := <<"GET">>} = Req0, State) ->
                                         my_id => MyId,
                                         source => MyId,
                                         target => NodeId,
-                                        host => list_to_binary(inet:ntoa(Host)),
+                                        host =>
+                                            case Host of
+                                                V when is_list(V) ->
+                                                    list_to_binary(V);
+                                                V ->
+                                                    list_to_binary(inet:ntoa(V))
+                                            end,
                                         port => Port,
                                         age => Age}
                                       || #node_entry{host = Host,
@@ -89,7 +95,6 @@ init(#{method := <<"GET">>} = Req0, State) ->
                                    Req0),
             {ok, Req, State}
     end;
-
 init(#{method := <<"POST">>, path := <<"/epto/post/", Namespace/binary>>} = Req0,
      State) ->
     logger:info("Processing post view request ~p", [Req0]),
@@ -116,6 +121,7 @@ get_view(Type, Namespace) ->
             logger:error("No view actor found"),
             undefined;
         Pid ->
+            logger:info("Found view actor ~p", [Pid]),
             gen_statem:call(Pid, Type)
     end.
 

@@ -17,10 +17,8 @@
 -behaviour(gen_statem).
 
 -include("bbsvx_common_types.hrl").
-
--include_lib("ejabberd/include/mqtt.hrl").
-
 -include("otel_tracer.hrl").
+-include("bbsvx_tcp_messages.hrl").
 
 %%%=============================================================================
 %%% Export and Defs
@@ -82,7 +80,7 @@ stop() ->
 %%%=============================================================================
 
 init([initiator, Namespace, MyNode]) ->
-    State = #state{namespace = Namespace, my_node = MyNode},
+    State = #state{namespace = Namespace, my_node = MyNode, parent_pid = self()},
     logger:info("Starting view exchanger initiator for ~p", [MyNode]),
     {ok, wait_exchange_out, State, ?EXCHANGE_OUT_TIMEOUT};
 init([responder, Namespace, MyNode, OriginNode, ProposedSample]) ->
@@ -107,91 +105,11 @@ callback_mode() ->
 %%%=============================================================================
 %%% State transitions
 %%%=============================================================================
-responding(enter,
-           _,
-           #state{namespace = Namespace,
-                  my_node = MyNode,
-                  origin_node = OriginNode} =
-               State) ->
-    logger:info("Actor exchanger ~p : Entering responding state", [Namespace]),
 
-    %% Get partial view from the spray view agent
-    SprayPid = gproc:where({n, l, {bbsvx_actor_spray_view, Namespace}}),
-    {ok, Outview} = gen_statem:call(SprayPid, get_outview),
-    logger:info("Actor exchanger ~p : responding state, Got outview ~p",
-                [Namespace, Outview]),
-    {MySample, KeptNodes} = get_big_random_sample(Outview),
-    logger:info("Actor exchanger ~p : responding state, My sample ~p, Kept nodes ~p",
-                [Namespace, MySample, KeptNodes]),
-    %% Replace all occurences of origin node in our sample by our node entry
-    ReplacedMySample =
-        lists:map(fun (#node_entry{node_id = Nid}) when Nid == OriginNode#node_entry.node_id ->
-                          MyNode;
-                      (Node) ->
-                          Node
-                  end,
-                  MySample),
-    logger:info("Actor exchanger ~p : responding state, Replaced my sample ~p",
-                [Namespace, ReplacedMySample]),
-    %% Send our ReplacedSample to the origin node
-    OriginNodeNamespace =
-        iolist_to_binary([<<"ontologies/in/">>, Namespace, "/", OriginNode#node_entry.node_id]),
-    %% Send our sample to the origin node
-    logger:info("Actor exchanger ~p : responding state, Sent partial view exchange "
-                "out to ~p   sample : ~p",
-                [Namespace, OriginNode#node_entry.node_id, ReplacedMySample]),
-    mod_mqtt:publish({MyNode, <<"localhost">>, <<"bob3>>">>},
-                     #publish{topic = OriginNodeNamespace,
-                              payload =
-                                  term_to_binary({partial_view_exchange_out,
-                                                  Namespace,
-                                                  MyNode,
-                                                  ReplacedMySample}),
-                              retain = false},
-                     ?MAX_UINT32),
-
-    %% Connect to the nodes in the proposed sample
-    logger:info("Actor exchanger ~p : responding state, Connect to nodes in "
-                "proposed sample ~p",
-                [Namespace, State#state.proposed_sample]),
-    lists:foreach(fun(Node) ->
-                     bbsvx_actor_spray_join:start_link(join_inview,
-                                                       State#state.namespace,
-                                                       State#state.my_node,
-                                                       Node)
-                  end,
-                  State#state.proposed_sample),
-    %% Disconnect from the nodes to leave
-    logger:info("Actor exchanger ~p : responding state, Disconnect from nodes "
-                "to leave ~p",
-                [Namespace, MySample]),
-
-    lists:foreach(fun(Node) ->
-                     %% Remove node from outview
-                     gproc:send({p, l, {ontology, State#state.namespace}},
-                                {remove_from_view, outview, Node}),
-                     Topic =
-                         iolist_to_binary([<<"ontologies/in/">>,
-                                           State#state.namespace,
-                                           "/",
-                                           State#state.my_node#node_entry.node_id]),
-
-                     ConPid = gproc:where({n, l, {bbsvx_mqtt_connection, Node#node_entry.node_id}}),
-                     gen_statem:call(ConPid,
-                                     {publish,
-                                      Topic,
-                                      {left_inview, Namespace, State#state.my_node}}),
-                     gproc:send({n, l, {bbsvx_mqtt_connection, Node#node_entry.node_id}},
-                                {unsubscribe, Topic})
-                  end,
-                  MySample),
-
-    {stop, normal, State}.
-
-wait_exchange_out(enter, _, #state{} = State) ->
+wait_exchange_out(enter, _, #state{namespace = Namespace} = State) ->
     {ok, PartialView} =
-        gen_statem:call(
-            gproc:where({n, l, {bbsvx_actor_spray_view, State#state.namespace}}), get_outview),
+        gen_statem:call({via, gproc, {n, l, {bbsvx_actor_spray_view, State#state.namespace}}},
+                        get_outview),
 
     logger:info("Actor exchanger: Entering wait_exchange_out with partial view ~p",
                 [PartialView]),
@@ -224,26 +142,16 @@ wait_exchange_out(enter, _, #state{} = State) ->
     FinalSample = [State#state.my_node | ReplacedSample],
     logger:info("Actor exchanger : Final sample ~p", [FinalSample]),
 
-    %% Send exchange proposition to oldest node
-    %% Send the sample to exchange to the oldest node using connection service
-    %% InViewNameSpace =
-    InViewNameSpace =
-        iolist_to_binary([<<"ontologies/in/">>,
-                          State#state.namespace,
-                          "/",
-                          State#state.my_node#node_entry.node_id]),
-
     %% Register to events from mqtt connection
-    gproc:reg({p, l, {bbsvx_mqtt_connection, OldestNodeId, State#state.namespace}}),
+    gproc:reg({p, l, {spray_exchange, Namespace}}),
 
-    ConPid = gproc:where({n, l, {bbsvx_mqtt_connection, OldestNodeId}}),
-    gen_statem:call(ConPid,
-                    {publish,
-                     InViewNameSpace,
-                     {partial_view_exchange_in,
-                      State#state.namespace,
-                      State#state.my_node,
-                      FinalSample}}),
+    %% Send exchange proposition to oldest node
+    gen_statem:call(OldestNode#node_entry.pid,
+                    {send,
+                     #exchange_in{namespace = Namespace,
+                                  origin_node = State#state.my_node,
+                                  proposed_sample = FinalSample}}),
+
     logger:info("Actor exchanger ~p : Running state, Sent partial view exchange "
                 "in to ~p   sample : ~p",
                 [State#state.namespace, OldestNode, FinalSample]),
@@ -253,16 +161,26 @@ wait_exchange_out(enter, _, #state{} = State) ->
                  target_node = OldestNode,
                  to_leave = Sample ++ [OldestNode]},
      ?EXCHANGE_OUT_TIMEOUT};
+%% Receive exchange cancel from oldest node
+wait_exchange_out(info,
+                  {incoming_event,
+                   #exchange_cancelled{namespace = Namespace, reason = Reason}},
+                  State) ->
+    logger:info("Actor exchanger ~p : wait_exchange_out, Got exchange cancelled "
+                " wth reason ~pfrom ~p",
+                [Namespace, Reason, State#state.target_node]),
+    bbsvx_actor_spray_view:reinit_age(Namespace, State#state.target_node#node_entry.pid),
+    {stop, normal, State};
 %% Receive exchange out in wait_exchange_out
 wait_exchange_out(info,
-                  {partial_view_exchange_out,
-                   _Namespace,
-                   #node_entry{node_id = TargetNodeId} = _OriginNode,
-                   IncomingSample},
-                  State) ->
+                  {incoming_event,
+                   #exchange_out{namespace = Namespace,
+                                 origin_node = #node_entry{node_id = TargetNodeId} = OriginNode,
+                                 proposed_sample = IncomingSample}},
+                  #state{my_node = MyNode} = State) ->
     logger:info("Actor exchanger ~p : wait_exchange_out, Got partial view exchange "
                 "out from ~p",
-                [State#state.namespace, TargetNodeId]),
+                [Namespace, OriginNode]),
     %% Replace all occurence of our node by the origin node in the incoming sample
     ReplacedIncomingSample =
         lists:map(fun (#node_entry{node_id = Nid})
@@ -276,25 +194,20 @@ wait_exchange_out(info,
     %% Connect to ReplacementIncomingSample nodes
     logger:info("Actor exchanger ~p : wait_exchange_out, Connect to nodes in "
                 "incoming sample ~p",
-                [State#state.namespace, ReplacedIncomingSample]),
+                [Namespace, ReplacedIncomingSample]),
     lists:foreach(fun(Node) ->
-                     R = bbsvx_actor_spray_join:start_link(join_inview,
-                                                           State#state.namespace,
-                                                           State#state.my_node,
-                                                           Node),
-                     logger:info("Actor exchanger ~p : wait for exchange out starting join actor ~p",
-                                 [State#state.namespace, R])
+                     supervisor:start_child(bbsvx_sup_client_connections,
+                                            [join, Namespace, MyNode, Node])
                   end,
                   ReplacedIncomingSample),
     %% Disconnect from the nodes to leave
     logger:info("Actor exchanger ~p : wait_exchange_out, Disconnect from nodes "
                 "to leave ~p",
-                [State#state.namespace, State#state.to_leave]),
+                [Namespace, State#state.to_leave]),
 
     lists:foreach(fun(Node) ->
-                     %% Remove node from outview
-                     gproc:send({p, l, {ontology, State#state.namespace}},
-                                {remove_from_view, outview, Node})
+                     %% Notify leaving node of the removal
+                     gen_statem:call(Node#node_entry.pid, {disconnect, exchange})
                   end,
                   State#state.to_leave),
     {stop, normal, State};
@@ -307,6 +220,64 @@ wait_exchange_out(timeout, _, State) ->
                                                             binary:replace(State#state.namespace,
                                                                            <<":">>,
                                                                            <<"_">>)]))),
+    {stop, normal, State}.
+
+responding(enter,
+           _,
+           #state{namespace = Namespace,
+                  my_node = MyNode,
+                  origin_node = OriginNode} =
+               State) ->
+    logger:info("Actor exchanger ~p : Entering responding state", [Namespace]),
+
+    %% Get partial view from the spray view agent
+    SprayPid = gproc:where({n, l, {bbsvx_actor_spray_view, Namespace}}),
+    {ok, Outview} = gen_statem:call(SprayPid, get_outview),
+    logger:info("Actor exchanger ~p : responding state, Got outview ~p",
+                [Namespace, Outview]),
+    {MySample, KeptNodes} = get_big_random_sample(Outview),
+    logger:info("Actor exchanger ~p : responding state, My sample ~p, Kept nodes ~p",
+                [Namespace, MySample, KeptNodes]),
+    %% Replace all occurences of origin node in our sample by our node entry
+    ReplacedMySample =
+        lists:map(fun (#node_entry{node_id = Nid}) when Nid == OriginNode#node_entry.node_id ->
+                          MyNode;
+                      (Node) ->
+                          Node
+                  end,
+                  MySample),
+    logger:info("Actor exchanger ~p : responding state, Replaced my sample ~p",
+                [Namespace, ReplacedMySample]),
+
+    %% Send our sample to the origin node
+    logger:info("Actor exchanger ~p : responding state, Sent partial view exchange "
+                "out to ~p   sample : ~p",
+                [Namespace, OriginNode#node_entry.node_id, ReplacedMySample]),
+
+    bbsvx_spray_service:accept_exchange(OriginNode#node_entry.pid,
+                                        ReplacedMySample),
+
+    %% Connect to the nodes in the proposed sample
+    logger:info("Actor exchanger ~p : responding state, Connect to nodes in "
+                "proposed sample ~p",
+                [Namespace, State#state.proposed_sample]),
+    lists:foreach(fun(Node) ->
+                     supervisor:start_child(bbsvx_sup_client_connections,
+                                            [join, Namespace, MyNode, Node])
+                  end,
+                  State#state.proposed_sample),
+    %% Disconnect from the nodes to leave
+    logger:info("Actor exchanger ~p : responding state, Disconnect from nodes "
+                "to leave ~p",
+                [Namespace, MySample]),
+
+    lists:foreach(fun(Node) ->
+                     %% Notify leaving node of the removal
+                     gen_statem:call(Node#node_entry.pid, {disconnect, exchange})
+                  end,
+                  %%bbsvx_mqtt_connection:leave_inview(Node#node_entry.node_id, Namespace)
+                  MySample),
+
     {stop, normal, State}.
 
 %%%=============================================================================

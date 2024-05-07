@@ -103,6 +103,12 @@ init([Namespace, Diameter, DeltaC, DeltaE, DeltaD]) ->
                   ts = Ts},
     %% Publish payload to Outview
     TargetTopic = iolist_to_binary([<<"ontologies/in/">>, Namespace, "/", Leader]),
+    
+    
+    %% Resgister to receive leader election info
+    logger:info("Leader manager : Registering to receive leader election info"),
+    gproc:reg({p, l, {bbsvx_mqtt_ejd_mod, leader_election_info, Namespace}}),
+    
     lists:foreach(fun(#node_entry{node_id = NId}) ->
                      ConPid = gproc:where({n, l, {bbsvx_mqtt_connection, NId}}),
                      gen_statem:call(ConPid,
@@ -114,6 +120,7 @@ init([Namespace, Diameter, DeltaC, DeltaE, DeltaD]) ->
     DeltaR = DeltaE + DeltaD,
     Passed = T div DeltaR,
     Delta = DeltaC + (Passed + 1) * DeltaR - T,
+
     timer:send_after(Delta, next_round),
     {ok, running, State}.
 
@@ -139,7 +146,7 @@ running(info,
                diameter = D,
                delta_e = DeltaE} =
             State) ->
-    logger:info("Leader manager : next round. Current leader ~p", [State#state.leader]),
+    %logger:info("Leader manager : next round. Current leader ~p", [State#state.leader]),
     M = 2 * D, % M = 2D + k − 1 with k = 1
     DeltaR = DeltaE + DeltaD,
     T = erlang:system_time(millisecond),
@@ -148,18 +155,18 @@ running(info,
         case ValidNeighbors of
             [] ->
                 %% No valid neighbors
-                logger:info("Leader manager : no valid neighbors"),
+                %logger:info("Leader manager : no valid neighbors"),
                 {MyId, T, bbsvx_crypto_service:sign(term_to_binary(T))};
             _ ->
                 %% We have valid neighbors
                 %% Pick 3 random, neighbors from valid neighbors
                 RandomNeighbors = pick_three_random(Neighbors),
-                logger:info("Leader manager : valid neighbors ~p",
-                            [[N#neighbor.node_id || N <- RandomNeighbors]]),
+                %logger:info("Leader manager : valid neighbors ~p",
+                           %% [[N#neighbor.node_id || N <- RandomNeighbors]]),
                 %% chosen Leader is the most referenced leader among the 3 random neighbors
                 FollowedNeigbor = get_most_referenced_leader(RandomNeighbors),
-                logger:info("Leader manager : chosen leader ~p",
-                            [FollowedNeigbor#neighbor.chosen_leader]),
+                %logger:info("Leader manager : chosen leader ~p",
+                            %%[FollowedNeigbor#neighbor.chosen_leader]),
                 %% Get neighbour entry with the highest Ts
                 Tsf = lists:foldl(fun (#neighbor{ts = Tsi}, Acc) when Tsi > Acc ->
                                           Tsi;
@@ -193,29 +200,29 @@ running(info,
     TargetTopic =
         iolist_to_binary([<<"ontologies/in/">>, State#state.namespace, "/", State#state.my_id]),
     lists:foreach(fun(#node_entry{node_id = NId}) ->
-                     ConPid = gproc:where({n, l, {bbsvx_mqtt_connection, NId}}),
-                     case ConPid of
-                         undefined -> logger:info("Leader manager : no connection for ~p", [NId]);
-                         _ ->
-                             gen_statem:call(ConPid,
-                                             {publish,
-                                              TargetTopic,
-                                              {leader_election_info,
-                                               State#state.namespace,
-                                               Payload}})
-                     end
+                     ConPid = gproc:where({n, l, {bbsvx_tcp_connection, NId}})
+                     %%case ConPid of
+                     %%    undefined -> logger:info("Leader manager : no connection for ~p", [NId]);
+                     %%    _ ->
+                     %%        gen_statem:call(ConPid,
+                     %%                        {publish,
+                     %%                         TargetTopic,
+                     %%                         {leader_election_info,
+                     %%                          State#state.namespace,
+                     %%                          Payload}})
+                     %%end
                   end,
                   Outview),
-    logger:info("Leader manager : next round. Vote: ~p, Ts: ~p", [Vote, FinalTs]),
+    %logger:info("Leader manager : next round. Vote: ~p, Ts: ~p", [Vote, FinalTs]),
     %% Set timer to DeltaR for next round
     timer:send_after(DeltaR, next_round),
     {next_state, running, State#state{leader = Vote}};
 running(info,
         {leader_election_info, _Namespace, Payload},
         #state{neighbors = Neighbors} = State) ->
-    logger:info("Leader manager ~p received a leader election info ~p   vote "
-                ":~p",
-                [State#state.my_id, Payload#neighbor.node_id, Payload#neighbor.chosen_leader]),
+    %logger:info("Leader manager ~p received a leader election info ~p   vote "
+     %%           ":~p",
+       %%         [State#state.my_id, Payload#neighbor.node_id, Payload#neighbor.chosen_leader]),
     {keep_state,
      State#state{neighbors =
                      lists:keystore(Payload#neighbor.node_id,

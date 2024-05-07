@@ -1,0 +1,54 @@
+syntax = "proto3";
+package bbsvx;
+
+message node_entry_proto {
+    string ip = 1;
+    int32 port = 2;
+    string node_id = 3;
+}
+
+message connect_to_node_params {
+    node_entry_proto connecting_node = 1;
+}
+
+message connect_to_node_result {
+    bool success = 2;
+    string message = 3;
+}
+
+// message for node register/subscribe to an ontology
+message subscribe_ontology_params {
+    string ont_namespace = 1;
+    node_entry_proto subscriber_node = 2;
+}
+message subscribe_result {
+    bool success = 3;
+    string message = 4;
+}
+// Join inview of a node, used in view exchanges, forwarded subscription
+message join_inview_params {
+    string ont_namespace = 1;
+    node_entry_proto requester_node = 2;
+}
+
+message join_result {
+    bool success = 3;
+    string message = 4;
+}
+
+// Leave the inview of a node
+message leave_inview_params {
+    string ont_namespace = 1;
+    node_entry_proto leaving_node = 2;
+}
+
+message leave_inview_result {
+    bool success = 3;
+    string message = 4;
+}
+service spray_service {
+    rpc connect_to_node(connect_to_node_params) returns (connect_to_node_result) {}
+    rpc subscribe_ontology(subscribe_ontology_params) returns (subscribe_result) {}
+    rpc join_inview(join_inview_params) returns (join_result) {}
+    rpc leave_inview(leave_inview_params) returns (leave_inview_result) {}
+}
