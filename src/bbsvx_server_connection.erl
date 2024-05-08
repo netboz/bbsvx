@@ -5,7 +5,7 @@
 %%% @end
 %%%-----------------------------------------------------------------------------
 
--module(bbsvx_spray_service).
+-module(bbsvx_server_connection).
 
 -author("yan").
 
@@ -184,7 +184,9 @@ wait_for_subscription(info,
       gproc:send({p, l, {ontology, Namespace}},
                  {connected, Namespace, OriginNode, {inview, join}}),
       {next_state, connected, State#state{buffer = NewBuffer}};
+ 
     {error, _} ->
+      logger:error("~p Failed to decode binary data: ~p", [?MODULE, BinData]),
       {stop, normal, State}
   end;
 %% Cathc all
@@ -286,6 +288,13 @@ parse_packet(Buffer,
                   Namespace,
                   OriginNode#node_entry{pid = MyPid},
                   ProposedSample}),
+
+      parse_packet(BinLeft, Action, State);
+    {complete, #exchange_end{} = Event, Index} ->
+      logger:info("~p Exchange end received", [?MODULE]),
+      <<_:Index/binary, BinLeft/binary>> = Buffer,
+      gproc:send({p, l, {spray_exchange, Namespace}}, {incoming_event, Event}),
+
 
       parse_packet(BinLeft, Action, State);
     {complete, #forward_subscription{subscriber_node = SubscriberNode}, Index} ->

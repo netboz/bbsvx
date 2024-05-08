@@ -134,11 +134,6 @@ connecting(info,
      subscribing,
      State#state{target_node = TargetNode#node_entry{node_id = TargetNodeId}},
      1000};
-connecting(cast, increase_inview, #state{namespace = Namespace} = State) ->
-    logger:info("~p : Connection to ~p already openned", [?MODULE, State#state.target_node]),
-    gproc:reg({p, l, {bbsvx_tcp_connection, Namespace, increase_inview_ack}}),
-    bbsvx_tcp_connection:increase_inview(Namespace, State#state.target_node#node_entry.node_id),
-    {next_state, increase_inview, State, 1000};
 connecting(timeout, _, State) ->
     logger:warning("~p : Connection to ~p timed out", [?MODULE, State#state.target_node]),
     {stop, normal, State}.

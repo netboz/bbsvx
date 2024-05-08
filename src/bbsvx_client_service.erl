@@ -11,15 +11,12 @@
 
 -behaviour(gen_server).
 
--include("bbsvx_common_types.hrl").
-
 %%%=============================================================================
 %%% Export and Defs
 %%%=============================================================================
 
 %% External API
--export([start_link/1, start_link/2, my_host_port/0, register_connection/5,
-         unregister_connection/5]).
+-export([start_link/1, start_link/2, my_host_port/0]).
 %% Callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
@@ -62,39 +59,6 @@ my_host_port() ->
             gen_server:call(Pid, my_host_port)
     end.
 
--spec register_connection(Namespace :: binary(),
-                          NodeId :: binary(),
-                          Host :: binary(),
-                          Port :: integer(),
-                          Pid :: pid()) ->
-                             ok | {error, atom()}.
-register_connection(Namespace, NodeId, Host, Port, Pid) ->
-    %% record the connection into ets table
-    ets:insert(connection_table,
-               #connection{node_id = NodeId,
-                           host = Host,
-                           namespace = Namespace,
-                           port = Port,
-                           pid = Pid}),
-
-    ok.
-
-unregister_connection(Namespace, NodeId, Host, Port, Pid) ->
-    ets:delete(connection_table,
-               #connection{node_id = NodeId,
-                           host = Host,
-                           namespace = Namespace,
-                           port = Port,
-                           pid = Pid}),
-    ok.
-
-broadcast(Nodes, Payload) ->
-    %% Get all connections for this namespace
-    Conns = ets:match(connection_table, #connection{namespace = Namespace}),
-    lists:foreach(fun(#connection{pid = Pid}) ->
-                         gen_server:cast(Pid, {broadcast, Payload})
-                  end,
-                  Conns).
 %%%=============================================================================
 %%% Gen Server Callbacks
 %%%=============================================================================

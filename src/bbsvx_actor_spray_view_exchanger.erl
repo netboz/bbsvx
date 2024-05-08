@@ -17,7 +17,6 @@
 -behaviour(gen_statem).
 
 -include("bbsvx_common_types.hrl").
--include("otel_tracer.hrl").
 -include("bbsvx_tcp_messages.hrl").
 
 %%%=============================================================================
@@ -80,11 +79,18 @@ stop() ->
 %%%=============================================================================
 
 init([initiator, Namespace, MyNode]) ->
-    State = #state{namespace = Namespace, my_node = MyNode, parent_pid = self()},
+    State =
+        #state{namespace = Namespace,
+               my_node = MyNode,
+               parent_pid = self()},
     logger:info("Starting view exchanger initiator for ~p", [MyNode]),
+    %% Register to events from mqtt connection
+    gproc:reg({p, l, {spray_exchange, Namespace}}),
     {ok, wait_exchange_out, State, ?EXCHANGE_OUT_TIMEOUT};
 init([responder, Namespace, MyNode, OriginNode, ProposedSample]) ->
     logger:info("Starting view exchanger responder for ~p", [MyNode]),
+    %% Register to events from mqtt connection
+    gproc:reg({p, l, {spray_exchange, Namespace}}),
     {ok,
      responding,
      #state{namespace = Namespace,
@@ -142,9 +148,6 @@ wait_exchange_out(enter, _, #state{namespace = Namespace} = State) ->
     FinalSample = [State#state.my_node | ReplacedSample],
     logger:info("Actor exchanger : Final sample ~p", [FinalSample]),
 
-    %% Register to events from mqtt connection
-    gproc:reg({p, l, {spray_exchange, Namespace}}),
-
     %% Send exchange proposition to oldest node
     gen_statem:call(OldestNode#node_entry.pid,
                     {send,
@@ -163,8 +166,7 @@ wait_exchange_out(enter, _, #state{namespace = Namespace} = State) ->
      ?EXCHANGE_OUT_TIMEOUT};
 %% Receive exchange cancel from oldest node
 wait_exchange_out(info,
-                  {incoming_event,
-                   #exchange_cancelled{namespace = Namespace, reason = Reason}},
+                  {incoming_event, #exchange_cancelled{namespace = Namespace, reason = Reason}},
                   State) ->
     logger:info("Actor exchanger ~p : wait_exchange_out, Got exchange cancelled "
                 " wth reason ~pfrom ~p",
@@ -200,7 +202,10 @@ wait_exchange_out(info,
                                             [join, Namespace, MyNode, Node])
                   end,
                   ReplacedIncomingSample),
-    %% Disconnect from the nodes to leave
+    %% Send exchange terminated to oldest node
+    gen_statem:call(State#state.target_node#node_entry.pid,
+                    {send, #exchange_end{namespace = Namespace}}),
+    %% Disconnect from the nodes to leave, other side should already have started connecting to them
     logger:info("Actor exchanger ~p : wait_exchange_out, Disconnect from nodes "
                 "to leave ~p",
                 [Namespace, State#state.to_leave]),
@@ -210,12 +215,12 @@ wait_exchange_out(info,
                      gen_statem:call(Node#node_entry.pid, {disconnect, exchange})
                   end,
                   State#state.to_leave),
+
     {stop, normal, State};
 wait_exchange_out(timeout, _, State) ->
     logger:warning("Actor exchanger ~p : wait_exchange_out, timed out",
                    [State#state.namespace]),
 
-    ?set_attribute(target_node, print(State#state.target_node)),
     prometheus_counter:inc(binary_to_atom(iolist_to_binary([<<"spray_initiator_echange_timeout_">>,
                                                             binary:replace(State#state.namespace,
                                                                            <<":">>,
@@ -254,8 +259,7 @@ responding(enter,
                 "out to ~p   sample : ~p",
                 [Namespace, OriginNode#node_entry.node_id, ReplacedMySample]),
 
-    bbsvx_spray_service:accept_exchange(OriginNode#node_entry.pid,
-                                        ReplacedMySample),
+    bbsvx_server_connection:accept_exchange(OriginNode#node_entry.pid, ReplacedMySample),
 
     %% Connect to the nodes in the proposed sample
     logger:info("Actor exchanger ~p : responding state, Connect to nodes in "
@@ -267,26 +271,37 @@ responding(enter,
                   end,
                   State#state.proposed_sample),
     %% Disconnect from the nodes to leave
+    %logger:info("Actor exchanger ~p : responding state, Disconnect from nodes "
+    %            "to leave ~p",
+    %            [Namespace, MySample]),
+    %lists:foreach(fun(Node) ->
+    %                 %% Notify leaving node of the removal
+    %                 gen_statem:call(Node#node_entry.pid, {disconnect, exchange})
+    %              end,
+    %              MySample),
+    {keep_state, State#state{to_leave = MySample}, ?EXCHANGE_OUT_TIMEOUT};
+responding(info,
+           {incoming_event, #exchange_end{namespace = Namespace}},
+           #state{to_leave = ToLeave} = State) ->
+    logger:info("Actor exchanger ~p : responding state, Got exchange end", [Namespace]),
+    %% Disconnect from the nodes to leave
     logger:info("Actor exchanger ~p : responding state, Disconnect from nodes "
                 "to leave ~p",
-                [Namespace, MySample]),
-
+                [Namespace, ToLeave]),
     lists:foreach(fun(Node) ->
                      %% Notify leaving node of the removal
                      gen_statem:call(Node#node_entry.pid, {disconnect, exchange})
                   end,
-                  %%bbsvx_mqtt_connection:leave_inview(Node#node_entry.node_id, Namespace)
-                  MySample),
-
-    {stop, normal, State}.
-
-%%%=============================================================================
-%%% Internal functions
-%%%=============================================================================
-
-print(Term) ->
-    iolist_to_binary([lists:flatten(
-                          io_lib:format("~p", [Term]))]).
+                  ToLeave),
+    {stop, normal, State};
+responding(timeout, _, State) ->
+    logger:warning("Actor exchanger ~p : responding state, timed out",
+                   [State#state.namespace]),
+    {stop,
+     normal,
+     State}.%%%=============================================================================
+            %%% Internal functions
+            %%%=============================================================================
 
 %%-----------------------------------------------------------------------------
 %% @doc

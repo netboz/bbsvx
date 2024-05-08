@@ -277,8 +277,11 @@ running(info,
 %% Remove nodes from outview
 %%Exchange management
 %% Exchange with an empty out view
-running(info, spray_loop, #state{out_view = OutView}) when length(OutView) < 2 ->
-    keep_state_and_data;
+running(info, spray_loop, #state{out_view = OutView}) when length(OutView) < 1 ->
+    %% Increase age of outview
+    AgedOutView =
+        lists:map(fun(Node) -> Node#node_entry{age = Node#node_entry.age + 1} end, OutView),
+    {keep_state, #state{out_view = AgedOutView}};
 running(info,
         spray_loop,
         #state{pid_exchanger = undefined,
@@ -307,7 +310,7 @@ running(info,
     logger:info("spray Agent ~p : Running state, cancelling exchange : empty "
                 "inview",
                 [State#state.namespace]),
-    bbsvx_spray_service:reject_exchange(OriginNodePid, empty_inview),
+            bbsvx_server_connection:reject_exchange(OriginNodePid, empty_inview),
     keep_state_and_data;
 %% Received partial view exchange in and no exchanger running
 running(info,

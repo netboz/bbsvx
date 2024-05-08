@@ -26,4 +26,5 @@
         {namespace = <<>> :: binary(),
          origin_node :: node_entry(),
          proposed_sample :: [node_entry()]}).
+-record(exchange_end, {namespace = <<>> :: binary()}).
 -record(exchange_cancelled, {namespace = <<>> :: binary(), reason :: atom()}).
