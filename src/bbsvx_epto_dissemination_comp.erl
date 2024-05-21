@@ -11,7 +11,7 @@
 
 -behaviour(gen_server).
 
--include("bbsvx_common_types.hrl").
+-include("bbsvx_tcp_messages.hrl").
 
 %%%=============================================================================
 %%% Export and Defs
@@ -70,8 +70,9 @@ init([Namespace, Fanout, Ttl, Orderer, LogicalClock]) ->
                next_ball = #{}},
 
     %% Register to epto messages received at inview (ejabberd mod )
-    logger:info("Epto dissemination component : Registering to epto messages ~p", [Namespace]),
-    gproc:reg({p, l, {bbsvx_mqtt_ejd_mod, epto_message, Namespace}}),
+    logger:info("Epto dissemination component : Registering to epto messages ~p",
+                [Namespace]),
+    gproc:reg({p, l, {epto_event, Namespace}}),
 
     {ok, RoundTimer} =
         timer:apply_interval(?DEFAULT_ROUND_TIME, gen_server, call, [self(), next_round]),
@@ -99,39 +100,10 @@ handle_call(next_round, _From, #state{namespace = Namespace} = State) ->
     NewBall =
         maps:map(fun(_EvtId, #event{ttl = EvtTtl} = Evt) -> Evt#event{ttl = EvtTtl + 1} end,
                  State#state.next_ball),
-    {ok, Peers} =
-        case gen_statem:call({via, gproc, {n, l, {bbsvx_actor_spray_view, Namespace}}}, get_views)
-        of
-            {ok, {[], []}} ->
-                %            logger:warning(" Epto Disseminator ~p, No view found",
-                %                          [State#state.ontology]),
-                {ok, []};
-            {ok, {_, []}} ->
-                %              logger:warning(" Epto Disseminator ~p, No outview found",
-                %                            [State#state.ontology]),
-                {ok, []};
-            {ok, {_, OutView}} ->
-                {ok, OutView}
-        end,
-    SamplePeers = Peers, %% get_random_sample(State#state.fanout, Peers),
+  
     %% logger:info("Epto dissemination component : Sample peers ~p", [SamplePeers]),
     %% Broadcast next ball to sample peers
-    MyId = bbsvx_crypto_service:my_id(),
-    TargetTopic = iolist_to_binary([<<"ontologies/in/">>, Namespace, "/", MyId]),
-    lists:foreach(fun(#node_entry{node_id = NId}) ->
-                     ConPid = gproc:where({n, l, {bbsvx_tcp_connection, Namespace, NId}}),
-                     case ConPid of
-                         undefined ->
-                             logger:warning("Epto dissemination component : No connection found for ~p",
-                                            [NId]);
-                         _ ->
-                             gen_statem:call(ConPid,
-                                             {send,
-                                              {epto_message, {receive_ball, NewBall}}})
-                     end
-                  end,
-                  SamplePeers),
-
+    bbsvx_actor_spray_view:broadcast_unique(Namespace, #epto_message{payload = {receive_ball, NewBall}}),
     gen_server:call(State#state.orderer, {order_events, NewBall}),
     {reply, ok, State#state{next_ball = #{}}};
 handle_call({set_fanout_ttl, Fanout, Ttl}, _From, State) ->
@@ -146,7 +118,7 @@ handle_cast(_Msg, State) ->
     logger:info("Epto dissemination component : Unmanaged cast message ~p", [_Msg]),
     {noreply, State}.
 
-handle_info({receive_ball, Ball}, #state{namespace = _Namespace} = State) ->
+handle_info({incoming_event, {receive_ball, Ball}}, #state{namespace = _Namespace} = State) ->
     %logger:info("Epto dissemination component  ~p : received ball ~p", [Namespace, Ball]),
     %% QUESTION: next event could considerably slow down the ball processing, should be made async ?
     %% gproc:send({p, l, {epto_event, State#state.ontology}}, {received_ball, Ball}),

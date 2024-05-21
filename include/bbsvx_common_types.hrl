@@ -3,13 +3,13 @@
          host :: binary() | undefined,
          port = 1883 :: integer(),
          age = 0 :: integer(),
-         pid :: pid()}).
+         pid :: pid() | undefined}).
 -record(ontology,
         {namespace :: binary(),
          type :: atom(),
          version :: binary(),
          last_update = 0 :: integer(),
-         contact_nodes :: [node_entry()]}).
+         contact_nodes = [] :: [node_entry()]}).
 %% Goal storage
 -record(goal,
         {id :: binary(),

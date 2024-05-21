@@ -50,17 +50,18 @@ init([Namespace, Fanout, Ttl]) ->
     logger:info("Starting EPTO service for namespace ~p with fanout ~p and ttl ~p",
                 [Namespace, Fanout, Ttl]),
     %%TODO : Not sure next line is needed
-    State = #state{fanout = Fanout, ttl = Ttl},
     {ok, LogicalClock} = bbsvx_epto_logical_clock:start_link(Namespace, Ttl),
     {ok, Orderer} = bbsvx_epto_ordering_component:start_link(Namespace, LogicalClock),
 
     {ok, Broadcaster} =
         bbsvx_epto_dissemination_comp:start_link(Namespace, Fanout, Ttl, Orderer, LogicalClock),
     {ok,
-     State#state{namespace = Namespace,
-                 broadcaster = Broadcaster,
-                 logical_clock = LogicalClock,
-                 orderer = Orderer}}.
+     #state{namespace = Namespace,
+            broadcaster = Broadcaster,
+            logical_clock = LogicalClock,
+            fanout = Fanout,
+            ttl = Ttl,
+            orderer = Orderer}}.
 
 handle_call({set_fanout_tll, Fanout, Ttl}, _From, State) ->
     Reply = gen_server:call(State#state.broadcaster, {set_fanout_ttl, Fanout, Ttl}),

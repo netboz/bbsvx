@@ -30,7 +30,7 @@
          node_id = undefined,
          host,
          port,
-         subscriptions :: term}).
+         subscriptions :: term()}).
 
 %%%=============================================================================
 %%% API

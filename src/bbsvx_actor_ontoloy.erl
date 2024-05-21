@@ -14,6 +14,7 @@
 -include("bbsvx_common_types.hrl").
 -include_lib("erlog/src/erlog_int.hrl").
 
+
 %%%=============================================================================
 %%% Export and Defs
 %%%=============================================================================
@@ -72,8 +73,13 @@ callback_mode() ->
 ready({call, From}, {prove_goal, #goal{} = Goal}, State) ->
     logger:info("Ontology Agent for namespace : ~p received goal to prove :~p",
                 [State#state.namespace, Goal]),
-    {Result, NewState} = prove_goal(Goal, State),
-    {keep_state, State#state{ont_state = NewState}, [{reply, From, Result}]};
+    case prove_goal(Goal, State) of
+        {ok, NewState} ->
+            {keep_state, State#state{ont_state = NewState}, [{reply, From, {ok, NewState}}]};
+        {error, Reason} ->
+            {keep_state, State, [{reply, From, {error, Reason}}]}
+    end;
+    
 %% Catch all for ready state
 ready(Type, Event, _state) ->
     logger:info("Ontology Agent received unmanaged call :~p", [{Type, Event}]),
@@ -82,9 +88,21 @@ ready(Type, Event, _state) ->
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
-prove_goal(#goal{payload = Payload}, _State) when is_binary(Payload)->
+
+-spec prove_goal(#goal{}, #state{}) -> {succeed, [{atom(), any()}]} |fail | {error, term()}.
+prove_goal(#goal{payload = Payload} = Goal, State) when is_binary(Payload)->
     %% Parse the payload
-    ok;
+    case erlog_scan:tokens([], Payload, 1) of
+        {done, {ok, Tokk, _}, _} ->
+            case erlog_parse:term(Tokk) of
+                {ok, Eterms} ->
+                    prove_goal(Goal#goal{payload = Eterms}, State);
+                Other1 ->
+                    {error, Other1}
+            end;
+        Other ->
+            {error, Other}
+    end;
 
 prove_goal(#goal{payload = Payload}, State) ->
     erlog:prove(Payload, {erlog, [], State#state.ont_state}).

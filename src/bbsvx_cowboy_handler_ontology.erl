@@ -18,7 +18,8 @@
 -include("bbsvx_common_types.hrl").
 
 -export([init/2, allowed_methods/2, content_types_accepted/2, content_types_provided/2,
-         delete_resource/2, delete_completed/2, resource_exists/2, last_modified/2, malformed_request/2]).
+         delete_resource/2, delete_completed/2, resource_exists/2, last_modified/2,
+         malformed_request/2]).
 -export([provide_onto/2, accept_onto/2, accept_goal/2]).
 
 %%%=============================================================================
@@ -31,7 +32,9 @@ init(Req0, State) ->
 allowed_methods(Req, State) ->
     {[<<"GET">>, <<"POST">>, <<"PUT">>, <<"DELETE">>, <<"HEAD">>, <<"OPTIONS">>], Req, State}.
 
-malformed_request(#{path := <<"/ontologies/", _Namespace/binary>>, method := <<"PUT">>} = Req, State) ->
+malformed_request(#{path := <<"/ontologies/", _Namespace/binary>>, method := <<"PUT">>} =
+                      Req,
+                  State) ->
     logger:info("Checking boby ~p", [Req]),
     try
         {ok, Body, Req1} = cowboy_req:read_body(Req),
@@ -47,7 +50,7 @@ malformed_request(#{path := <<"/ontologies/", _Namespace/binary>>, method := <<"
         end
     catch
         A:B ->
-            logger:info("Malformed request ~p:~p", [A,B]),
+            logger:info("Malformed request ~p:~p", [A, B]),
             Req3 =
                 cowboy_req:set_resp_body(
                     jiffy:encode([#{error => <<"invalid_json">>}]), Req),
@@ -76,7 +79,7 @@ last_modified(Req, #{onto := #ontology{last_update = LastUpdate}} = State) ->
     {LastUpdate, Req, State}.
 
 delete_resource(#{path := <<"/ontologies/", Namespace/binary>>} = Req, State) ->
-    bbsvx_ont_service:delete_ontology(binary_to_atom(Namespace)),
+    bbsvx_ont_service:delete_ontology(Namespace),
     {true, Req, State}.
 
 delete_completed(#{path := <<"/ontologies/", Namespace/binary>>} = Req, State) ->
@@ -119,20 +122,24 @@ provide_onto(Req, State) ->
 
 accept_onto(Req0, #{onto := PreviousOntState, body := Body} = State) ->
     logger:info("Cowboy Handler : Accept Onto", []),
-
     Namespace = cowboy_req:binding(namespace, Req0),
 
-    Type = case maps:get(<<"type">>, Body, undefined) of
-               undefined -> local;
-               Value -> binary_to_existing_atom(Value)
-           end,
+    Type =
+        case maps:get(<<"type">>, Body, undefined) of
+            undefined ->
+                local;
+            Value ->
+                binary_to_existing_atom(Value)
+        end,
     case Body of
         #{<<"namespace">> := Namespace} ->
             ProposedOnt =
                 #ontology{namespace = Namespace,
+                          version = maps:get(<<"version">>, Body, <<"0.0.1">>),
                           contact_nodes =
                               [#node_entry{host = Hst, port = Prt}
-                               || #{<<"host">> := Hst, <<"port">> := Prt} <- maps:get(<<"contact_nodes">>, Body, [])],
+                               || #{<<"host">> := Hst, <<"port">> := Prt}
+                                      <- maps:get(<<"contact_nodes">>, Body, [])],
                           type = Type},
             case {ProposedOnt, PreviousOntState} of
                 {#ontology{type = Type}, #ontology{type = Type}} ->
@@ -175,7 +182,7 @@ accept_goal(Req0, State) ->
     {ok, Body, Req1} = cowboy_req:read_body(Req0),
     #{<<"namespace">> := Namespace2, <<"payload">> := Payload} =
         jiffy:decode(Body, [return_maps]),
-    Goal = #goal{namespace = Namespace, payload = Payload},
+    _Goal = #goal{namespace = Namespace, payload = Payload},
     logger:info("new_ontology namespace frm body ~p", [Namespace2]),
     bbsvx_ont_service:new_ontology(#ontology{namespace = Namespace}),
     {true, Req1, State}.

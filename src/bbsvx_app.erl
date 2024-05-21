@@ -47,7 +47,7 @@ start(_StartType, _StartArgs) ->
         ranch:start_listener(bbsvx_spray_service,
                              ranch_tcp,
                              #{socket_opts => [{port, 2305}], max_connections => infinity},
-                             bbsvx_spray_service,
+                             bbsvx_server_connection,
                              [#node_entry{node_id = MyId,
                                           host = MyHost,
                                           port = MyPort}]),

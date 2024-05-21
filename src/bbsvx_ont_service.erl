@@ -122,7 +122,7 @@ init([]) ->
     case IndexTableExists of
         true ->
             logger:info("Onto service : waiting for index table ~p", [?INDEX_TABLE]),
-            case mnesia:wait_for_tables(?INDEX_TABLE, ?INDEX_LOAD_TIMEOUT) of
+            case mnesia:wait_for_tables([?INDEX_TABLE], ?INDEX_LOAD_TIMEOUT) of
                 {timeout, _} ->
                     logger:error("Onto service : index table ~p load timeout", [?INDEX_TABLE]),
                     {error, index_table_timeout};
@@ -151,14 +151,14 @@ handle_call({new_ontology,
     case mnesia:dirty_read(?INDEX_TABLE, Namespace) of
         [] ->
             CN = case ContactNodes of
-                     undefined ->
+                     [] ->
                          [#node_entry{host = <<"bbsvx_bbsvx_root_1">>, port = 1883}];
                      _ ->
                          ContactNodes
                  end,
             Ont = #ontology{namespace = Namespace,
                             contact_nodes = CN,
-                            version = "0.0.1",
+                            version = <<"0.0.1">>,
                             type = Type,
                             last_update = erlang:system_time(microsecond)},
             logger:info("Onto service : creating ontology ~p", [Ont]),
@@ -176,10 +176,10 @@ handle_call({new_ontology,
                                                         [{contact_nodes,
                                                           Ont#ontology.contact_nodes}]]),
                                 %% Start epto agent
-                                %supervisor:start_child(bbsvx_sup_epto_agents, [Namespace, 15, 16]),
+                                supervisor:start_child(bbsvx_sup_epto_agents, [Namespace, 15, 16]),
                                 %% Start leader election agent
-                                %%supervisor:start_child(bbsvx_sup_leader_managers,
-                                 %%                      [Namespace, 8, 50, 100, 200]),
+                                supervisor:start_child(bbsvx_sup_leader_managers,
+                                                       [Namespace, 8, 50, 100, 200]),
                                 Ont#ontology{type = shared};
                             local ->
                                 logger:info("Onto service : local ontology type", []),

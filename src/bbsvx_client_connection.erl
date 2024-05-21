@@ -11,7 +11,6 @@
 
 -behaviour(gen_statem).
 
--include("bbsvx_common_types.hrl").
 -include("bbsvx_tcp_messages.hrl").
 
 %%%=============================================================================
@@ -23,7 +22,7 @@
 -define(HEADER_TIMEOUT, 500).
 
 %% External API
--export([start_link/4, stop/0]).
+-export([start_link/4, stop/0, send/2]).
 %% Gen State Machine Callbacks
 -export([init/1, code_change/4, callback_mode/0, terminate/3]).
 %% State transitions
@@ -34,7 +33,7 @@
          namespace :: binary(),
          my_node :: node_entry(),
          target_node :: node_entry(),
-         socket :: inet:socket(),
+         socket :: inet:socket() | undefined,
          buffer :: binary()}).
 
 %%%=============================================================================
@@ -46,6 +45,10 @@
 start_link(Type, Namespace, #node_entry{} = MyNode, #node_entry{} = TargetNode) ->
     logger:info("Startlinking connection to ~p", [TargetNode]),
     gen_statem:start_link(?MODULE, [Type, Namespace, MyNode, TargetNode], []).
+
+-spec send(pid(), term()) -> ok.
+send(NodePid, Event) ->
+    gen_statem:call(NodePid, {send, Event}).
 
 stop() ->
     gen_statem:stop(?SERVER).
@@ -64,6 +67,7 @@ init([Type, Namespace, MyNode, TargetNode]) ->
      #state{type = Type,
             namespace = Namespace,
             my_node = MyNode,
+            buffer = <<>>,
             target_node = TargetNode#node_entry{pid = MyPid}}}.
 
 terminate(Reason, PreviousState, State) ->
@@ -88,8 +92,15 @@ connect(enter,
                my_node = MyNode,
                target_node = #node_entry{host = TargetHost, port = TargetPort} = TargetNode} =
             State) ->
+    TargetHostInet =
+        case TargetHost of
+            Th when is_binary(TargetHost) ->
+                binary_to_list(Th);
+            Th ->
+                Th
+        end,
     logger:info("Connecting to ~p", [TargetNode]),
-    case gen_tcp:connect(TargetHost,
+    case gen_tcp:connect(TargetHostInet,
                          TargetPort,
                          [binary,
                           {packet, 0},
@@ -198,7 +209,6 @@ register(info,
             case Result of
                 ok ->
                     <<_:ByteRead/binary, BinLeft/binary>> = ConcatBuf,
-                    logger:info("~p Regsited to ~p~n", [?MODULE, State#state.target_node]),
                     {next_state, connected, State#state{socket = Socket, buffer = BinLeft}};
                 Else ->
                     logger:error("~p registering to ~p refused : ~p~n",
@@ -236,8 +246,6 @@ join(info,
             case Result of
                 ok ->
                     <<_:ByteRead/binary, BinLeft/binary>> = ConcatBuf,
-
-                    logger:info("~p Joined ~p~n", [?MODULE, State#state.target_node]),
                     {next_state, connected, State#state{socket = Socket, buffer = BinLeft}};
                 Else ->
                     logger:error("~p Joining ~p refused : ~p~n", [?MODULE, TargetNode, Else]),
@@ -275,9 +283,6 @@ connected(enter,
 connected(info, {tcp, _Socket, BinData}, #state{buffer = Buffer} = State) ->
     ParseResult = parse_packet(<<Buffer/binary, BinData/binary>>, keep_state, State),
     case ParseResult of
-        {stop, State} ->
-            logger:info("~p Connection closed from event.", [?MODULE]),
-            {stop, normal, State};
         {keep_state, NewState} ->
             {keep_state, NewState};
         {next_state, NextState, NewState, Timeout} ->
@@ -289,15 +294,14 @@ connected(cast, #forward_subscription{} = Subscription, State) ->
     gen_tcp:send(State#state.socket, term_to_binary(Subscription)),
     {keep_state, State};
 connected({call, From}, {send, Event}, State) ->
-    logger:info("~p Sending event ~p~n  to ~p", [?MODULE, Event, State#state.target_node]),
-    SendResult = gen_tcp:send(State#state.socket, term_to_binary(Event)),
-    logger:info("~p Send result ~p~n", [?MODULE, SendResult]),
+    gen_tcp:send(State#state.socket, term_to_binary(Event)),
     {keep_state, State, [{reply, From, ok}]};
 connected({call, From},
           {disconnect, Reason},
           #state{namespace = Namespace, target_node = TargetNode}) ->
-    logger:info("~p Disconnecting with reason ~p   pid ~p", [?MODULE, Reason, TargetNode#node_entry.pid]),
-logger:info("My pid : ~p  target node pid ~p", [self(), TargetNode#node_entry.pid]),
+    logger:info("~p Disconnecting with reason ~p   pid ~p",
+                [?MODULE, Reason, TargetNode#node_entry.pid]),
+    logger:info("My pid : ~p  target node pid ~p", [self(), TargetNode#node_entry.pid]),
     gproc:send({p, l, {?MODULE, Namespace}},
                {connection_terminated, {out, Reason}, Namespace, TargetNode}),
     gen_statem:reply(From, ok),
@@ -324,8 +328,6 @@ connected(Type, Event, State) ->
 
 parse_packet(<<>>, Action, State) ->
     {Action, State#state{buffer = <<>>}};
-parse_packet(<<>>, Action, State) ->
-    {Action, State#state{buffer = <<>>}};
 parse_packet(Buffer, Action, #state{namespace = Namespace} = State) ->
     Decoded =
         try binary_to_term(Buffer, [used]) of
@@ -345,6 +347,18 @@ parse_packet(Buffer, Action, #state{namespace = Namespace} = State) ->
 
             parse_packet(BinLeft, Action, State);
         {complete, #exchange_out{} = Event, Index} ->
+            <<_:Index/binary, BinLeft/binary>> = Buffer,
+            logger:info("~p Incoming event ~p", [?MODULE, Event]),
+            gproc:send({p, l, {spray_exchange, Namespace}}, {incoming_event, Event}),
+
+            parse_packet(BinLeft, Action, State);
+        {complete, #exchange_accept{} = Event, Index} ->
+            <<_:Index/binary, BinLeft/binary>> = Buffer,
+            logger:info("~p Incoming event ~p", [?MODULE, Event]),
+            gproc:send({p, l, {spray_exchange, Namespace}}, {incoming_event, Event}),
+
+            parse_packet(BinLeft, Action, State);
+        {complete, #exchange_end{} = Event, Index} ->
             <<_:Index/binary, BinLeft/binary>> = Buffer,
             logger:info("~p Incoming event ~p", [?MODULE, Event]),
             gproc:send({p, l, {spray_exchange, Namespace}}, {incoming_event, Event}),

@@ -182,7 +182,7 @@ deliver(#event{payload = <<"leader">>}) ->
     %% Get leader from leader manager
     {ok, Leader} = bbsvx_actor_leader_manager:get_leader(<<"bbsvx:root">>),
     {ok, F} = file:open("/logs/leader-" ++ atom_to_list(node()) ++ ".log", [append]),
-    file:write(F, iolist_to_binary(Leader ++ "\n")),
+    file:write(F, iolist_to_binary([Leader, <<"\n">>])),
     file:close(F),
     ok;
 deliver(Evt) ->

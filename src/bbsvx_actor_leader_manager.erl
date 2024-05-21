@@ -13,7 +13,7 @@
 
 -behaviour(gen_statem).
 
--include("bbsvx_common_types.hrl").
+-include("bbsvx_tcp_messages.hrl").
 
 %%%=============================================================================
 %%% Export and Defs
@@ -30,7 +30,7 @@
 
 -record(neighbor,
         {node_id :: binary(),
-         chosen_leader :: binary(),
+         chosen_leader :: binary() | undefined,
          public_key :: binary(),
          signed_ts :: binary(),
          ts :: integer()}).
@@ -93,30 +93,19 @@ init([Namespace, Diameter, DeltaC, DeltaE, DeltaD]) ->
                my_id = MyId,
                neighbors = [],
                leader = Leader},
-    {ok, Outview} =
-        gen_statem:call({via, gproc, {n, l, {bbsvx_actor_spray_view, State#state.namespace}}},
-                        get_outview),
+               
     Payload =
         #neighbor{node_id = MyId,
                   public_key = PublicKey,
                   signed_ts = SignedTs,
                   ts = Ts},
-    %% Publish payload to Outview
-    TargetTopic = iolist_to_binary([<<"ontologies/in/">>, Namespace, "/", Leader]),
-    
-    
+
     %% Resgister to receive leader election info
-    logger:info("Leader manager : Registering to receive leader election info"),
-    gproc:reg({p, l, {bbsvx_mqtt_ejd_mod, leader_election_info, Namespace}}),
-    
-    lists:foreach(fun(#node_entry{node_id = NId}) ->
-                     ConPid = gproc:where({n, l, {bbsvx_mqtt_connection, NId}}),
-                     gen_statem:call(ConPid,
-                                     {publish,
-                                      TargetTopic,
-                                      {leader_election_info, Namespace, Payload}})
-                  end,
-                  Outview),
+    gproc:reg({p, l, {leader_election, Namespace}}),
+
+    %% Send election info to neighborhood
+    bbsvx_actor_spray_view:broadcast_unique(Namespace, #leader_election_info{payload = Payload}),
+
     DeltaR = DeltaE + DeltaD,
     Passed = T div DeltaR,
     Delta = DeltaC + (Passed + 1) * DeltaR - T,
@@ -139,7 +128,8 @@ callback_mode() ->
 
 running(info,
         next_round,
-        #state{my_id = MyId,
+        #state{namespace = Namespace,
+               my_id = MyId,
                neighbors = Neighbors,
                delta_c = DeltaC,
                delta_d = DeltaD,
@@ -161,12 +151,11 @@ running(info,
                 %% We have valid neighbors
                 %% Pick 3 random, neighbors from valid neighbors
                 RandomNeighbors = pick_three_random(Neighbors),
-                %logger:info("Leader manager : valid neighbors ~p",
-                           %% [[N#neighbor.node_id || N <- RandomNeighbors]]),
+
                 %% chosen Leader is the most referenced leader among the 3 random neighbors
                 FollowedNeigbor = get_most_referenced_leader(RandomNeighbors),
                 %logger:info("Leader manager : chosen leader ~p",
-                            %%[FollowedNeigbor#neighbor.chosen_leader]),
+                %%[FollowedNeigbor#neighbor.chosen_leader]),
                 %% Get neighbour entry with the highest Ts
                 Tsf = lists:foldl(fun (#neighbor{ts = Tsi}, Acc) when Tsi > Acc ->
                                           Tsi;
@@ -194,35 +183,17 @@ running(info,
                   ts = FinalTs,
                   chosen_leader = Vote},
     %% Publish payload to Outview
-    {ok, Outview} =
-        gen_statem:call({via, gproc, {n, l, {bbsvx_actor_spray_view, State#state.namespace}}},
-                        get_outview),
-    TargetTopic =
-        iolist_to_binary([<<"ontologies/in/">>, State#state.namespace, "/", State#state.my_id]),
-    lists:foreach(fun(#node_entry{node_id = NId}) ->
-                     ConPid = gproc:where({n, l, {bbsvx_tcp_connection, NId}})
-                     %%case ConPid of
-                     %%    undefined -> logger:info("Leader manager : no connection for ~p", [NId]);
-                     %%    _ ->
-                     %%        gen_statem:call(ConPid,
-                     %%                        {publish,
-                     %%                         TargetTopic,
-                     %%                         {leader_election_info,
-                     %%                          State#state.namespace,
-                     %%                          Payload}})
-                     %%end
-                  end,
-                  Outview),
-    %logger:info("Leader manager : next round. Vote: ~p, Ts: ~p", [Vote, FinalTs]),
+    bbsvx_actor_spray_view:broadcast_unique(Namespace,
+                                            #leader_election_info{payload = Payload}),
     %% Set timer to DeltaR for next round
     timer:send_after(DeltaR, next_round),
     {next_state, running, State#state{leader = Vote}};
 running(info,
-        {leader_election_info, _Namespace, Payload},
+        {incoming_event, #leader_election_info{payload = Payload}},
         #state{neighbors = Neighbors} = State) ->
     %logger:info("Leader manager ~p received a leader election info ~p   vote "
-     %%           ":~p",
-       %%         [State#state.my_id, Payload#neighbor.node_id, Payload#neighbor.chosen_leader]),
+    %%           ":~p",
+    %%         [State#state.my_id, Payload#neighbor.node_id, Payload#neighbor.chosen_leader]),
     {keep_state,
      State#state{neighbors =
                      lists:keystore(Payload#neighbor.node_id,
@@ -247,7 +218,8 @@ running(EventType, EventContent, Data) ->
 %% DeltaC + M*DeltaR time units from T.
 %% @end
 
--spec get_valid_entries(neighbors(), integer(), integer(), integer(), integer()) -> ok.
+-spec get_valid_entries(neighbors(), integer(), integer(), integer(), integer()) ->
+                           neighbors().
 get_valid_entries(Neigh, T, DeltaC, DeltaR, M) ->
     lists:filter(fun(#neighbor{ts = Ts}) -> abs(T - Ts) < DeltaC + M * DeltaR end, Neigh).
 

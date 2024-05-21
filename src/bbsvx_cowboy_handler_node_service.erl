@@ -59,13 +59,7 @@ init(#{method := <<"GET">>} = Req0, State) ->
                                         my_id => MyId,
                                         source => MyId,
                                         target => NodeId,
-                                        host =>
-                                            case Host of
-                                                V when is_list(V) ->
-                                                    list_to_binary(V);
-                                                V ->
-                                                    list_to_binary(inet:ntoa(V))
-                                            end,
+                                        host => Host,
                                         port => Port,
                                         age => Age}
                                       || #node_entry{host = Host,
