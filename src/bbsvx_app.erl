@@ -51,9 +51,7 @@ start(_StartType, _StartArgs) ->
                              [#node_entry{node_id = MyId,
                                           host = MyHost,
                                           port = MyPort}]),
-    %% Create a test spray agent for testing under ontolgy namespace <<"bbsvx:root">>
-    %%timer:sleep(5000),
-    %%gen_server:call(bbsvx_ont_service, {new_ontology, #ontology{namespace = <<"bbsvx::root">>}, []}),
+
     R.
 
 stop(_State) ->

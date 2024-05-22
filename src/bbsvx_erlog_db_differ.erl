@@ -34,7 +34,11 @@
 
 %% State
 -record(state,
-        {asserta :: [term()], assertz :: [term()], retract :: [term()], abolish :: [term()], op_fifo :: list(term())}).
+        {asserta :: [term()],
+         assertz :: [term()],
+         retract :: [term()],
+         abolish :: [term()],
+         op_fifo :: [term()]}).
 -record(db_differ, {goal_id :: binary(), outmod :: atom(), outmoddb :: term()}).
 
 %%%=============================================================================
@@ -184,7 +188,7 @@ abolish_clauses(#db_differ{outmod = OutMod,
     Db#db_differ{outmoddb = NewOutDb}.
 
 %% get_procedure(Db, Functor) ->
-%%	built_in | {code,{Mod,Func}} | {clauses,[Clause]} | undefined.
+%%        built_in | {code,{Mod,Func}} | {clauses,[Clause]} | undefined.
 %% Return the procedure type and data for a functor.
 
 get_procedure(#db_differ{outmod = OutMod,
@@ -209,7 +213,7 @@ get_procedure(#db_differ{outmod = OutMod,
     end.
 
 %% get_procedure_type(Db, Functor) ->
-%%	built_in | compiled | interpreted | undefined.
+%%        built_in | compiled | interpreted | undefined.
 %%  Return the procedure type for a functor.
 
 get_procedure_type(#db_differ{outmod = OutMod,

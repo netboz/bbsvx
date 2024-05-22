@@ -36,6 +36,8 @@
          pid_exchanger = undefined :: {pid(), reference()} | undefined,
          pid_exchange_timeout = undefined}).
 
+-type state() :: #state{}.
+
 %%%=============================================================================
 %%% API
 %%%=============================================================================
@@ -52,9 +54,39 @@ start_link(Namespace, Options) ->
                      [Namespace, Options],
                      []).
 
-reinit_age(Namespace, NodeId) ->
+%%%-----------------------------------------------------------------------------
+%%% @doc
+%%% Set the age of connection Pid to 0
+%%% @returns ok
+%%% @end
+%%%
+-spec reinit_age(Namespace :: binary(), NodePid :: pid()) -> ok.
+reinit_age(Namespace, NodePid) ->
     gen_statem:call({via, gproc, {n, l, {bbsvx_actor_spray_view, Namespace}}},
-                    {reinit_age, NodeId}).
+                    {reinit_age, NodePid}).
+
+%%%-----------------------------------------------------------------------------
+%%% @doc
+%%% Send payload to all connections in the outview
+%%% @returns ok
+%%% @end
+%%%
+
+-spec broadcast(Namespace :: binary(), Payload :: term()) -> ok.
+broadcast(Namespace, Payload) ->
+    gen_statem:cast({via, gproc, {n, l, {bbsvx_actor_spray_view, Namespace}}},
+                    {broadcast, Payload}).
+
+%%%-----------------------------------------------------------------------------
+%%% @doc
+%%% Send payload to all unique connections in the outview
+%%% @returns ok
+%%% @end
+%%%
+-spec broadcast_unique(Namespace :: binary(), Payload :: term()) -> ok.
+broadcast_unique(Namespace, Payload) ->
+    gen_statem:cast({via, gproc, {n, l, {bbsvx_actor_spray_view, Namespace}}},
+                    {broadcast_unique, Payload}).
 
 -spec stop() -> ok.
 stop() ->
@@ -134,13 +166,18 @@ callback_mode() ->
 %%%=============================================================================
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Add/Join View %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+-spec running(Type :: atom(), Event :: term(), State :: state()) ->
+                 {keep_state, state()} |
+                 {keep_state_and_data, state()} |
+                 {stop, Reason :: term(), state()}.
 running(enter, _OldState, State) ->
     case State#state.pid_exchange_timeout of
         undefined ->
             logger:info("spray Agent ~p : Running state, Starting exchange timer",
                         [State#state.namespace]),
-            {ok, Pid} = timer:send_interval(?EXCHANGE_TIMEOUT, spray_loop),
-            {keep_state, State#state{pid_exchange_timeout = Pid}};
+            Me = self(),
+            Timeref = erlang:start_timer(?EXCHANGE_TIMEOUT, Me, spray_lopp),
+            {keep_state, State#state{pid_exchange_timeout = Timeref}};
         _ ->
             keep_state_and_data
     end;
@@ -151,10 +188,7 @@ running(info,
                 "to outview",
                 [State#state.namespace, RequesterNode]),
     NewOutView = [RequesterNode#node_entry{age = 0} | OutView],
-    prometheus_gauge:set(binary_to_atom(iolist_to_binary([<<"spray_outview_size_">>,
-                                                          binary:replace(Namespace,
-                                                                         <<":">>,
-                                                                         <<"_">>)])),
+    prometheus_gauge:set(build_metric_view_name(Namespace, <<"spray_outview_size_">>),
                          length(NewOutView)),
     {keep_state, State#state{out_view = NewOutView}};
 running(info,
@@ -168,10 +202,7 @@ running(info,
     logger:info("--> spray Agent ~p : Running state, Connected to ~p, adding "
                 "to inview",
                 [State#state.namespace, RequesterNode]),
-    prometheus_gauge:set(binary_to_atom(iolist_to_binary([<<"spray_inview_size_">>,
-                                                          binary:replace(Namespace,
-                                                                         <<":">>,
-                                                                         <<"_">>)])),
+    prometheus_gauge:set(build_metric_view_name(Namespace, <<"spray_inview_size_">>),
                          length(NewInView)),
 
     %% If our outview is empty, we should request a join to the new node
@@ -180,21 +211,22 @@ running(info,
             logger:info("spray Agent ~p : Running state, Outview empty, requesting join "
                         "to ~p",
                         [State#state.namespace, RequesterNode]),
-            supervisor:start_child(bbsvx_sup_client_connections,
-                                   [join, Namespace, MyNode, RequesterNode]);
+            bbsvx_client_connection:new(join, Namespace, MyNode, RequesterNode);
         _ ->
             logger:info("spray Agent ~p : Running state, Outview not empty, forwarding "
                         "join request",
                         [State#state.namespace]),
             %% Broadcast forward subscription to all nodes in the outview
             lists:foreach(fun(#node_entry{pid = Pid}) ->
-                             gen_statem:call(Pid,
-                                             {send,
-                                              #forward_subscription{namespace = Namespace,
-                                                                    subscriber_node =
-                                                                        RequesterNode}})
+                             bbsvx_client_connection:send(Pid,
+                                                          #forward_subscription{namespace =
+                                                                                    Namespace,
+                                                                                subscriber_node =
+                                                                                    RequesterNode})
                           end,
-                          lists:usort(OutView))
+                          lists:usort(fun(N1, N2) -> N1#node_entry.node_id =< N2#node_entry.node_id
+                                      end,
+                                      OutView))
     end,
     {keep_state, State#state{in_view = NewInView}};
 running(info,
@@ -204,10 +236,7 @@ running(info,
                 "inview",
                 [State#state.namespace, RequesterNode]),
     NewInView = [RequesterNode#node_entry{age = 0} | InView],
-    prometheus_gauge:set(binary_to_atom(iolist_to_binary([<<"spray_inview_size_">>,
-                                                          binary:replace(Namespace,
-                                                                         <<":">>,
-                                                                         <<"_">>)])),
+    prometheus_gauge:set(build_metric_view_name(Namespace, <<"spray_inview_size_">>),
                          length(NewInView)),
     {keep_state, State#state{in_view = NewInView}};
 %% Manage forwarded subcription requests
@@ -218,8 +247,7 @@ running(info,
                 "request from ~p",
                 [State#state.namespace, RequesterNode]),
     %% Spawn spray join agent to join the inview of forwarded subscription
-    supervisor:start_child(bbsvx_sup_client_connections,
-                           [join, Namespace, MyNode, RequesterNode]),
+    bbsvx_client_connection:new(join, Namespace, MyNode, RequesterNode),
     {keep_state, State};
 %% Diconnection management
 running(info, {connection_terminated, {out, Reason}, Namespace, TargetNode}, State) ->
@@ -229,20 +257,15 @@ running(info, {connection_terminated, {out, Reason}, Namespace, TargetNode}, Sta
     logger:info("Current out view ~p", [State#state.out_view]),
     NewOutView =
         lists:keydelete(TargetNode#node_entry.pid, #node_entry.pid, State#state.out_view),
-    prometheus_gauge:set(binary_to_atom(iolist_to_binary([<<"spray_outview_size_">>,
-                                                          binary:replace(Namespace,
-                                                                         <<":">>,
-                                                                         <<"_">>)])),
+    prometheus_gauge:set(build_metric_view_name(Namespace, <<"spray_outview_size_">>),
                          length(NewOutView)),
     logger:info("New out view ~p", [NewOutView]),
     case NewOutView of
         [] ->
             logger:info("spray Agent ~p : Running state, Outview depleted",
                         [State#state.namespace]),
-            prometheus_counter:inc(binary_to_atom(iolist_to_binary([<<"spray_outview_depleted_">>,
-                                                                    binary:replace(Namespace,
-                                                                                   <<":">>,
-                                                                                   <<"_">>)])));
+            prometheus_counter:inc(build_metric_view_name(Namespace,
+                                                          <<"spray_outview_depleted_">>));
         _ ->
             ok
     end,
@@ -253,18 +276,12 @@ running(info, {connection_terminated, {in, Reason}, Namespace, TargetNode}, Stat
                 [Namespace, TargetNode, Reason]),
     NewInView =
         lists:keydelete(TargetNode#node_entry.pid, #node_entry.pid, State#state.in_view),
-    prometheus_gauge:set(binary_to_atom(iolist_to_binary([<<"spray_inview_size_">>,
-                                                          binary:replace(Namespace,
-                                                                         <<":">>,
-                                                                         <<"_">>)])),
+    prometheus_gauge:set(build_metric_view_name(Namespace, <<"spray_inview_size_">>),
                          length(NewInView)),
     case NewInView of
         [] ->
             logger:info("spray Agent ~p : Running state, Inview depleted", [State#state.namespace]),
-            prometheus_counter:inc(binary_to_atom(iolist_to_binary([<<"spray_inview_depleted_">>,
-                                                                    binary:replace(Namespace,
-                                                                                   <<":">>,
-                                                                                   <<"_">>)])));
+            prometheus_counter:inc(build_metric_view_name(Namespace, <<"spray_inview_depleted_">>));
         _ ->
             ok
     end,
@@ -347,12 +364,15 @@ running(info,
 
     {keep_state, State};
 running(cast, {broadcast, Payload}, #state{out_view = OutView} = State) ->
-    lists:foreach(fun(#node_entry{pid = Pid}) -> gen_statem:call(Pid, {send, Payload}) end,
+    lists:foreach(fun(#node_entry{pid = Pid}) -> bbsvx_client_connection:send(Pid, Payload)
+                  end,
                   OutView),
     {keep_state, State};
 running(cast, {broadcast_unique, Payload}, #state{out_view = OutView} = State) ->
-    lists:foreach(fun(#node_entry{pid = Pid}) -> gen_statem:call(Pid, {send, Payload}) end,
-                  lists:usort(OutView)),
+    lists:foreach(fun(#node_entry{pid = Pid}) -> bbsvx_client_connection:send(Pid, Payload)
+                  end,
+                  lists:usort(fun(N1, N2) -> N1#node_entry.node_id =< N2#node_entry.node_id end,
+                              OutView)),
     {keep_state, State};
 running(info,
         {'DOWN', MonitorRef, process, PidTerminating, _Info},
@@ -394,58 +414,33 @@ running(Type, Event, State) ->
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
+-spec build_metric_view_name(Namespace :: binary(), MetricName :: binary()) -> atom().
+build_metric_view_name(Namespace, MetricName) ->
+    binary_to_atom(iolist_to_binary([MetricName,
+                                     binary:replace(Namespace, <<":">>, <<"_">>)])).
 
-broadcast(Namespace, Payload) ->
-    gen_statem:cast({via, gproc, {n, l, {bbsvx_actor_spray_view, Namespace}}},
-                    {broadcast, Payload}).
-
-broadcast_unique(Namespace, Payload) ->
-    gen_statem:cast({via, gproc, {n, l, {bbsvx_actor_spray_view, Namespace}}},
-                    {broadcast_unique, Payload}).
-
+-spec init_metrics(Namespace :: binary()) -> ok.
 init_metrics(Namespace) ->
     %% Create some metrics
-    prometheus_gauge:new([{name,
-                           binary_to_atom(iolist_to_binary([<<"spray_networksize_">>,
-                                                            binary:replace(Namespace,
-                                                                           <<":">>,
-                                                                           <<"_">>)]))},
+    prometheus_gauge:new([{name, build_metric_view_name(Namespace, <<"spray_networksize_">>)},
                           {help, "Number of nodes patricipating in this ontology network"}]),
-    prometheus_gauge:new([{name,
-                           binary_to_atom(iolist_to_binary([<<"spray_inview_size_">>,
-                                                            binary:replace(Namespace,
-                                                                           <<":">>,
-                                                                           <<"_">>)]))},
+    prometheus_gauge:new([{name, build_metric_view_name(Namespace, <<"spray_inview_size_">>)},
                           {help, "Number of nodes in ontology inview"}]),
     prometheus_gauge:new([{name,
-                           binary_to_atom(iolist_to_binary([<<"spray_outview_size_">>,
-                                                            binary:replace(Namespace,
-                                                                           <<":">>,
-                                                                           <<"_">>)]))},
+                           build_metric_view_name(Namespace, <<"spray_outview_size_">>)},
                           {help, "Number of nodes in ontology partial view"}]),
     prometheus_counter:new([{name,
-                             binary_to_atom(iolist_to_binary([<<"spray_initiator_echange_timeout_">>,
-                                                              binary:replace(Namespace,
-                                                                             <<":">>,
-                                                                             <<"_">>)]))},
+                             build_metric_view_name(Namespace,
+                                                    <<"spray_initiator_echange_timeout_">>)},
                             {help, "Number of timeout occuring during exchange"}]),
     prometheus_counter:new([{name,
-                             binary_to_atom(iolist_to_binary([<<"spray_inview_depleted_">>,
-                                                              binary:replace(Namespace,
-                                                                             <<":">>,
-                                                                             <<"_">>)]))},
+                             build_metric_view_name(Namespace, <<"spray_inview_depleted_">>)},
                             {help, "Number of times invirew reach 0"}]),
     prometheus_counter:new([{name,
-                             binary_to_atom(iolist_to_binary([<<"spray_outview_depleted_">>,
-                                                              binary:replace(Namespace,
-                                                                             <<":">>,
-                                                                             <<"_">>)]))},
+                             build_metric_view_name(Namespace, <<"spray_outview_depleted_">>)},
                             {help, "Number of times outview reach 0"}]),
     prometheus_counter:new([{name,
-                             binary_to_atom(iolist_to_binary([<<"spray_empty_inview_answered_">>,
-                                                              binary:replace(Namespace,
-                                                                             <<":">>,
-                                                                             <<"_">>)]))},
+                             build_metric_view_name(Namespace, <<"spray_empty_inview_answered_">>)},
                             {help, "Number times this node answered a refuel inview request"}]).
 
 %%%=============================================================================

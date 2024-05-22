@@ -47,6 +47,8 @@
          outview_size = 0 :: non_neg_integer(),
          parent_pid :: pid() | undefined}).
 
+-type state() :: #state{}.
+
 %%%=============================================================================
 %%% API
 %%%=============================================================================
@@ -112,7 +114,8 @@ callback_mode() ->
 %%%=============================================================================
 %%% State transitions
 %%%=============================================================================
-
+-spec wait_exchange_out(gen_statem:event_type(), term(), state()) ->
+    gen_statem:state_return().
 wait_exchange_out(enter, _, #state{namespace = Namespace} = State) ->
     {ok, PartialView} =
         gen_statem:call({via, gproc, {n, l, {bbsvx_actor_spray_view, State#state.namespace}}},
@@ -146,11 +149,10 @@ wait_exchange_out(enter, _, #state{namespace = Namespace} = State) ->
     logger:info("Actor exchanger : Final sample ~p", [FinalSample]),
 
     %% Send exchange proposition to oldest node
-    gen_statem:call(OldestNode#node_entry.pid,
-                    {send,
-                     #exchange_in{namespace = Namespace,
-                                  origin_node = State#state.my_node,
-                                  proposed_sample = FinalSample}}),
+    bbsvx_client_connection:send(OldestNode#node_entry.pid,
+                                 #exchange_in{namespace = Namespace,
+                                              origin_node = State#state.my_node,
+                                              proposed_sample = FinalSample}),
 
     logger:info("Actor exchanger ~p : Running state, Sent partial view exchange "
                 "in to ~p   sample : ~p",
@@ -178,10 +180,9 @@ wait_exchange_out(info,
     logger:info("Actor exchanger ~p : wait_exchange_out, empty proposal single "
                 "outview ~p",
                 [Namespace, State#state.target_node]),
-    gen_statem:call(State#state.target_node#node_entry.pid,
-                    {send,
-                     #exchange_cancelled{namespace = Namespace,
-                                         reason = empty_proposal_empty_outview}}),
+    bbsvx_client_connection:send(State#state.target_node#node_entry.pid,
+                                 #exchange_cancelled{namespace = Namespace,
+                                                     reason = empty_proposal_empty_outview}),
     bbsvx_actor_spray_view:reinit_age(Namespace, State#state.target_node#node_entry.pid),
 
     {stop, normal, State};
@@ -209,19 +210,22 @@ wait_exchange_out(info,
     gproc:reg({p, l, {bbsvx_client_connection, Namespace}}),
 
     %% Connect to ReplacementIncomingSample nodes
-    lists:foreach(fun(Node) ->
-                     supervisor:start_child(bbsvx_sup_client_connections,
-                                            [join, Namespace, MyNode, Node])
-                  end,
-                  ReplacedIncomingSample),
+    open_connections(Namespace, MyNode, ReplacedIncomingSample),
+
     %% Send exchange accept to oldest node
-    gen_statem:call(State#state.target_node#node_entry.pid, {send, #exchange_accept{}}),
+    bbsvx_client_connection:send(State#state.target_node#node_entry.pid, #exchange_accept{}),
     case ReplacedIncomingSample of
         [] ->
             %% We don't need to connect to any node, go straight to exchange end
-            {next_state, initiator_disconnect, State#state{proposed_sample = ReplacedIncomingSample}, 500};
+            {next_state,
+             initiator_disconnect,
+             State#state{proposed_sample = ReplacedIncomingSample},
+             500};
         _ ->
-            {next_state, wait_for_exchange_end, State#state{proposed_sample = ReplacedIncomingSample}, 500}
+            {next_state,
+             wait_for_exchange_end,
+             State#state{proposed_sample = ReplacedIncomingSample},
+             500}
     end;
 wait_exchange_out(timeout, _, State) ->
     logger:warning("Actor exchanger ~p : wait_exchange_out, timed out",
@@ -276,11 +280,7 @@ responding(info,
     gproc:reg({p, l, {bbsvx_client_connection, Namespace}}),
 
     % We start by connecting to proposed sample
-    lists:foreach(fun(Node) ->
-                     supervisor:start_child(bbsvx_sup_client_connections,
-                                            [join, Namespace, MyNode, Node])
-                  end,
-                  State#state.proposed_sample),
+    open_connections(Namespace, MyNode, State#state.proposed_sample),
 
     %% Send exchange end to other side
     bbsvx_server_connection:exchange_end(State#state.origin_node#node_entry.pid),
@@ -345,13 +345,9 @@ initiator_disconnect(info,
     logger:info("Actor exchanger ~p : initiator_disconnect, Disconnect from "
                 "nodes to leave ~p",
                 [Namespace, State#state.to_leave]),
-    gen_statem:call(State#state.target_node#node_entry.pid, {send, #exchange_end{}}),
-
-    lists:foreach(fun(Node) ->
-                     %% Notify leaving node of the removal
-                     gen_statem:call(Node#node_entry.pid, {disconnect, exchange})
-                  end,
-                  State#state.to_leave),
+    bbsvx_client_connection:send(State#state.target_node#node_entry.pid, #exchange_end{}),
+    %% Finally start closing the connections
+    close_connections(State#state.to_leave),
     {stop, normal, State};
 initiator_disconnect(timeout, _, State) ->
     logger:warning("Actor exchanger ~p : initiator_disconnect, timed out",
@@ -429,6 +425,21 @@ responding_disconnect(_, _, State) ->
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
+-spec open_connections(binary(), node_entry(), [node_entry()]) -> ok.
+open_connections(Namespace, MyNode, TargetNodes) ->
+lists:foreach(fun(Node) ->
+    supervisor:start_child(bbsvx_sup_client_connections,
+                           [join, Namespace, MyNode, Node])
+ end,
+ TargetNodes).
+
+ -spec close_connections([node_entry()]) -> ok.
+ close_connections(TargetNodes) ->
+    lists:foreach(fun(Node) ->
+        %% Notify leaving node of the removal
+        gen_statem:call(Node#node_entry.pid, {disconnect, exchange})
+     end,
+     TargetNodes).
 
 %%-----------------------------------------------------------------------------
 %% @doc

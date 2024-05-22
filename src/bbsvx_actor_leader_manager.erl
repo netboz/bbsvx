@@ -48,6 +48,8 @@
          leader :: binary(),
          neighbors :: neighbors()}).
 
+-type state() :: #state{}.
+
 %%%=============================================================================
 %%% API
 %%%=============================================================================
@@ -68,7 +70,7 @@ start_link(Namespace, Diameter, DeltaC, DeltaE, DeltaD) ->
 stop() ->
     gen_statem:stop(?SERVER).
 
--spec get_leader(binary()) -> neighbor().
+-spec get_leader(binary()) -> {ok, neighbor()}.
 get_leader(Namespace) ->
     gen_statem:call({via, gproc, {n, l, {leader_manager, Namespace}}}, get_leader).
 
@@ -93,7 +95,7 @@ init([Namespace, Diameter, DeltaC, DeltaE, DeltaD]) ->
                my_id = MyId,
                neighbors = [],
                leader = Leader},
-               
+
     Payload =
         #neighbor{node_id = MyId,
                   public_key = PublicKey,
@@ -104,13 +106,14 @@ init([Namespace, Diameter, DeltaC, DeltaE, DeltaD]) ->
     gproc:reg({p, l, {leader_election, Namespace}}),
 
     %% Send election info to neighborhood
-    bbsvx_actor_spray_view:broadcast_unique(Namespace, #leader_election_info{payload = Payload}),
+    bbsvx_actor_spray_view:broadcast_unique(Namespace,
+                                            #leader_election_info{payload = Payload}),
 
     DeltaR = DeltaE + DeltaD,
     Passed = T div DeltaR,
     Delta = DeltaC + (Passed + 1) * DeltaR - T,
 
-    timer:send_after(Delta, next_round),
+    erlang:send_after(Delta, self(), next_round),
     {ok, running, State}.
 
 terminate(_Reason, _State, _Data) ->
@@ -125,7 +128,7 @@ callback_mode() ->
 %%%=============================================================================
 %%% State transitions
 %%%=============================================================================
-
+-spec running(gen_statem:event_type(), atom(), state()) -> gen_statem:gen_statem_ret().
 running(info,
         next_round,
         #state{namespace = Namespace,
@@ -151,7 +154,7 @@ running(info,
                 %% We have valid neighbors
                 %% Pick 3 random, neighbors from valid neighbors
                 RandomNeighbors = pick_three_random(Neighbors),
-
+                logger:info("Random neighbors ~p", [RandomNeighbors]),
                 %% chosen Leader is the most referenced leader among the 3 random neighbors
                 FollowedNeigbor = get_most_referenced_leader(RandomNeighbors),
                 %logger:info("Leader manager : chosen leader ~p",
@@ -164,6 +167,7 @@ running(info,
                                   end,
                                   0,
                                   ValidNeighbors),
+                logger:info("Leader manager : Followed neighbor ~p", [FollowedNeigbor]),
                 {FollowedNeigbor#neighbor.chosen_leader,
                  Tsf,
                  bbsvx_crypto_service:sign(term_to_binary(Tsf))}
@@ -185,8 +189,9 @@ running(info,
     %% Publish payload to Outview
     bbsvx_actor_spray_view:broadcast_unique(Namespace,
                                             #leader_election_info{payload = Payload}),
+    Me = self(),
     %% Set timer to DeltaR for next round
-    timer:send_after(DeltaR, next_round),
+    erlang:send_after(DeltaR, Me, next_round),
     {next_state, running, State#state{leader = Vote}};
 running(info,
         {incoming_event, #leader_election_info{payload = Payload}},
@@ -229,6 +234,7 @@ get_valid_entries(Neigh, T, DeltaC, DeltaR, M) ->
 %% is too short.
 %% @end
 
+-spec pick_three_random(neighbors()) -> neighbors().
 pick_three_random([]) ->
     [];
 pick_three_random(Neighbors) when length(Neighbors) < 3 ->
@@ -244,6 +250,8 @@ pick_three_random(Neigh) ->
 %% @doc
 %% Get the most referenced leader from the given list.
 %% @end
+
+-spec get_most_referenced_leader(neighbors()) -> neighbor() | none.
 get_most_referenced_leader([#neighbor{chosen_leader = A} = NA,
                             #neighbor{chosen_leader = B},
                             #neighbor{chosen_leader = _C}])
@@ -259,7 +267,10 @@ get_most_referenced_leader([#neighbor{chosen_leader = _A},
                             #neighbor{chosen_leader = C}])
     when B == C ->
     NB;
-get_most_referenced_leader([#neighbor{}, #neighbor{}, #neighbor{}]) ->
+get_most_referenced_leader([#neighbor{} = A, #neighbor{} = B, #neighbor{} = C]) ->
+    logger:warning("Leader manager : get_most_referenced_leader failed A:~p ~n "
+                   " B:~p ~n C:~p",
+                   [A#neighbor.node_id, B#neighbor.node_id, C#neighbor.node_id]),
     none.
 
 %%%=============================================================================

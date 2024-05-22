@@ -91,14 +91,14 @@ delete_completed(#{path := <<"/ontologies/", Namespace/binary>>} = Req, State) -
     {not Result, Req, State}.
 
 content_types_provided(#{path := Path} = Req, State) ->
-    Explo = binary:split(Path, <<"/">>, [global, trim_all]),
+    Explo = explode_path(Path),
     do_content_types_provided(Explo, Req, State).
 
 do_content_types_provided([<<"ontologies">>, _Namespace], Req, State) ->
     {[{{<<"application">>, <<"json">>, []}, provide_onto}], Req, State}.
 
 content_types_accepted(#{path := Path} = Req, State) ->
-    Explo = binary:split(Path, <<"/">>, [global, trim_all]),
+    Explo = explode_path(Path),
     do_content_types_accepted(Explo, Req, State).
 
 do_content_types_accepted([<<"ontologies">>, _Namespace, <<"prove">>],
@@ -113,6 +113,9 @@ do_content_types_accepted([<<"ontologies">>, _Namespace],
 %%=============================================================================
 %% Internal functions
 %% ============================================================================
+-spec explode_path(binary()) -> [binary()].
+explode_path(Path) ->
+    binary:split(Path, <<"/">>, [global, trim_all]).
 
 provide_onto(Req, State) ->
     logger:info("Processing get goal request ~p", [Req]),

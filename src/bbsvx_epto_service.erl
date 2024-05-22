@@ -30,6 +30,8 @@
          fanout :: integer(),
          ttl :: integer()}).
 
+-type state() :: #state{}.
+
 %%%=============================================================================
 %%% API
 %%%=============================================================================
@@ -63,6 +65,10 @@ init([Namespace, Fanout, Ttl]) ->
             ttl = Ttl,
             orderer = Orderer}}.
 
+-spec handle_call(term(), gen_server:from(), state()) ->
+                     {reply, term(), state()} |
+                     {noreply, state()} |
+                     {stop, term(), term(), state()}.
 handle_call({set_fanout_tll, Fanout, Ttl}, _From, State) ->
     Reply = gen_server:call(State#state.broadcaster, {set_fanout_ttl, Fanout, Ttl}),
     {reply, Reply, State#state{fanout = Fanout, ttl = Ttl}};

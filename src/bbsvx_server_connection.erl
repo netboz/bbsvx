@@ -41,6 +41,8 @@
          transport :: ranch_transport:transport(),
          buffer = <<>>}).
 
+-type state() :: #state{}.
+
 %%%=============================================================================
 %%% Protocol API
 %%% This is the API that ranch will use to communicate with the protocol.
@@ -80,8 +82,8 @@ stop() ->
 %%% Gen State Machine Callbacks
 %%%=============================================================================
 
-terminate(_Reason, _State, _Data) ->
-  logger:info("~p Terminating...~p   Reason ~p", [?MODULE, _State, _Reason]),
+terminate(Reason, State, _Data) ->
+  logger:info("~p Terminating...~p   Reason ~p", [?MODULE, State, Reason]),
   void.
 
 code_change(_Vsn, State, Data, _Extra) ->
@@ -94,6 +96,8 @@ callback_mode() ->
 %%% State transitions
 %%%=============================================================================
 
+-spec authenticate(enter | info, any(), state()) ->
+                    {keep_state, state()} | {next_state, atom(), state()} | {stop, any(), state()}.
 authenticate(enter, _, #state{ref = Ref, transport = Transport} = State) ->
   {ok, Socket} = ranch:handshake(Ref),
   ok = Transport:setopts(Socket, [{active, once}]),
@@ -124,7 +128,6 @@ authenticate(info,
     {ok,
      #header_connect{origin_node = OriginNode, namespace = Namespace} = Header,
      NewBuffer} ->
-
       gproc:send({p, l, {?MODULE, Header#header_connect.namespace}},
                  {incoming_client_connection, Namespace, OriginNode#node_entry{pid = MyPid}}),
 
@@ -182,7 +185,6 @@ wait_for_subscription(info,
       gproc:send({p, l, {ontology, Namespace}},
                  {connected, Namespace, OriginNode, {inview, join}}),
       {next_state, connected, State#state{buffer = NewBuffer}};
- 
     {error, _} ->
       logger:error("~p Failed to decode binary data: ~p", [?MODULE, BinData]),
       {stop, normal, State}
@@ -215,7 +217,6 @@ connected(cast, {exchange_end}, State) ->
   {keep_state, State};
 connected(info, {tcp, _Ref, BinData}, #state{buffer = Buffer} = State) ->
   parse_packet(<<Buffer/binary, BinData/binary>>, keep_state, State);
-
 connected(info,
           {tcp_closed, _Ref},
           #state{namespace = Namespace, origin_node = OriginNode} = State) ->
@@ -231,9 +232,7 @@ connected(info,
 
 parse_packet(<<>>, Action, State) ->
   {Action, State#state{buffer = <<>>}};
-parse_packet(Buffer,
-             Action,
-            #state{namespace = Namespace} = State) ->
+parse_packet(Buffer, Action, #state{namespace = Namespace} = State) ->
   Decoded =
     try binary_to_term(Buffer, [used]) of
       {DecodedEvent, NbBytesUsed} ->
@@ -261,17 +260,17 @@ parse_packet(Buffer,
     {complete, #exchange_end{} = Event, Index} ->
       logger:info("~p Exchange end received", [?MODULE]),
       <<_:Index/binary, BinLeft/binary>> = Buffer,
-      gproc:send({p, l, {spray_exchange, Namespace}}, {incoming_event, Event}),
+      event_spray_exchange(Namespace, Event),
       parse_packet(BinLeft, Action, State);
     {complete, #exchange_cancelled{} = Event, Index} ->
       logger:info("~p Exchange cancelled received", [?MODULE]),
       <<_:Index/binary, BinLeft/binary>> = Buffer,
-      gproc:send({p, l, {spray_exchange, Namespace}}, {incoming_event, Event}),
+      event_spray_exchange(Namespace, Event),
       parse_packet(BinLeft, Action, State);
     {complete, #exchange_accept{} = Event, Index} ->
       logger:info("~p Exchange accept received", [?MODULE]),
       <<_:Index/binary, BinLeft/binary>> = Buffer,
-      gproc:send({p, l, {spray_exchange, Namespace}}, {incoming_event, Event}),
+      event_spray_exchange(Namespace, Event),
       parse_packet(BinLeft, Action, State);
     {complete, #forward_subscription{subscriber_node = SubscriberNode}, Index} ->
       logger:info("~p Forward subscription received for ~p   from ~p",
@@ -285,7 +284,7 @@ parse_packet(Buffer,
       <<_:Index/binary, BinLeft/binary>> = Buffer,
       gproc:send({p, l, {epto_event, Namespace}}, {incoming_event, Payload}),
       parse_packet(BinLeft, Action, State);
-      {complete, #leader_election_info{} = Event, Index} ->
+    {complete, #leader_election_info{} = Event, Index} ->
       <<_:Index/binary, BinLeft/binary>> = Buffer,
       gproc:send({p, l, {leader_election, Namespace}}, {incoming_event, Event}),
       parse_packet(BinLeft, Action, State);
@@ -303,6 +302,13 @@ parse_packet(Buffer,
       logger:info("~p Unmanaged event ~p", [?MODULE, Else]),
       parse_packet(Buffer, Action, State)
   end.
+
+%%%=============================================================================
+%%% Internal functions
+%%%=============================================================================
+
+event_spray_exchange(Namespace, Event) ->
+  gproc:send({p, l, {spray_exchange, Namespace}}, {incoming_event, Event}).
 
 %%%=============================================================================
 %%% Eunit Tests

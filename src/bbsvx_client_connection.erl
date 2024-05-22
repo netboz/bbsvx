@@ -22,7 +22,7 @@
 -define(HEADER_TIMEOUT, 500).
 
 %% External API
--export([start_link/4, stop/0, send/2]).
+-export([start_link/4, stop/0, new/4, send/2]).
 %% Gen State Machine Callbacks
 -export([init/1, code_change/4, callback_mode/0, terminate/3]).
 %% State transitions
@@ -36,6 +36,8 @@
          socket :: inet:socket() | undefined,
          buffer :: binary()}).
 
+-type state() :: #state{}.
+
 %%%=============================================================================
 %%% API
 %%%=============================================================================
@@ -46,9 +48,13 @@ start_link(Type, Namespace, #node_entry{} = MyNode, #node_entry{} = TargetNode) 
     logger:info("Startlinking connection to ~p", [TargetNode]),
     gen_statem:start_link(?MODULE, [Type, Namespace, MyNode, TargetNode], []).
 
+new(Type, Namespace, MyNode, TargetNode) ->
+    supervisor:start_child(bbsvx_sup_client_connections,
+                           [Type, Namespace, MyNode, TargetNode]).
+
 -spec send(pid(), term()) -> ok.
 send(NodePid, Event) ->
-    gen_statem:call(NodePid, {send, Event}).
+    gen_statem:cast(NodePid, {send, Event}).
 
 stop() ->
     gen_statem:stop(?SERVER).
@@ -85,7 +91,7 @@ callback_mode() ->
 %%%=============================================================================
 %%% State transitions
 %%%=============================================================================
-
+-spec connect(enter, any(), state()) -> {keep_state, state()}.
 connect(enter,
         _,
         #state{namespace = Namespace,
@@ -118,8 +124,7 @@ connect(enter,
                                                             origin_node = MyNode})),
             {keep_state, State#state{socket = Socket}, ?HEADER_TIMEOUT};
         {error, Reason} ->
-            gproc:send({p, l, {?MODULE, Namespace}},
-                       {connection_error, Reason, Namespace, TargetNode}),
+            event_connection_error(Reason, Namespace, TargetNode),
             logger:error("Could not connect to ~p:~p~n", [TargetHost, TargetPort]),
             {stop, Reason}
     end;
@@ -161,16 +166,14 @@ connect(info,
                              ?HEADER_TIMEOUT}
                     end;
                 OtherConnectionResult ->
-                    gproc:send({p, l, {?MODULE, Namespace}},
-                               {connection_error, OtherConnectionResult, Namespace, TargetNode}),
+                    event_connection_error(OtherConnectionResult, Namespace, TargetNode),
                     logger:warning("~p Connection to ~p refused : ~p with reason ~p",
                                    [?MODULE, TargetNode, Type, OtherConnectionResult]),
                     {stop, normal}
             end;
         _ ->
             logger:error("Invalid header received~n"),
-            gproc:send({p, l, {?MODULE, Namespace}},
-                       {connection_error, invalid_header, Namespace, TargetNode}),
+            event_connection_error(invalid_header, Namespace, TargetNode),
             {stop, normal}
     end;
 connect(info,
@@ -180,9 +183,8 @@ connect(info,
                {connection_error, tcp_closed, Namespace, TargetNode}),
     logger:error("Connection closed~n"),
     {stop, normal};
-connect(timeout, _, #state{namespace = Namespace, target_node = TargetNode} = State) ->
-    gproc:send({p, l, {?MODULE, Namespace}},
-               {connection_error, timeout, State#state.namespace, TargetNode}),
+connect(timeout, _, #state{namespace = Namespace, target_node = TargetNode}) ->
+    event_connection_error(timeout, Namespace, TargetNode),
     logger:error("Connection timeout~n"),
     {stop, normal};
 %% Ignore all other events
@@ -281,21 +283,15 @@ connected(enter,
                {connected, Namespace, TargetNode, {outview, Type}}),
     {keep_state, State};
 connected(info, {tcp, _Socket, BinData}, #state{buffer = Buffer} = State) ->
-    ParseResult = parse_packet(<<Buffer/binary, BinData/binary>>, keep_state, State),
-    case ParseResult of
-        {keep_state, NewState} ->
-            {keep_state, NewState};
-        {next_state, NextState, NewState, Timeout} ->
-            {next_state, NextState, NewState, Timeout}
-    end;
+    parse_packet(<<Buffer/binary, BinData/binary>>, keep_state, State);
 connected(cast, #forward_subscription{} = Subscription, State) ->
     logger:info("~p Forwarding subscription static ~p   to ~p",
                 [?MODULE, Subscription, State#state.target_node]),
     gen_tcp:send(State#state.socket, term_to_binary(Subscription)),
     {keep_state, State};
-connected({call, From}, {send, Event}, State) ->
+connected(cast, {send, Event}, State) ->
     gen_tcp:send(State#state.socket, term_to_binary(Event)),
-    {keep_state, State, [{reply, From, ok}]};
+    {keep_state, State};
 connected({call, From},
           {disconnect, Reason},
           #state{namespace = Namespace, target_node = TargetNode}) ->
@@ -322,10 +318,19 @@ connected(Type, Event, State) ->
                 [?MODULE, {Type, Event}, State#state.socket]),
     {keep_state, State}.
 
-    %%%=============================================================================
-    %%% Internal functions
-    %%%=============================================================================
+%%%=============================================================================
+%%% Internal functions
+%%%=============================================================================
 
+event_connection_error(Reason, Namespace, TargetNode) ->
+    logger:error("~p Connection error ~p to ~p~n", [?MODULE, Reason, TargetNode]),
+    gproc:send({p, l, {?MODULE, Namespace}},
+               {connection_error, Reason, Namespace, TargetNode}).
+
+event_spray(Event, Namespace) ->
+    gproc:send({p, l, {?MODULE, Namespace}}, {incoming_event, Event}).
+
+-spec parse_packet(binary(), term(), state()) -> {term(), state()}.
 parse_packet(<<>>, Action, State) ->
     {Action, State#state{buffer = <<>>}};
 parse_packet(Buffer, Action, #state{namespace = Namespace} = State) ->
@@ -343,40 +348,35 @@ parse_packet(Buffer, Action, #state{namespace = Namespace} = State) ->
         {complete, #exchange_cancelled{} = Event, Index} ->
             <<_:Index/binary, BinLeft/binary>> = Buffer,
             logger:info("~p Incoming event ~p", [?MODULE, Event]),
-            gproc:send({p, l, {spray_exchange, Namespace}}, {incoming_event, Event}),
-
+            event_spray(Event, Namespace),
             parse_packet(BinLeft, Action, State);
         {complete, #exchange_out{} = Event, Index} ->
             <<_:Index/binary, BinLeft/binary>> = Buffer,
             logger:info("~p Incoming event ~p", [?MODULE, Event]),
-            gproc:send({p, l, {spray_exchange, Namespace}}, {incoming_event, Event}),
-
+            event_spray(Event, Namespace),
             parse_packet(BinLeft, Action, State);
         {complete, #exchange_accept{} = Event, Index} ->
             <<_:Index/binary, BinLeft/binary>> = Buffer,
             logger:info("~p Incoming event ~p", [?MODULE, Event]),
-            gproc:send({p, l, {spray_exchange, Namespace}}, {incoming_event, Event}),
-
+            event_spray(Event, Namespace),
             parse_packet(BinLeft, Action, State);
         {complete, #exchange_end{} = Event, Index} ->
             <<_:Index/binary, BinLeft/binary>> = Buffer,
             logger:info("~p Incoming event ~p", [?MODULE, Event]),
-            gproc:send({p, l, {spray_exchange, Namespace}}, {incoming_event, Event}),
-
+            event_spray(Event, Namespace),
             parse_packet(BinLeft, Action, State);
         {complete, Event, Index} ->
             <<_:Index/binary, BinLeft/binary>> = Buffer,
             logger:info("~p Incoming event ~p", [?MODULE, Event]),
-            gproc:send({p, l, {?MODULE, Namespace}}, {incoming_event, Event}),
-
+            event_spray(Event, Namespace),
             parse_packet(BinLeft, Action, State);
         {incomplete, Buffer} ->
             {keep_state, State#state{buffer = Buffer}}
     end.
 
-    %%%=============================================================================
-    %%% Eunit Tests
-    %%%=============================================================================
+%%%=============================================================================
+%%% Eunit Tests
+%%%=============================================================================
 
 -ifdef(TEST).
 

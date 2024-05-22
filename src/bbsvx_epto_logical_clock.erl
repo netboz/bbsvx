@@ -26,6 +26,8 @@
 %% Loop state
 -record(state, {namespace :: binary(), logical_clock = 0 :: integer(), ttl :: integer()}).
 
+-type state() :: #state{}.
+
 %%%=============================================================================
 %%% API
 %%%=============================================================================
@@ -33,7 +35,10 @@
 -spec start_link(Namespace :: binary(), Ttl :: integer()) ->
                     {ok, pid()} | {error, {already_started, pid()}} | {error, Reason :: any()}.
 start_link(Namespace, Ttl) ->
-    gen_server:start_link({via, gproc, {n, l, {?MODULE, Namespace}}}, ?MODULE, [Namespace, Ttl], []).
+    gen_server:start_link({via, gproc, {n, l, {?MODULE, Namespace}}},
+                          ?MODULE,
+                          [Namespace, Ttl],
+                          []).
 
 %%%=============================================================================
 %%% Gen Server Callbacks
@@ -43,6 +48,10 @@ init([Namespace, Ttl]) ->
     State = #state{namespace = Namespace, ttl = Ttl},
     {ok, State}.
 
+-spec handle_call(Request :: term(), From :: gen_server:from(), State :: state()) ->
+                     {reply, Reply :: term(), State :: state()} |
+                     {noreply, State :: state()} |
+                     {stop, Reason :: term(), Reply :: term(), State :: state()}.
 handle_call({set_ttl, Ttl}, _From, State) ->
     {reply, ok, State#state{ttl = Ttl}};
 handle_call({is_deliverable, Event}, _From, State) ->

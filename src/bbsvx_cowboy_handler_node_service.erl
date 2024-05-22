@@ -74,7 +74,7 @@ init(#{method := <<"GET">>} = Req0, State) ->
                                         my_id => MyId,
                                         source => NodeId,
                                         target => MyId,
-                                        host => list_to_binary(inet:ntoa(Host)),
+                                        host => Host,
                                         port => Port,
                                         age => Age}
                                       || #node_entry{host = Host,

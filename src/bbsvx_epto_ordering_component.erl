@@ -33,6 +33,8 @@
          last_delivered_ts = 0 :: integer(),
          logical_clock :: pid()}).
 
+-type state() :: #state{}.
+
 %%%=============================================================================
 %%% API
 %%%=============================================================================
@@ -56,6 +58,10 @@ init([Namespace, LogicalClockPid]) ->
                logical_clock = LogicalClockPid},
     {ok, State}.
 
+-spec handle_call(term(), gen_server:from(), state()) ->
+                     {reply, term(), state()} |
+                     {noreply, state()} |
+                     {stop, term(), term(), state()}.
 handle_call({order_events, Ball},
             _From,
             #state{delivered = Delivered,
@@ -83,13 +89,10 @@ handle_call({order_events, Ball},
                                      maps:put(BallEvtId,
                                               ReceivedEvt#event{ttl = BallEvtTtl},
                                               ReceivedEvts);
-                                 undefined ->
-                                     maps:put(BallEvtId, BallEvt, ReceivedEvts);
-                                 _ ->
-                                     ReceivedEvts
+                                 undefined -> maps:put(BallEvtId, BallEvt, ReceivedEvts);
+                                 _ -> ReceivedEvts
                              end;
-                         _ ->
-                             ReceivedEvts
+                         _ -> ReceivedEvts
                      end
                   end,
                   TtlReceived,
@@ -102,14 +105,11 @@ handle_call({order_events, Ball},
     {DeliverableEvents, UpdatedMinQueueTs} =
         maps:fold(fun(_EvtId, #event{ts = EvtTs} = Evt, {DeliverableEvents, MQTs}) ->
                      case gen_server:call(State#state.logical_clock, {is_deliverable, Evt}) of
-                         true ->
-                             {[Evt | DeliverableEvents], MinQueueTs};
+                         true -> {[Evt | DeliverableEvents], MinQueueTs};
                          _ ->
                              case is_above(MQTs, EvtTs) of
-                                 true ->
-                                     {DeliverableEvents, EvtTs};
-                                 _ ->
-                                     {DeliverableEvents, MinQueueTs}
+                                 true -> {DeliverableEvents, EvtTs};
+                                 _ -> {DeliverableEvents, MinQueueTs}
                              end
                      end
                   end,

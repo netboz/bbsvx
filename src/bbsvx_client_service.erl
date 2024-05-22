@@ -32,6 +32,8 @@
          port,
          subscriptions :: term()}).
 
+-type state() :: #state{}.
+
 %%%=============================================================================
 %%% API
 %%%=============================================================================
@@ -78,14 +80,16 @@ init([Host, Port]) ->
             subscriptions = dict:new()}}.
 
 %% Handle request to get host port
+-spec handle_call(Event :: term(), _From :: gen_server:from(), State :: state()) ->
+                     term().
 handle_call(my_host_port, _From, #state{host = Host, port = Port} = State) ->
     {reply, {ok, {Host, Port}}, State};
 %% Manage connections to new nodes
 %% Local connections are prevented
-handle_call(_Request, _From, State) ->
+handle_call(Request, From, State) ->
     logger:info("bbsvx_connections_service:handle_call/3 called with Request: "
                 "~p, From: ~p, State: ~p",
-                [_Request, _From, State]),
+                [Request, From, State]),
     Reply = ok,
     {reply, Reply, State}.
 
