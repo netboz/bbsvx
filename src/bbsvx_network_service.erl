@@ -5,9 +5,11 @@
 %%% @end
 %%%-----------------------------------------------------------------------------
 
--module(bbsvx_client_service).
+-module(bbsvx_network_service).
 
 -author("yan").
+
+-include("bbsvx.hrl").
 
 -behaviour(gen_server).
 
@@ -25,12 +27,7 @@
 -define(SERVER, ?MODULE).
 
 %% Loop state
--record(state,
-        {connection_table :: atom() | term(),
-         node_id = undefined,
-         host,
-         port,
-         subscriptions :: term()}).
+-record(state, {node_id = undefined, host, port}).
 
 -type state() :: #state{}.
 
@@ -68,16 +65,19 @@ my_host_port() ->
 init([Host, Port]) ->
     %% Publish my id to the welcome topic
     MyId = bbsvx_crypto_service:my_id(),
-    logger:info("bbsvx_connections_service: My id is ~p", [MyId]),
-
-    ConnTable = ets:new(connection_table, [bag, named_table, public, {keypos, 2}]),
+    {ok, _} =
+        ranch:start_listener(bbsvx_spray_service,
+                             ranch_tcp,
+                             #{socket_opts => [{port, 2305}], max_connections => infinity},
+                             bbsvx_server_connection,
+                             [#node_entry{node_id = MyId,
+                                          host = Host,
+                                          port = Port}]),
 
     {ok,
-     #state{connection_table = ConnTable,
-            node_id = MyId,
+     #state{node_id = MyId,
             host = Host,
-            port = Port,
-            subscriptions = dict:new()}}.
+            port = Port}}.
 
 %% Handle request to get host port
 -spec handle_call(Event :: term(), _From :: gen_server:from(), State :: state()) ->

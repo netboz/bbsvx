@@ -12,7 +12,7 @@
 -behaviour(gen_statem).
 -behaviour(ranch_protocol).
 
--include("bbsvx_tcp_messages.hrl").
+-include("bbsvx.hrl").
 
 -dialyzer(no_undefined_callbacks).
 
@@ -35,9 +35,9 @@
 -record(state,
         {ref :: ranch_tcp:ref(),
          socket :: ranch_tcp:socket(),
-         namespace :: binary(),
+         namespace :: binary() | undefined,
          mynode :: #node_entry{},
-         origin_node :: #node_entry{},
+         origin_node :: #node_entry{} | undefined,
          transport :: ranch_transport:transport(),
          buffer = <<>>}).
 
@@ -244,6 +244,10 @@ parse_packet(Buffer, Action, #state{namespace = Namespace} = State) ->
     end,
 
   case Decoded of
+    {complete, #transaction{} = Transacion, Index} ->
+      <<_:Index/binary, BinLeft/binary>> = Buffer,
+      bbsvx_transaction_pipeline:accept_transaction(Transacion),
+      parse_packet(BinLeft, Action, State);
     {complete,
      #exchange_in{origin_node = OriginNode, proposed_sample = ProposedSample},
      Index} ->

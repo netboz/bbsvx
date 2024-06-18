@@ -16,7 +16,7 @@
 %%%=============================================================================
 
 %% External API
--export([start_link/3]).
+-export([start_link/2, broadcast/2]).
 %% Callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
@@ -36,19 +36,26 @@
 %%% API
 %%%=============================================================================
 
--spec start_link(Namespace :: binary(), Fanout :: integer(), Ttl :: integer()) ->
+-spec start_link(Namespace :: binary(), Options :: map()) ->
                     {ok, pid()} | {error, {already_started, pid()}} | {error, Reason :: any()}.
-start_link(Namespace, Fanout, Ttl) ->
+start_link(Namespace, Options) ->
     gen_server:start_link({via, gproc, {n, l, {?MODULE, Namespace}}},
                           ?MODULE,
-                          [Namespace, Fanout, Ttl],
+                          [Namespace, Options],
                           []).
+
+-spec broadcast(binary(), term()) -> ok.
+broadcast(Namespace, Msg) ->
+    gen_server:call({via, gproc, {n, l, {bbsvx_epto_dissemination_comp, Namespace}}},
+                    {epto_broadcast, Msg}).
 
 %%%=============================================================================
 %%% Gen Server Callbacks
 %%%=============================================================================
 
-init([Namespace, Fanout, Ttl]) ->
+init([Namespace, Options]) ->
+    Fanout = maps:get(fanout, Options, 15),
+    Ttl = maps:get(ttl, Options, 16),
     logger:info("Starting EPTO service for namespace ~p with fanout ~p and ttl ~p",
                 [Namespace, Fanout, Ttl]),
     %%TODO : Not sure next line is needed

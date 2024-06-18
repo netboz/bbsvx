@@ -11,7 +11,7 @@
 
 -behaviour(gen_statem).
 
--include("bbsvx_tcp_messages.hrl").
+-include("bbsvx.hrl").
 
 %%%=============================================================================
 %%% Export and Defs
@@ -19,7 +19,7 @@
 
 -define(SERVER, ?MODULE).
 -define(CONNECTION_TIMEOUT, 1000).
--define(HEADER_TIMEOUT, 500).
+-define(HEADER_TIMEOUT, 2000).
 
 %% External API
 -export([start_link/4, stop/0, new/4, send/2]).
@@ -64,6 +64,7 @@ stop() ->
 %%%=============================================================================
 
 init([Type, Namespace, MyNode, TargetNode]) ->
+    process_flag(trap_exit, true),
     logger:info("Initializing connection from ~p, to ~p",
                 [{TargetNode#node_entry.node_id, TargetNode#node_entry.host},
                  {MyNode#node_entry.node_id, MyNode#node_entry.host}]),
@@ -126,7 +127,7 @@ connect(enter,
         {error, Reason} ->
             event_connection_error(Reason, Namespace, TargetNode),
             logger:error("Could not connect to ~p:~p~n", [TargetHost, TargetPort]),
-            {stop, Reason}
+            {stop, normal}
     end;
 connect(info,
         {tcp, Socket, Bin},

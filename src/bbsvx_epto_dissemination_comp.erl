@@ -11,7 +11,7 @@
 
 -behaviour(gen_server).
 
--include("bbsvx_tcp_messages.hrl").
+-include("bbsvx.hrl").
 
 %%%=============================================================================
 %%% Export and Defs

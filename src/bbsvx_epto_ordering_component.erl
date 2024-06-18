@@ -22,6 +22,7 @@
          code_change/3]).
 
 -include("bbsvx_epto.hrl").
+-include("bbsvx.hrl").
 
 -define(SERVER, ?MODULE).
 
@@ -178,6 +179,12 @@ is_above(MinQueueTs, EvtTs) when MinQueueTs > EvtTs ->
 is_above(_MinQueueTs, _EvtTs) ->
     false.
 
+deliver(#event{payload = #transaction{} = Transaction}) ->
+    logger:info("Recevied new tranaction ~p", [Transaction]),
+    bbsvx_transaction_pipeline:accept_transaction(Transaction);
+deliver(#event{payload = #goal_result{} = GoalResult}) ->
+    logger:info("Recevied new tranaction ~p", [GoalResult]),
+    bbsvx_transaction_pipeline:accept_transaction_result(GoalResult);
 deliver(#event{payload = <<"leader">>}) ->
     %% Get leader from leader manager
     {ok, Leader} = bbsvx_actor_leader_manager:get_leader(<<"bbsvx:root">>),

@@ -11,7 +11,7 @@
 
 -behaviour(gen_statem).
 
--include("bbsvx_tcp_messages.hrl").
+-include("bbsvx.hrl").
 
 %%%=============================================================================
 %%% Export and Defs
@@ -22,7 +22,7 @@
 
 %% External API
 -export([start_link/1, start_link/2, stop/0, reinit_age/2, broadcast/2,
-         broadcast_unique/2]).
+         broadcast_unique/2, get_n_unique_random/2, broadcast_unique_random_subset/3]).
 %% Gen State Machine Callbacks
 -export([init/1, code_change/4, callback_mode/0, terminate/3]).
 %% State transitions
@@ -49,7 +49,7 @@ start_link(Namespace) ->
 -spec start_link(Namespace :: binary(), Options :: list()) ->
                     {ok, pid()} | {error, {already_started, pid()}} | {error, Reason :: any()}.
 start_link(Namespace, Options) ->
-    gen_statem:start({via, gproc, {n, l, {?MODULE, Namespace}}},
+    gen_statem:start_link({via, gproc, {n, l, {?MODULE, Namespace}}},
                      ?MODULE,
                      [Namespace, Options],
                      []).
@@ -88,6 +88,30 @@ broadcast_unique(Namespace, Payload) ->
     gen_statem:cast({via, gproc, {n, l, {bbsvx_actor_spray_view, Namespace}}},
                     {broadcast_unique, Payload}).
 
+%%%-----------------------------------------------------------------------------
+%%% @doc
+%%% Send payload to a random subset of the view
+%%% @returns Number of nodes the payload was sent to
+%%% @end
+
+-spec broadcast_unique_random_subset(Namespace :: binary(),
+                                     Payload :: term(),
+                                     N :: integer()) ->
+                                        {ok, integer()}.
+broadcast_unique_random_subset(Namespace, Payload, N) ->
+    gen_statem:call({via, gproc, {n, l, {bbsvx_actor_spray_view, Namespace}}},
+                    {broadcast_unique_random_subset, Payload, N}).
+
+%%%-----------------------------------------------------------------------------
+%%% @doc
+%%% Get n unique random nodes from the outview
+%%% @returns [node_entry()]
+%%% @end
+-spec get_n_unique_random(Namespace :: binary(), N :: integer()) -> [node_entry()].
+get_n_unique_random(Namespace, N) ->
+    gen_statem:call({via, gproc, {n, l, {bbsvx_actor_spray_view, Namespace}}},
+                    {get_n_unique_random, N}).
+
 -spec stop() -> ok.
 stop() ->
     gen_statem:stop(?SERVER).
@@ -104,15 +128,13 @@ init([Namespace, Options]) ->
     %% Get our node id
     MyNodeId = bbsvx_crypto_service:my_id(),
     %% Get our host and port
-    {ok, {Host, Port}} = bbsvx_client_service:my_host_port(),
+    {ok, {Host, Port}} = bbsvx_network_service:my_host_port(),
     MyNode =
         #node_entry{node_id = MyNodeId,
                     host = Host,
                     port = Port},
     %% Check options for contact_nodes to connect to
-    case proplists:get_value(contact_nodes, Options) of
-        undefined ->
-            ok;
+    case maps:get(contact_nodes, Options, []) of
         [] ->
             ok;
         [_ | _] = ContactNodes ->
@@ -176,7 +198,7 @@ running(enter, _OldState, State) ->
             logger:info("spray Agent ~p : Running state, Starting exchange timer",
                         [State#state.namespace]),
             Me = self(),
-            Timeref = erlang:start_timer(?EXCHANGE_TIMEOUT, Me, spray_lopp),
+            Timeref = erlang:start_timer(?EXCHANGE_TIMEOUT, Me, spray_loop),
             {keep_state, State#state{pid_exchange_timeout = Timeref}};
         _ ->
             keep_state_and_data
@@ -297,15 +319,16 @@ running(info,
         #state{namespace = Namespace} = State) ->
     logger:info("spray Agent ~p : Running state, Connection error to ~p  Reason ~p",
                 [State#state.namespace, TargetNode, Reason]),
-    {stop, normal, State};
+    {keep_state, State};
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Old API
 %% Remove nodes from outview
 %%Exchange management
 %% Exchange with an empty out view
-running(info, spray_loop, #state{out_view = OutView} = State) when length(OutView) < 1 ->
+running(info, {timeout, _, spray_loop}, #state{out_view = OutView} = State)
+    when length(OutView) < 1 ->
     {keep_state, State};
 running(info,
-        spray_loop,
+        {timeout, _, spray_loop},
         #state{pid_exchanger = undefined,
                my_node = MyNode,
                namespace = Namespace,
@@ -321,7 +344,7 @@ running(info,
 
     {keep_state,
      State#state{pid_exchanger = {PidExchanger, RefExchanger}, out_view = AgedPartialView}};
-running(info, spray_loop, #state{} = State) ->
+running(info, {timeout, _, spray_loop}, #state{} = State) ->
     logger:warning("spray Agent ~p : Running state, Concurent spray loop, ignoring",
                    [State#state.namespace]),
     keep_state_and_data;
@@ -374,6 +397,18 @@ running(cast, {broadcast_unique, Payload}, #state{out_view = OutView} = State) -
                   lists:usort(fun(N1, N2) -> N1#node_entry.node_id =< N2#node_entry.node_id end,
                               OutView)),
     {keep_state, State};
+running({call, From},
+        {broadcast_unique_random_subset, Payload, N},
+        #state{out_view = OutView} = State) ->
+    %% Get n unique random nodes from the outview
+    RandomSubset =
+        lists:sublist(
+            lists:usort(fun(_N1, _N2) -> rand:uniform(2) =< 1 end, OutView), N),
+    lists:foreach(fun(#node_entry{pid = Pid}) -> bbsvx_client_connection:send(Pid, Payload)
+                  end,
+                  RandomSubset),
+    gen_statem:reply(From, {ok, length(RandomSubset)}),
+    {keep_state, State};
 running(info,
         {'DOWN', MonitorRef, process, PidTerminating, _Info},
         #state{pid_exchanger = {PidTerminating, MonitorRef}} = State) ->
@@ -402,6 +437,13 @@ running({call, From}, {reinit_age, TargetNodePid}, #state{out_view = OutView} = 
 
     gen_statem:reply(From, ok),
     {keep_state, State#state{out_view = NewOutView}};
+running({call, From}, {get_n_unique_random, N}, #state{out_view = OutView} = State) ->
+    %% Get n unique random nodes from the outview
+    gen_statem:reply(From,
+                     {ok,
+                      lists:sublist(
+                          lists:usort(fun(_N1, _N2) -> rand:uniform(2) =< 1 end, OutView), N)}),
+    {keep_state, State};
 running(info, {'EXIT', Pid, shutdown}, State) ->
     logger:info("spray Agent ~p : Running state, Exchanger ~p shutdown",
                 [State#state.namespace, Pid]),
@@ -414,6 +456,7 @@ running(Type, Event, State) ->
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
+
 -spec build_metric_view_name(Namespace :: binary(), MetricName :: binary()) -> atom().
 build_metric_view_name(Namespace, MetricName) ->
     binary_to_atom(iolist_to_binary([MetricName,

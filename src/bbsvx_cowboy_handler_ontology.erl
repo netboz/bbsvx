@@ -15,7 +15,7 @@
 
 -author("yan").
 
--include("bbsvx_common_types.hrl").
+-include("bbsvx.hrl").
 
 -export([init/2, allowed_methods/2, content_types_accepted/2, content_types_provided/2,
          delete_resource/2, delete_completed/2, resource_exists/2, last_modified/2,
@@ -32,6 +32,29 @@ init(Req0, State) ->
 allowed_methods(Req, State) ->
     {[<<"GET">>, <<"POST">>, <<"PUT">>, <<"DELETE">>, <<"HEAD">>, <<"OPTIONS">>], Req, State}.
 
+malformed_request(#{path := <<"/ontologies/prove">>, method := <<"PUT">>} = Req, State) ->
+    try
+        {ok, Body, Req1} = cowboy_req:read_body(Req),
+        DBody = jiffy:decode(Body, [return_maps]),
+        logger:info("Body ~p", [DBody]),
+
+        case DBody of
+            #{<<"namespace">> := Namespace, <<"goal">> := Goal} ->
+                {false, Req1, State#{namespace => Namespace, goal => Goal}};
+            _ ->
+                Req2 =
+                    cowboy_req:set_resp_body(
+                        jiffy:encode([#{error => <<"missing_namespace">>}]), Req1),
+                {true, Req2, State}
+        end
+    catch
+        A:B ->
+            logger:info("Malformed request ~p:~p", [A, B]),
+            Req3 =
+                cowboy_req:set_resp_body(
+                    jiffy:encode([#{error => <<"invalid_json">>}]), Req),
+            {true, Req3, State}
+    end;
 malformed_request(#{path := <<"/ontologies/", _Namespace/binary>>, method := <<"PUT">>} =
                       Req,
                   State) ->
@@ -60,6 +83,19 @@ malformed_request(Req, State) ->
     logger:info("Malformeda ll request ~p", [Req]),
     {false, Req, State}.
 
+resource_exists(#{path := <<"/ontologies/prove">>} = Req,
+                #{namespace := Namespace} = State) ->
+    case bbsvx_ont_service:get_ontology(Namespace) of
+        {ok, #ontology{} = Onto} ->
+            logger:info("Ontology ~p exists ~p", [Namespace, Onto]),
+            {true, Req, State};
+        _ ->
+            logger:info("Ontology ~p does not exist", [Namespace]),
+            Req1 =
+                cowboy_req:set_resp_body(
+                    jiffy:encode([#{error => <<"namespace_mismatch">>}]), Req),
+            {false, Req1, State}
+    end;
 resource_exists(#{path := <<"/ontologies/", Namespace/binary>>} = Req, State) ->
     logger:info("Ontology ~p ressource exists", [Namespace]),
     case bbsvx_ont_service:get_ontology(Namespace) of
@@ -101,8 +137,8 @@ content_types_accepted(#{path := Path} = Req, State) ->
     Explo = explode_path(Path),
     do_content_types_accepted(Explo, Req, State).
 
-do_content_types_accepted([<<"ontologies">>, _Namespace, <<"prove">>],
-                          #{method := <<"POST">>} = Req,
+do_content_types_accepted([<<"ontologies">>, <<"prove">>],
+                          #{method := <<"PUT">>} = Req,
                           State) ->
     {[{{<<"application">>, <<"json">>, []}, accept_goal}], Req, State};
 do_content_types_accepted([<<"ontologies">>, _Namespace],
@@ -176,16 +212,30 @@ accept_onto(Req0, #{onto := PreviousOntState, body := Body} = State) ->
             {false, Req2, State}
     end.
 
-accept_goal(Req0, State) ->
+accept_goal(Req0, #{namespace := Namespace, goal := Goal} = State) ->
     logger:info("Cowboy Handler : New goal ~p", [Req0]),
 
-    Namespace = cowboy_req:binding(namespace, Req0),
-
-    logger:info("Cowboy Handler : New goal for namespace ~p", [Namespace]),
-    {ok, Body, Req1} = cowboy_req:read_body(Req0),
-    #{<<"namespace">> := Namespace2, <<"payload">> := Payload} =
-        jiffy:decode(Body, [return_maps]),
-    _Goal = #goal{namespace = Namespace, payload = Payload},
-    logger:info("new_ontology namespace frm body ~p", [Namespace2]),
-    bbsvx_ont_service:new_ontology(#ontology{namespace = Namespace}),
-    {true, Req1, State}.
+    NewGoal = #goal{namespace = Namespace, payload = Goal},
+    NewTransaction =
+        #transaction{namespace = Namespace,
+                     type = goal,
+                     payload = NewGoal},
+    try bbsvx_epto_service:broadcast(Namespace, NewTransaction) of
+        ok ->
+            Req1 =
+                cowboy_req:set_resp_body(
+                    jiffy:encode([#{status => <<"accepted">>}]), Req0),
+            {true, Req1, State};
+        {error, Reason} ->
+            Req2 =
+                cowboy_req:set_resp_body(
+                    jiffy:encode([#{error => atom_to_binary(Reason)}]), Req0),
+            {true, Req2, State}
+    catch
+        A:B ->
+            logger:info("Internal error ~p:~p", [A, B]),
+            Req3 =
+                cowboy_req:set_resp_body(
+                    jiffy:encode([#{error => <<"network_internal_error">>}]), Req0),
+            {true, Req3, State}
+    end.

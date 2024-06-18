@@ -29,19 +29,9 @@ init([]) ->
     #{strategy => one_for_all,
       intensity => 5,
       period => 1},
-
+  %% Retrieve port from configuration
+  Port = application:get_env(bbsvx, port, 2305),
   LocalIp = local_ip_v4(),
-  %% #{server_opts => settings(), %% TODO: change this in chatterbox to be under a module
-  %% grpc_opts => #{service_protos := [module()]},
-  %% listen_opts => #{port => inet:port_number(),
-  % %                 ip => inet:ip_address(),
-  %                 socket_options => [gen_tcp:option()]},
-  %pool_opts => #{size => integer()},
-  %transport_opts => #{ssl => boolean(),
-  %                    keyfile => file:filename_all(),
-  %                    certfile => file:filename_all(),
-  %                    cacertfile => file:filename_all()}}.
-  logger:info("BBSVX Supervisor: BBSVX local ip is ~p", [LocalIp]),
 
   ChildSpecs =
     [%% Start crypto service
@@ -58,34 +48,20 @@ init([]) ->
        shutdown => brutal_kill,
        type => supervisor,
        modules => [bbsvx_sup_client_connections]},
-     %% Start spray view agents Supervisor
-     #{id => bbsvx_sup_spray_view_agents,
-       start => {bbsvx_sup_spray_view_agents, start_link, []},
+     %% Start shared ontologies Supervisor
+     #{id => bbsvx_sup_shared_ontologies,
+       start => {bbsvx_sup_shared_ontologies, start_link, []},
        restart => permanent,
        shutdown => brutal_kill,
        type => supervisor,
-       modules => [bbsvx_sup_spray_view_agents]},
-     %% Start epto agents Supervisor
-     #{id => bbsvx_sup_epto_agents,
-       start => {bbsvx_sup_epto_agents, start_link, []},
-       restart => permanent,
-       shutdown => brutal_kill,
-       type => supervisor,
-       modules => [bbsvx_sup_epto_agents]},
-     %% Start leader managers Supervisor
-     #{id => bbsvx_sup_leader_managers,
-       start => {bbsvx_sup_leader_managers, start_link, []},
-       restart => permanent,
-       shutdown => brutal_kill,
-       type => supervisor,
-       modules => [bbsvx_sup_leader_managers]},
+       modules => [bbsvx_sup_shared_ontologies]},
      %% Start network service
-     #{id => bbsvx_client_service,
-       start => {bbsvx_client_service, start_link, [LocalIp, 2305]},
+     #{id => bbsvx_network_service,
+       start => {bbsvx_network_service, start_link, [LocalIp, Port]},
        restart => permanent,
        shutdown => brutal_kill,
        type => worker,
-       modules => [bbsvx_client_service]},
+       modules => [bbsvx_network_service]},
      #{id => bbsvx_ont_service,
        start => {bbsvx_ont_service, start_link, []},
        restart => permanent,

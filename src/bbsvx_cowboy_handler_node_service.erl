@@ -9,7 +9,7 @@
 
 -author("yan").
 
--include("bbsvx_common_types.hrl").
+-include("bbsvx.hrl").
 
 -export([init/2]).
 

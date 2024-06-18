@@ -16,7 +16,7 @@
 
 -behaviour(gen_statem).
 
--include("bbsvx_tcp_messages.hrl").
+-include("bbsvx.hrl").
 
 %%%=============================================================================
 %%% Export and Defs
@@ -56,7 +56,7 @@
 -spec start_link(ActorType :: initiator, NameSpace :: binary(), MyNode :: node_entry()) ->
                     {ok, pid()} | {error, Reason :: any()}.
 start_link(initiator, Namespace, MyNode) ->
-    gen_statem:start({via, gproc, {n, l, {?MODULE, Namespace}}},
+    gen_statem:start_link({via, gproc, {n, l, {?MODULE, Namespace}}},
                      ?MODULE,
                      [initiator, Namespace, MyNode],
                      []).
@@ -68,7 +68,7 @@ start_link(initiator, Namespace, MyNode) ->
                  ProposedSample :: [node_entry()]) ->
                     {ok, pid()} | {error, Reason :: any()}.
 start_link(responder, Namespace, MyNode, OriginNode, ProposedSample) ->
-    gen_statem:start({via, gproc, {n, l, {?MODULE, Namespace}}},
+    gen_statem:start_link({via, gproc, {n, l, {?MODULE, Namespace}}},
                      ?MODULE,
                      [responder, Namespace, MyNode, OriginNode, ProposedSample],
                      []).
@@ -115,7 +115,7 @@ callback_mode() ->
 %%% State transitions
 %%%=============================================================================
 -spec wait_exchange_out(gen_statem:event_type(), term(), state()) ->
-    gen_statem:state_return().
+                           {next_state, state(), timeout} | {stop, normal, state()}.
 wait_exchange_out(enter, _, #state{namespace = Namespace} = State) ->
     {ok, PartialView} =
         gen_statem:call({via, gproc, {n, l, {bbsvx_actor_spray_view, State#state.namespace}}},
@@ -427,19 +427,19 @@ responding_disconnect(_, _, State) ->
 %%%=============================================================================
 -spec open_connections(binary(), node_entry(), [node_entry()]) -> ok.
 open_connections(Namespace, MyNode, TargetNodes) ->
-lists:foreach(fun(Node) ->
-    supervisor:start_child(bbsvx_sup_client_connections,
-                           [join, Namespace, MyNode, Node])
- end,
- TargetNodes).
-
- -spec close_connections([node_entry()]) -> ok.
- close_connections(TargetNodes) ->
     lists:foreach(fun(Node) ->
-        %% Notify leaving node of the removal
-        gen_statem:call(Node#node_entry.pid, {disconnect, exchange})
-     end,
-     TargetNodes).
+                     supervisor:start_child(bbsvx_sup_client_connections,
+                                            [join, Namespace, MyNode, Node])
+                  end,
+                  TargetNodes).
+
+-spec close_connections([node_entry()]) -> ok.
+close_connections(TargetNodes) ->
+    lists:foreach(fun(Node) ->
+                     %% Notify leaving node of the removal
+                     gen_statem:call(Node#node_entry.pid, {disconnect, exchange})
+                  end,
+                  TargetNodes).
 
 %%-----------------------------------------------------------------------------
 %% @doc

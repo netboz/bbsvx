@@ -9,16 +9,11 @@
 
 -author("yan").
 
--include_lib("common_test/include/ct.hrl").
 -include_lib("stdlib/include/assert.hrl").
-
--include("bbsvx_common_types.hrl").
 
 %%%=============================================================================
 %%% Export and Defs
 %%%=============================================================================
-
--define(SERVER, ?MODULE).
 
 -export([all/0, init_per_suite/1, init_per_testcase/2, end_per_testcase/2,
          end_per_suite/1]).
@@ -37,50 +32,13 @@ all() ->
      updating_an_ont_from_shared_to_local].
 
 init_per_suite(Config) ->
+    application:ensure_all_started(bbsvx),
     Config.
 
 init_per_testcase(_TestName, Config) ->
-    application:start(inets),
-    %% Setup ejabberd config file
-    {ok, Cwd} = file:get_cwd(),
-    ct:pal("CWS Base dir ~p", [file:get_cwd()]),
-    application:set_env(ejabberd, config, filename:join([Cwd, "ejabberd.yml"])),
-    file:copy("../../../../ejabberd.yml", Cwd ++ "/ejabberd.yml"),
-
-    %% Setup mnesia
-    file:make_dir(Cwd ++ "/mnesia"),
-    application:set_env(mnesia, dir, Cwd ++ "/mnesia"),
-    file:make_dir(Cwd ++ "/mnesia"),
-    application:set_env(mnesia, dir, Cwd ++ "/mnesia"),
-    S = mnesia:create_schema([node()]),
-    ct:pal("Created schema ~p", [S]),
-    T = mnesia:start(),
-    ct:pal("Started mnesia ~p", [T]),
-    %ok = mnesia:wait_for_tables([schema], 30000),
-    %MyIP = local_ip_v4(),
-    %  P = mnesia:change_table_copy_type(schema, node(), disc_copies),
-    %os:putenv("ERLANG_NODE_ARG","bbsvx@" ++ term_to_list(MyIP)),
-    % net_kernel:start(bbsvx,  #{}),
-    H = application:ensure_all_started(ejabberd),
-    ct:pal("Started ejabberd ~p", [H]),
-    % ct:pal("changed schema ~p", [P]),
-    %%mnesia:wait_for_tables([mqtt_pub, storage_type], infinity),
-    % ct:pal("changed schema ~p", [P]),
-    %ct:pal("Created schema ~p", [R]),
-    A = application:ensure_all_started(bbsvx),
-
-    ct:pal("Started bbsvx ~p", [A]),
-
     Config.
 
 end_per_testcase(_TestName, Config) ->
-    ct:pal("End test case ~p", [_TestName]),
-    application:stop(bbsvx),
-    application:stop(mnesia),
-    {ok, Cwd} = file:get_cwd(),
-    %X = file:del_dir_r(Cwd ++ "/mnesia"),
-    %ct:pal("Deleted schema ~p", [X]),
-    %% ct:pal("Deleted schema ~p", [R]),
     Config.
 
 end_per_suite(Config) ->
@@ -197,7 +155,3 @@ updating_an_ont_from_shared_to_local(_Config) ->
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
-
-
-term_to_list(Term) ->
-    lists:flatten(io_lib:format("~p", [Term])).

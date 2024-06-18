@@ -4,7 +4,7 @@
   {vsn, "0.1.0"},
   {registered, []},
   {mod, {bbsvx_app, []}},
-  {applications, [kernel, stdlib, opentelemetry_api, cowboy_telemetry, prometheus, cowboy, jiffy, 
+  {applications, [kernel, stdlib, opentelemetry_api, cowboy_telemetry, prometheus, cowboy, jobs, jiffy, 
     prometheus_httpd, mnesia, gproc, erlog, uuid, quickrand]},
   {env, []},
   {modules, [prometheus_httpd]},

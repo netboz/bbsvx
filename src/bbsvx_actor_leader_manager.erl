@@ -13,7 +13,7 @@
 
 -behaviour(gen_statem).
 
--include("bbsvx_tcp_messages.hrl").
+-include("bbsvx.hrl").
 
 %%%=============================================================================
 %%% Export and Defs
@@ -22,21 +22,11 @@
 -define(SERVER, ?MODULE).
 
 %% External API
--export([start_link/5, stop/0, get_leader/1]).
+-export([start_link/2, stop/0, get_leader/1]).
 %% Gen State Machine Callbacks
 -export([init/1, code_change/4, callback_mode/0, terminate/3]).
 %% State transitions
 -export([running/3]).
-
--record(neighbor,
-        {node_id :: binary(),
-         chosen_leader :: binary() | undefined,
-         public_key :: binary(),
-         signed_ts :: binary(),
-         ts :: integer()}).
-
--type neighbor() :: #neighbor{}.
--type neighbors() :: [neighbor()].
 
 -record(state,
         {namespace :: binary(),
@@ -54,23 +44,19 @@
 %%% API
 %%%=============================================================================
 
--spec start_link(Namespace :: binary(),
-                 Diameter :: integer(),
-                 DeltaC :: integer(),
-                 DeltaE :: integer(),
-                 DeltaD :: integer()) ->
+-spec start_link(Namespace :: binary(), Options :: map()) ->
                     {ok, pid()} | {error, {already_started, pid()}} | {error, Reason :: any()}.
-start_link(Namespace, Diameter, DeltaC, DeltaE, DeltaD) ->
-    gen_statem:start({via, gproc, {n, l, {leader_manager, Namespace}}},
+start_link(Namespace, Options) ->
+    gen_statem:start_link({via, gproc, {n, l, {leader_manager, Namespace}}},
                      ?MODULE,
-                     [Namespace, Diameter, DeltaC, DeltaE, DeltaD],
+                     [Namespace, Options],
                      []).
 
 -spec stop() -> ok.
 stop() ->
     gen_statem:stop(?SERVER).
 
--spec get_leader(binary()) -> {ok, neighbor()}.
+-spec get_leader(binary()) -> {ok, binary()}.
 get_leader(Namespace) ->
     gen_statem:call({via, gproc, {n, l, {leader_manager, Namespace}}}, get_leader).
 
@@ -78,8 +64,12 @@ get_leader(Namespace) ->
 %%% Gen State Machine Callbacks
 %%%=============================================================================
 
-init([Namespace, Diameter, DeltaC, DeltaE, DeltaD]) ->
-    logger:info("Starting leader manager"),
+init([Namespace, Options]) ->
+    Diameter = maps:get(diameter, Options, 8),
+    DeltaC = maps:get(delta_c, Options, 50),
+    DeltaE = maps:get(delta_e, Options, 100),
+    DeltaD = maps:get(delta_d, Options, 200),
+
     T = erlang:system_time(millisecond),
     MyId = bbsvx_crypto_service:my_id(),
     Leader = MyId,
@@ -128,7 +118,7 @@ callback_mode() ->
 %%%=============================================================================
 %%% State transitions
 %%%=============================================================================
--spec running(gen_statem:event_type(), atom(), state()) -> gen_statem:gen_statem_ret().
+-spec running(gen_statem:event_type(), atom(), state()) -> {next_state, atom(), state()}.
 running(info,
         next_round,
         #state{namespace = Namespace,
