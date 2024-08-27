@@ -10,6 +10,7 @@
 -author("yan").
 
 -include("bbsvx.hrl").
+-include_lib("logjam/include/logjam.hrl").
 
 -export([init/2, allowed_methods/2, malformed_request/2, content_types_provided/2,
          content_types_accepted/2]).
@@ -24,7 +25,6 @@
 %%%=============================================================================
 
 init(Req0, State) ->
-    logger:info("Init transaction handler", []),
     {cowboy_rest, Req0, State}.
 
 allowed_methods(Req, State) ->
@@ -45,7 +45,7 @@ malformed_request(Req, State) ->
             end
     catch
         A:B ->
-            logger:info("Malformed request ~p:~p", [A, B]),
+           ?'log-notice'("Malformed request ~p:~p", [A, B]),
             Req3 =
                 cowboy_req:set_resp_body(
                     jiffy:encode([#{error => <<"invalid_json">>}]), Req),
@@ -60,7 +60,6 @@ content_types_accepted(#{} = Req, State) ->
 
 accept_transaction(Req0,
                    #{transaction := #transaction{namespace = Namespace} = Transaction} = State) ->
-    logger:info("Accepting transaction ~p to namespace ~p", [Transaction, Namespace]),
     try bbsvx_epto_service:broadcast(Namespace, Transaction) of
         ok ->
             Req1 =
@@ -74,7 +73,7 @@ accept_transaction(Req0,
             {true, Req2, State}
     catch
         A:B ->
-            logger:info("Internal error ~p:~p", [A, B]),
+            ?'log-error'("Internal error ~p:~p", [A, B]),
             Req3 =
                 cowboy_req:set_resp_body(
                     jiffy:encode([#{error => <<"network_internal_error">>}]),

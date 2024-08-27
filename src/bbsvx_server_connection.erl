@@ -14,6 +14,8 @@
 
 -include("bbsvx.hrl").
 
+-include_lib("logjam/include/logjam.hrl").
+
 -dialyzer(no_undefined_callbacks).
 
 %%%=============================================================================
@@ -25,7 +27,8 @@
 %% External API
 -export([stop/0]).
 %% Ranch Protocol Callbacks
--export([start_link/3, accept_exchange/2, reject_exchange/2, exchange_end/1]).
+-export([start_link/3, accept_exchange/2, reject_exchange/2, exchange_end/1,
+         send_history/2, accept_join/2, accept_register/2]).
 -export([init/1]).
 %% Gen State Machine Callbacks
 -export([code_change/4, callback_mode/0, terminate/3]).
@@ -49,11 +52,11 @@
 %%%=============================================================================
 
 start_link(Ref, Transport, Opts) ->
-  logger:info("~p Incoming connection from ~p...", [?MODULE, Opts]),
+  ?'log-info'("~p Incoming connection on ~p...", [?MODULE, Opts]),
   gen_statem:start_link(?MODULE, {Ref, Transport, Opts}, []).
 
 init({Ref, Transport, [MyNode]}) ->
-  logger:info("Initializing server connection ~p  Transport :~p", [MyNode, Transport]),
+  ?'log-info'("Initializing server connection ~p  Transport :~p", [MyNode, Transport]),
   %% Perform any required state initialization here.
   {ok,
    authenticate,
@@ -61,6 +64,13 @@ init({Ref, Transport, [MyNode]}) ->
           transport = Transport,
           ref = Ref}}.
 
+accept_register(ConnectionPid, #header_register_ack{} = Header) ->
+  gen_statem:call(ConnectionPid, {accept_register, Header}).
+
+accept_join(ConnectionPid, #header_join_ack{} = Header) ->
+  gen_statem:call(ConnectionPid, {accept_join, Header}).
+
+%% @TODO: Review cast/call logic here
 accept_exchange(ConnectionPid, ProposedSample) ->
   gen_statem:call(ConnectionPid, {exchange_out, ProposedSample}).
 
@@ -69,6 +79,9 @@ reject_exchange(ConnectionPid, Reason) ->
 
 exchange_end(ConnectionPid) ->
   gen_statem:cast(ConnectionPid, {exchange_end}).
+
+send_history(ConnectionPid, #ontology_history{} = History) ->
+  gen_statem:cast(ConnectionPid, {send_history, History}).
 
 %%%=============================================================================
 %%% Gen Statem API
@@ -83,7 +96,7 @@ stop() ->
 %%%=============================================================================
 
 terminate(Reason, State, _Data) ->
-  logger:info("~p Terminating...~p   Reason ~p", [?MODULE, State, Reason]),
+  ?'log-info'("~p Terminating...~p   Reason ~p", [?MODULE, State, Reason]),
   void.
 
 code_change(_Vsn, State, Data, _Extra) ->
@@ -170,9 +183,6 @@ wait_for_subscription(info,
   case Decoded of
     {ok, #header_register{} = Header, NewBuffer} ->
       %% Get current leader
-      %{ok, Leader} = bbsvx_actor_leader_manager:get_leader(Namespace),
-      Transport:send(State#state.socket,
-                     term_to_binary(#header_register_ack{result = ok, leader = <<"leader">>})),
       Transport:setopts(State#state.socket, [{active, true}]),
       %% Notify spray agent to add to inview
       gproc:send({p, l, {ontology, Header#header_register.namespace}},
@@ -191,13 +201,24 @@ wait_for_subscription(info,
   end;
 %% Cathc all
 wait_for_subscription(Type, Data, State) ->
-  logger:info("~p Unamaneged event ~p", [?MODULE, {Type, Data}]),
+  ?'log-warning'("~p Unamaneged event ~p", [?MODULE, {Type, Data}]),
   {keep_state, State}.
 
+connected({call, From}, {accept_register, #header_register_ack{} = Header}, State) ->
+  ?'log-info'("~p sending register ack to  ~p    header : ~p",
+              [?MODULE, State#state.origin_node, Header]),
+  ranch_tcp:send(State#state.socket, term_to_binary(Header)),
+  gen_statem:reply(From, ok),
+  {keep_state, State};
+connected({call, From}, {accept_join, #header_join_ack{} = Header}, State) ->
+  ?'log-info'("~p sending join ack to  ~p", [?MODULE, State#state.origin_node]),
+  ranch_tcp:send(State#state.socket, term_to_binary(Header)),
+  gen_statem:reply(From, ok),
+  {keep_state, State};
 connected(enter, _, State) ->
   {keep_state, State};
 connected({call, From}, {exchange_out, ProposedSample}, State) ->
-  logger:info("~p sending exchange out to  ~p", [?MODULE, State#state.origin_node]),
+  ?'log-info'("~p sending exchange out to  ~p", [?MODULE, State#state.origin_node]),
   ranch_tcp:send(State#state.socket,
                  term_to_binary(#exchange_out{namespace = State#state.namespace,
                                               origin_node = State#state.mynode,
@@ -205,22 +226,26 @@ connected({call, From}, {exchange_out, ProposedSample}, State) ->
   gen_statem:reply(From, ok),
   {keep_state, State};
 connected(cast, {reject_exchange, Reason}, State) ->
-  logger:info("~p sending exchange cancelled to  ~p", [?MODULE, State#state.origin_node]),
+  ?'log-info'("~p sending exchange cancelled to  ~p", [?MODULE, State#state.origin_node]),
   ranch_tcp:send(State#state.socket,
                  term_to_binary(#exchange_cancelled{namespace = State#state.namespace,
                                                     reason = Reason})),
   {keep_state, State};
 connected(cast, {exchange_end}, State) ->
-  logger:info("~p sending exchange end to  ~p", [?MODULE, State#state.origin_node]),
+  ?'log-info'("~p sending exchange end to  ~p", [?MODULE, State#state.origin_node]),
   ranch_tcp:send(State#state.socket,
                  term_to_binary(#exchange_end{namespace = State#state.namespace})),
+  {keep_state, State};
+connected(cast, {send_history, #ontology_history{} = History}, State) ->
+  ?'log-info'("~p sending history to  ~p", [?MODULE, State#state.origin_node]),
+  ranch_tcp:send(State#state.socket, term_to_binary(History)),
   {keep_state, State};
 connected(info, {tcp, _Ref, BinData}, #state{buffer = Buffer} = State) ->
   parse_packet(<<Buffer/binary, BinData/binary>>, keep_state, State);
 connected(info,
           {tcp_closed, _Ref},
           #state{namespace = Namespace, origin_node = OriginNode} = State) ->
-  logger:info("~p Connection closed...~p", [?MODULE, State#state.origin_node]),
+  ?'log-info'("~p Connection closed...~p", [?MODULE, State#state.origin_node]),
   gproc:send({p, l, {ontology, State#state.namespace}},
              {connection_terminated, {in, tcp_closed}, Namespace, OriginNode}),
 
@@ -238,20 +263,25 @@ parse_packet(Buffer, Action, #state{namespace = Namespace} = State) ->
       {DecodedEvent, NbBytesUsed} ->
         {complete, DecodedEvent, NbBytesUsed}
     catch
-      Error:Reason ->
-        logger:info("Parsing incomplete : ~p~n", [{Error, Reason}]),
+      _Error:_Reason ->
         {incomplete, Buffer}
     end,
 
   case Decoded of
     {complete, #transaction{} = Transacion, Index} ->
       <<_:Index/binary, BinLeft/binary>> = Buffer,
-      bbsvx_transaction_pipeline:accept_transaction(Transacion),
+      bbsvx_transaction_pipeline:receive_transaction(Transacion),
+      parse_packet(BinLeft, Action, State);
+    {complete,
+     #ontology_history_request{namespace = Namespace, requester = Requester} = Event,
+     Index} ->
+      <<_:Index/binary, BinLeft/binary>> = Buffer,
+      gproc:send({n, l, {bbsvx_actor_ontology, Namespace}},
+                 Event#ontology_history_request{requester = Requester#node_entry{pid = self()}}),
       parse_packet(BinLeft, Action, State);
     {complete,
      #exchange_in{origin_node = OriginNode, proposed_sample = ProposedSample},
      Index} ->
-      logger:info("~p Exchange in received from ~p", [?MODULE, OriginNode]),
       <<_:Index/binary, BinLeft/binary>> = Buffer,
       MyPid = self(),
       gproc:send({p, l, {ontology, Namespace}},
@@ -262,24 +292,18 @@ parse_packet(Buffer, Action, #state{namespace = Namespace} = State) ->
 
       parse_packet(BinLeft, Action, State);
     {complete, #exchange_end{} = Event, Index} ->
-      logger:info("~p Exchange end received", [?MODULE]),
       <<_:Index/binary, BinLeft/binary>> = Buffer,
       event_spray_exchange(Namespace, Event),
       parse_packet(BinLeft, Action, State);
     {complete, #exchange_cancelled{} = Event, Index} ->
-      logger:info("~p Exchange cancelled received", [?MODULE]),
       <<_:Index/binary, BinLeft/binary>> = Buffer,
       event_spray_exchange(Namespace, Event),
       parse_packet(BinLeft, Action, State);
     {complete, #exchange_accept{} = Event, Index} ->
-      logger:info("~p Exchange accept received", [?MODULE]),
       <<_:Index/binary, BinLeft/binary>> = Buffer,
       event_spray_exchange(Namespace, Event),
       parse_packet(BinLeft, Action, State);
     {complete, #forward_subscription{subscriber_node = SubscriberNode}, Index} ->
-      logger:info("~p Forward subscription received for ~p   from ~p",
-                  [?MODULE, SubscriberNode, State#state.origin_node]),
-      logger:info("Current action ~p", [Action]),
       <<_:Index/binary, BinLeft/binary>> = Buffer,
       gproc:send({p, l, {ontology, Namespace}},
                  {forwarded_subscription, Namespace, #node_entry{} = SubscriberNode}),
@@ -293,17 +317,17 @@ parse_packet(Buffer, Action, #state{namespace = Namespace} = State) ->
       gproc:send({p, l, {leader_election, Namespace}}, {incoming_event, Event}),
       parse_packet(BinLeft, Action, State);
     {complete, Event, Index} ->
-      logger:info("~p Event received ~p", [?MODULE, Event]),
+      ?'log-error'("~p Event received ~p", [?MODULE, Event]),
       <<_:Index/binary, BinLeft/binary>> = Buffer,
       gproc:send({p, l, {?MODULE, State#state.namespace, element(1, Event)}},
                  {incoming_event, State#state.namespace, Event}),
 
       parse_packet(BinLeft, Action, State);
     {incomplete, Buffer} ->
-      logger:info("~p Incomplete packet received", [?MODULE]),
+      ?'log-info'("~p Incomplete packet received", [?MODULE]),
       {keep_state, State#state{buffer = Buffer}};
     Else ->
-      logger:info("~p Unmanaged event ~p", [?MODULE, Else]),
+      ?'log-warning'("~p Unmanaged event ~p", [?MODULE, Else]),
       parse_packet(Buffer, Action, State)
   end.
 

@@ -13,12 +13,15 @@
 
 -include("bbsvx.hrl").
 
+-include_lib("logjam/include/logjam.hrl").
+
 %%%=============================================================================
 %%% Export and Defs
 %%%=============================================================================
 
 %% External API
--export([start_link/3, accept_transaction/1, accept_transaction_result/1]).
+-export([start_link/3, accept_transaction/1, accept_transaction_result/1,
+         receive_transaction/1]).
 %% Callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
@@ -27,6 +30,14 @@
 
 %% Loop state
 -record(state, {namespace :: binary()}).
+-record(transaction_validate_stage_state,
+        {namespace :: binary(),
+         previous_ts :: binary(),
+         current_ts :: binary(),
+         current_index :: integer(),
+         local_index :: integer(),
+         current_address :: binary(),
+         pending :: dict:dict()}).
 
 -type state() :: #state{}.
 
@@ -50,20 +61,34 @@ start_link(Namespace, OntState, Options) ->
 
 -spec accept_transaction(transaction()) -> ok.
 accept_transaction(#transaction{namespace = Namespace} = Transaction) ->
-    gen_server:call({via, gproc, {n, l, {?MODULE, Namespace}}},
-                    {accept_transaction, Transaction}).
+    jobs:enqueue({stage_transaction_accept, Namespace}, Transaction).
+
+-spec receive_transaction(transaction()) -> ok.
+receive_transaction(#transaction{namespace = Namespace} = Transaction) ->
+    jobs:enqueue({stage_transaction_validate, Namespace}, Transaction).
+
+-spec accept_history_transaction(transaction()) -> ok.
+accept_history_transaction(#transaction{namespace = Namespace} = Transaction) ->
+    jobs:enqueue({stage_transaction_history, Namespace}, Transaction).
 
 -spec accept_transaction_result(goal_result()) -> ok.
 accept_transaction_result(#goal_result{namespace = Namespace} = GoalResult) ->
-    gen_server:call({via, gproc, {n, l, {?MODULE, Namespace}}},
-                    {accept_transaction_result, GoalResult}).
+    jobs:enqueue({stage_transaction_results, Namespace}, GoalResult).
 
 %%%=============================================================================
 %%% Gen Server Callbacks
 %%%=============================================================================
 
-init([Namespace, OntState, _Options]) ->
-    logger:info("Starting transaction pipeline for ~p", [Namespace]),
+init([Namespace,
+      #ont_state{current_address = CurrentAddress,
+                 local_index = LocalIndex,
+                 current_index = CurrentIndex,
+                 current_ts = CurrentTs} =
+          OntState,
+      _Options]) ->
+    ?'log-info'("Starting transaction pipeline for ~p current index:~p  local_index:~p",
+                [Namespace, CurrentIndex, LocalIndex]),
+    %% @TOOD: jobs offers many options, we mzy use them to simplify
     ok = jobs:add_queue({stage_transaction_validate, Namespace}, [passive]),
 
     ok = jobs:add_queue({stage_transaction_process, Namespace}, [passive]),
@@ -72,22 +97,30 @@ init([Namespace, OntState, _Options]) ->
 
     ok = jobs:add_queue({stage_transaction_results, Namespace}, [passive]),
 
-    spawn_link(fun() -> transaction_validate_stage(Namespace, OntState) end),
+    ok = jobs:add_queue({stage_transaction_accept, Namespace}, [passive]),
+
+    spawn_link(fun() ->
+                  transaction_validate_stage(Namespace,
+                                             #transaction_validate_stage_state{current_address =
+                                                                                   CurrentAddress,
+                                                                               namespace =
+                                                                                   Namespace,
+                                                                               current_index =
+                                                                                   CurrentIndex,
+                                                                               local_index =
+                                                                                   LocalIndex,
+                                                                               current_ts =
+                                                                                   CurrentTs,
+                                                                               pending =
+                                                                                   dict:new()})
+               end),
     spawn_link(fun() -> transaction_process_stage(Namespace, OntState) end),
     spawn_link(fun() -> transaction_postprocess_stage(Namespace, OntState) end),
-
+    spawn_link(fun() -> transaction_accept_process(Namespace) end),
     {ok, #state{namespace = Namespace}}.
 
-handle_call({accept_transaction, Transaction},
-            _From,
-            #state{namespace = Namespace} = State) ->
-    Reply = jobs:enqueue({stage_transaction_validate, Namespace}, Transaction),
-    {reply, Reply, State};
-handle_call({accept_transaction_result, GoalResult},
-            _From,
-            #state{namespace = Namespace} = State) ->
-    Reply = jobs:enqueue({stage_transaction_results, Namespace}, GoalResult),
-    {reply, Reply, State}.
+handle_call(_, _From, LoopState) ->
+    {reply, ok, LoopState}.
 
 handle_cast(_Msg, LoopState) ->
     {noreply, LoopState}.
@@ -104,47 +137,135 @@ code_change(_OldVsn, LoopState, _Extra) ->
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
+-spec transaction_accept_process(Namespace :: binary()) -> no_return().
+transaction_accept_process(Namespace) ->
+    [{_, Transaction}] = jobs:dequeue({stage_transaction_accept, Namespace}, 1),
+    ?'log-info'("Received Transaction, accepting ~p", [Transaction]),
+    bbsvx_epto_service:broadcast(Namespace,
+                                 Transaction#transaction{status = accepted,
+                                                         ts_created = erlang:system_time()}),
+    transaction_accept_process(Namespace).
+
 -spec transaction_validate_stage(binary(), ont_state()) -> no_return().
-transaction_validate_stage(Namespace, OntState) ->
-    logger:info("Waiting for transaction ~p", [self()]),
+transaction_validate_stage(Namespace, ValidationState) ->
+    ?'log-info'("Waiting for transaction ~p", [self()]),
     [{_, Transaction}] = jobs:dequeue({stage_transaction_validate, Namespace}, 1),
-    logger:info("Received Transaction, validating ~p", [Transaction]),
-    {AddressedTransaction, NewOntState} = transaction_validate(Transaction, OntState),
-    jobs:enqueue({stage_transaction_process, Namespace}, AddressedTransaction),
-    transaction_validate_stage(Namespace, NewOntState).
+    ?'log-info'("Received Transaction, validating ~p", [Transaction]),
+    case transaction_validate(Transaction, ValidationState) of
+        {stop, NewValidationState} ->
+            transaction_validate_stage(Namespace, NewValidationState);
+        {ValidatedTransaction, NewOntState} ->
+            jobs:enqueue({stage_transaction_process, Namespace}, ValidatedTransaction),
+            case dict:take(NewOntState#transaction_validate_stage_state.current_index,
+                           NewOntState#transaction_validate_stage_state.pending)
+            of
+                {PendingTransaction, NewPending} ->
+                    jobs:enqueue(stage_transaction_validate, PendingTransaction),
+                    transaction_validate_stage(Namespace,
+                                               NewOntState#transaction_validate_stage_state{pending
+                                                                                                =
+                                                                                                NewPending});
+                error ->
+                    transaction_validate_stage(Namespace, NewOntState)
+            end
+    end.
 
 -spec transaction_process_stage(binary(), ont_state()) -> no_return().
 transaction_process_stage(Namespace, OntState) ->
     [{_, Transaction}] = jobs:dequeue({stage_transaction_process, Namespace}, 1),
-    logger:info("Received Transaction, processing ~p", [Transaction]),
-    process_transaction(Transaction, OntState),
-    jobs:enqueue({stage_transaction_postprocess, Namespace}, Transaction),
-    transaction_process_stage(Namespace, OntState).
+    ?'log-info'("Received Transaction, processing ~p", [Transaction]),
+    {ProcessedTransaction, NewOntState} = process_transaction(Transaction, OntState),
+    jobs:enqueue({stage_transaction_postprocess, Namespace}, ProcessedTransaction),
+    transaction_process_stage(Namespace, NewOntState).
 
 -spec transaction_postprocess_stage(binary(), ont_state()) -> no_return().
 transaction_postprocess_stage(Namespace, OntState) ->
     [{_, Transaction}] = jobs:dequeue({stage_transaction_postprocess, Namespace}, 1),
-    logger:info("Received Transaction, postprocessing ~p", [Transaction]),
+    ?'log-info'("Received Transaction, postprocessing ~p", [Transaction]),
+    bbsvx_transaction:record_transaction(Transaction#transaction{status = processed}),
     transaction_postprocess_stage(Namespace, OntState).
 
 %% Procesing functions
 -spec transaction_validate(transaction(), ont_state()) -> {transaction(), ont_state()}.
+transaction_validate(#transaction{index = TxIndex,
+                                  current_address = CurrentTxAddress,
+                                  status = processed} =
+                         Transaction,
+                     #transaction_validate_stage_state{local_index = LocalIndex} = ValidationSt)
+    when TxIndex == LocalIndex + 1 ->
+    %% This transaction comes from history and have been processed already by the leader
+    %% we check it is valid and store it
+    ?'log-info'("Transaction ~p is already accepted, storing it", [Transaction]),
+    %% @TODO: veriy validation of transaction
+    bbsvx_transaction:record_transaction(Transaction),
+    {stop,
+     ValidationSt#transaction_validate_stage_state{local_index = TxIndex ,
+                                                   current_address = CurrentTxAddress}};
+%% History Transaction is not ready to be processed, we store it for later
+transaction_validate(#transaction{status = processed} = Transaction,
+                     #transaction_validate_stage_state{local_index = LocalIndex,
+                                                       current_index = CurrentIndex,
+                                                       pending = Pending} =
+                         ValidationState) ->
+    ?'log-info'("Storing history transaction for later ~p   Current Index : "
+                "~p    Local index ~p",
+                [Transaction, CurrentIndex, LocalIndex]),
+    NewPending = dict:store(Transaction#transaction.index, Transaction, Pending),
+    {stop,
+     ValidationState#transaction_validate_stage_state{pending = NewPending}};
+transaction_validate(#transaction{ts_created = TsCreated,
+                                  index = TxIndex,
+                                  status = accepted} =
+                         Transaction,
+                     #transaction_validate_stage_state{namespace = Namespace,
+                                                       current_address = CurrentAddress,
+                                                       local_index = LocalIndex,
+                                                       current_index = CurrentIndex,
+                                                       current_ts = CurrentTs} =
+                         ValidationState) ->
+    NewIndex = CurrentIndex + 1,
+    NewTransaction =
+        Transaction#transaction{status = accepted,
+                                index = NewIndex,
+                                prev_address = CurrentAddress},
+    bbsvx_transaction:record_transaction(NewTransaction),
+    gproc:send({n, l, {bbsvx_actor_ontology, Namespace}}, {transaction_validated, NewIndex}),
+    NewCurrentAddress = bbsvx_crypto_service:calculate_hash_address(NewIndex, Transaction),
+    ?'log-info'("new address ~p", [NewCurrentAddress]),
+    {NewTransaction,
+     ValidationState#transaction_validate_stage_state{current_address = NewCurrentAddress,
+                                                      current_index = NewIndex,
+                                                      local_index = NewIndex,
+                                                      previous_ts = CurrentTs,
+                                                      current_ts = TsCreated}};
+%% Not index ready to process current transaction, we store it for later
 transaction_validate(#transaction{} = Transaction,
-                     #ont_state{current_address = CurrentAddress, next_address = NextAddress} =
-                         OntState) ->
-    {Transaction#transaction{current_address = NextAddress, prev_address = CurrentAddress},
-     OntState}.
+                     #transaction_validate_stage_state{namespace = Namespace,
+                                                       pending = Pending,
+                                                       local_index = LocalIndex,
+                                                       current_index = CurrentIndex} =
+                         ValidationState) ->
+    ?'log-info'("Storing transaction for later ~p   Current Index : ~p    Local "
+                "index ~p",
+                [Transaction, CurrentIndex, LocalIndex]),
+    %% @TODO: Check if transaction is already in pending
+    NewPending = dict:store(Transaction#transaction.index, Transaction, Pending),
+    bbsvx_actor_ontology:request_segment(Namespace, LocalIndex + 1, CurrentIndex),
+    {stop,
+     ValidationState#transaction_validate_stage_state{pending = NewPending}}.
 
 -spec process_transaction(transaction(), ont_state()) -> ont_state().
+    %% Compute transcaton address
+
 process_transaction(#transaction{type = creation,
                                  payload =
                                      #transaction_payload_init_ontology{namespace = Namespace,
                                                                         contact_nodes =
                                                                             _ContactNodes},
                                  namespace = Namespace} =
-                        _Transaction,
-                    _OntState) ->
-    ok;
+                        Transaction,
+                    OntState) ->
+    {Transaction, OntState};
 process_transaction(#transaction{type = goal,
                                  payload = #goal{} = Goal,
                                  namespace = Namespace} =
@@ -152,19 +273,27 @@ process_transaction(#transaction{type = goal,
                     OntState) ->
     {ok, Leader} = bbsvx_actor_leader_manager:get_leader(Namespace),
     MyId = bbsvx_crypto_service:my_id(),
+    ?'log-info'("Is leader ~p", [Leader == MyId]),
     case do_prove_goal(Goal, OntState, MyId == Leader) of
         {_FailOrSucceed, #ont_state{} = NewOntState} ->
-            logger:info("Recording transaction ~p", [Transaction]),
+            ?'log-info'("Recording transaction ~p", [Transaction]),
+            #est{db = #db{ref = #db_differ{op_fifo = OpFifo} = DbDiffer} = Db} =
+                PrologState = NewOntState#ont_state.prolog_state,
             NewTransaction =
                 Transaction#transaction{status = processed,
                                         ts_processed = erlang:system_time(),
-                                        prev_address = Transaction#transaction.current_address,
-                                        current_address = NewOntState#ont_state.current_address},
+                                        diff = OpFifo},
             bbsvx_transaction:record_transaction(NewTransaction),
-            NewOntState;
+            {NewTransaction,
+             NewOntState#ont_state{prolog_state =
+                                       PrologState#est{db =
+                                                           Db#db{ref =
+                                                                     DbDiffer#db_differ{op_fifo =
+                                                                                            []}}}}};
         {error, Reason} ->
+            %% @TODO: Manage errors
             logger:error("Error processing goal ~p: ~p", [Goal, Reason]),
-            OntState
+            {Transaction, OntState}
     end.
 
 -spec do_prove_goal(goal(), ont_state(), boolean()) ->
@@ -216,22 +345,13 @@ do_prove_goal(_Goal, #ont_state{prolog_state = PrologState} = OntState, false) -
     [{_, GoalResult}] =
         jobs:dequeue({stage_transaction_results, OntState#ont_state.namespace}, 1),
     %% Get current leader
-    %% @TODO: Store next two into state
-    {ok, Leader} = bbsvx_actor_leader_manager:get_leader(OntState#ont_state.namespace),
-    MyId = bbsvx_crypto_service:my_id(),
-    case MyId == Leader of
-        false ->
-            case GoalResult of
-                #goal_result{diff = GoalDiff, result = Result} ->
-                    NewDb =
-                        bbsvx_erlog_db_differ:apply_diff(GoalDiff,
-                                                         OntState#ont_state.prolog_state#est.db),
-                    {Result, OntState#ont_state{prolog_state = PrologState#est{db = NewDb}}};
-                Else ->
-                    logger:error("Unknown message ~p", [Else]),
-                    OntState
-            end;
-        true ->
+    case GoalResult of
+        #goal_result{diff = GoalDiff, result = Result} ->
+            {ok, NewDb} =
+                bbsvx_erlog_db_differ:apply_diff(GoalDiff, OntState#ont_state.prolog_state#est.db),
+            {Result, OntState#ont_state{prolog_state = PrologState#est{db = NewDb}}};
+        Else ->
+            logger:error("Unknown message ~p", [Else]),
             OntState
     end.
 

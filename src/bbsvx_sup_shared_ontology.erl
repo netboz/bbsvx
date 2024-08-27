@@ -11,6 +11,8 @@
 
 -behaviour(supervisor).
 
+-include_lib("logjam/include/logjam.hrl").
+
 %%%=============================================================================
 %%% Export and Defs
 %%%=============================================================================
@@ -36,14 +38,14 @@ start_link(Namespace, Options) ->
 %%%=============================================================================
 
 init([Namespace, Options]) ->
-  logger:info("Ontology supervisor starting on  ~p", [Namespace]),
+  ?'log-info'("Ontology supervisor starting on  ~p", [Namespace]),
   SupFlags =
     #{strategy => one_for_one,
       intensity => 3,
       period => 1},
   ChildSpecs =
     [#{id => {bbsvx_actor_ontology, Namespace},
-       start => {bbsvx_actor_ontology, start_link, [Namespace]},
+       start => {bbsvx_actor_ontology, start_link, [Namespace, Options]},
        restart => transient,
        shutdown => 1000,
        type => worker,

@@ -10,6 +10,7 @@
 -author("yan").
 
 -behaviour(gen_server).
+-include_lib("logjam/include/logjam.hrl").
 
 %%%=============================================================================
 %%% Export and Defs
@@ -56,7 +57,7 @@ broadcast(Namespace, Msg) ->
 init([Namespace, Options]) ->
     Fanout = maps:get(fanout, Options, 15),
     Ttl = maps:get(ttl, Options, 16),
-    logger:info("Starting EPTO service for namespace ~p with fanout ~p and ttl ~p",
+    ?'log-info'("Starting EPTO service for namespace ~p with fanout ~p and ttl ~p",
                 [Namespace, Fanout, Ttl]),
     %%TODO : Not sure next line is needed
     {ok, LogicalClock} = bbsvx_epto_logical_clock:start_link(Namespace, Ttl),

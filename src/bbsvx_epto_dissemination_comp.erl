@@ -12,6 +12,7 @@
 -behaviour(gen_server).
 
 -include("bbsvx.hrl").
+-include_lib("logjam/include/logjam.hrl").
 
 %%%=============================================================================
 %%% Export and Defs
@@ -72,7 +73,7 @@ init([Namespace, Fanout, Ttl, Orderer, LogicalClock]) ->
                next_ball = #{}},
 
     %% Register to epto messages received at inview (ejabberd mod )
-    logger:info("Epto dissemination component : Registering to epto messages ~p",
+    ?'log-info'("Epto dissemination component starting ~p",
                 [Namespace]),
     gproc:reg({p, l, {epto_event, Namespace}}),
 
@@ -84,7 +85,7 @@ init([Namespace, Fanout, Ttl, Orderer, LogicalClock]) ->
 -spec handle_call(Request :: term(), From :: gen_server:from(), State :: state()) ->
                     {reply, Reply :: term(), State :: state()}.
 handle_call({epto_broadcast, Payload}, _From, #state{next_ball = NextBall} = State) ->
-    logger:info("Epto dissemination component : Broadcast ~p", [Payload]),
+    ?'log-info'("Epto dissemination component : Broadcast ~p", [Payload]),
 
     EvtId =
         list_to_binary(uuid:to_string(
@@ -105,7 +106,6 @@ handle_call(next_round, _From, #state{namespace = Namespace} = State) ->
         maps:map(fun(_EvtId, #event{ttl = EvtTtl} = Evt) -> Evt#event{ttl = EvtTtl + 1} end,
                  State#state.next_ball),
 
-    %% logger:info("Epto dissemination component : Sample peers ~p", [SamplePeers]),
     %% Broadcast next ball to sample peers
     bbsvx_actor_spray_view:broadcast_unique(Namespace,
                                             #epto_message{payload = {receive_ball, NewBall}}),
@@ -115,18 +115,17 @@ handle_call({set_fanout_ttl, Fanout, Ttl}, _From, State) ->
     gen_server:call(State#state.logical_clock_pid, {set_ttl, Ttl}),
     {reply, ok, State#state{fanout = Fanout, ttl = Ttl}};
 handle_call(Request, _From, State) ->
-    logger:info("Epto dissemination component : Unmanaged message ~p", [Request]),
+    ?'log-warning'("Epto dissemination component : Unmanaged message ~p", [Request]),
     Reply = ok,
     {reply, Reply, State}.
 
 handle_cast(Msg, State) ->
-    logger:info("Epto dissemination component : Unmanaged cast message ~p", [Msg]),
+    ?'log-warning'("Epto dissemination component : Unmanaged cast message ~p", [Msg]),
     {noreply, State}.
 
 handle_info({incoming_event, {receive_ball, Ball}},
             #state{namespace = _Namespace} = State) ->
-    %logger:info("Epto dissemination component  ~p : received ball ~p", [Namespace, Ball]),
-    %% QUESTION: next event could considerably slow down the ball processing, should be made async ?
+    %% @TODO: next event could considerably slow down the ball processing, should be made async ?
     %% gproc:send({p, l, {epto_event, State#state.ontology}}, {received_ball, Ball}),
     UpdatedNextBall =
         maps:fold(fun (EvtId, #event{ttl = EvtTtl, ts = EvtTs} = Evt, Acc)
@@ -148,10 +147,9 @@ handle_info({incoming_event, {receive_ball, Ball}},
                   end,
                   State#state.next_ball,
                   Ball),
-    %logger:info("Epto dissemination component: New Ball ~p", [UpdatedNextBall]),
     {noreply, State#state{next_ball = UpdatedNextBall}};
 handle_info(Info, State) ->
-    logger:info("Unmanaged info message ~p", [Info]),
+    ?'log-info'("Unmanaged info message ~p", [Info]),
 
     {noreply, State}.
 

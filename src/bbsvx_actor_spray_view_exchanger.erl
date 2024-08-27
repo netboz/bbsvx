@@ -17,6 +17,7 @@
 -behaviour(gen_statem).
 
 -include("bbsvx.hrl").
+-include_lib("logjam/include/logjam.hrl").
 
 %%%=============================================================================
 %%% Export and Defs
@@ -86,12 +87,12 @@ init([initiator, Namespace, MyNode]) ->
         #state{namespace = Namespace,
                my_node = MyNode,
                parent_pid = self()},
-    logger:info("Starting view exchanger initiator for ~p", [MyNode]),
+    ?'log-info'("Starting view exchanger initiator for ~p", [MyNode]),
     %% Register to events from mqtt connection
     gproc:reg({p, l, {spray_exchange, Namespace}}),
     {ok, wait_exchange_out, State, ?EXCHANGE_OUT_TIMEOUT};
 init([responder, Namespace, MyNode, OriginNode, ProposedSample]) ->
-    logger:info("Starting view exchanger responder for ~p", [MyNode]),
+    ?'log-info'("Starting view exchanger responder for ~p", [MyNode]),
     %% Register to events from mqtt connection
     gproc:reg({p, l, {spray_exchange, Namespace}}),
     {ok,
@@ -122,7 +123,7 @@ wait_exchange_out(enter, _, #state{namespace = Namespace} = State) ->
                         get_outview),
 
     OutviewSize = length(PartialView),
-    logger:info("Actor exchanger: Entering wait_exchange_out with partial view ~p",
+    ?'log-info'("Actor exchanger: Entering wait_exchange_out with partial view ~p",
                 [PartialView]),
 
     %% Get Id of oldest node
@@ -146,7 +147,7 @@ wait_exchange_out(enter, _, #state{namespace = Namespace} = State) ->
     %% Finally Add our node to the sample to get the final sample to be sent.
     %% As we removed one oldest node entry, adding ourselves keeps the sample size constant
     FinalSample = [State#state.my_node | ReplacedSample],
-    logger:info("Actor exchanger : Final sample ~p", [FinalSample]),
+    ?'log-info'("Actor exchanger : Final sample ~p", [FinalSample]),
 
     %% Send exchange proposition to oldest node
     bbsvx_client_connection:send(OldestNode#node_entry.pid,
@@ -154,7 +155,7 @@ wait_exchange_out(enter, _, #state{namespace = Namespace} = State) ->
                                               origin_node = State#state.my_node,
                                               proposed_sample = FinalSample}),
 
-    logger:info("Actor exchanger ~p : Running state, Sent partial view exchange "
+    ?'log-info'("Actor exchanger ~p : Running state, Sent partial view exchange "
                 "in to ~p   sample : ~p",
                 [State#state.namespace, OldestNode, FinalSample]),
     {keep_state,
@@ -168,7 +169,7 @@ wait_exchange_out(enter, _, #state{namespace = Namespace} = State) ->
 wait_exchange_out(info,
                   {incoming_event, #exchange_cancelled{namespace = Namespace, reason = Reason}},
                   State) ->
-    logger:info("Actor exchanger ~p : wait_exchange_out, Got exchange cancelled "
+    ?'log-info'("Actor exchanger ~p : wait_exchange_out, Got exchange cancelled "
                 " wth reason ~p from ~p",
                 [Namespace, Reason, State#state.target_node]),
     bbsvx_actor_spray_view:reinit_age(Namespace, State#state.target_node#node_entry.pid),
@@ -177,7 +178,7 @@ wait_exchange_out(info,
 wait_exchange_out(info,
                   {incoming_event, #exchange_out{namespace = Namespace, proposed_sample = []}},
                   #state{outview_size = 1} = State) ->
-    logger:info("Actor exchanger ~p : wait_exchange_out, empty proposal single "
+    ?'log-info'("Actor exchanger ~p : wait_exchange_out, empty proposal single "
                 "outview ~p",
                 [Namespace, State#state.target_node]),
     bbsvx_client_connection:send(State#state.target_node#node_entry.pid,
@@ -192,7 +193,7 @@ wait_exchange_out(info,
                                  origin_node = OriginNode,
                                  proposed_sample = IncomingSample}},
                   #state{my_node = MyNode} = State) ->
-    logger:info("Actor exchanger ~p : wait_exchange_out, Got partial view exchange "
+    ?'log-info'("Actor exchanger ~p : wait_exchange_out, Got partial view exchange "
                 "out from ~p",
                 [Namespace, OriginNode]),
     %% Replace all occurence of our node by the origin node in the incoming sample
@@ -243,7 +244,7 @@ responding(enter,
                   my_node = MyNode,
                   origin_node = OriginNode} =
                State) ->
-    logger:info("Actor exchanger ~p : Entering responding state", [Namespace]),
+    ?'log-info'("Actor exchanger ~p : Entering responding state", [Namespace]),
 
     %% Get partial view from the spray view agent
     {ok, Outview} =
@@ -262,7 +263,7 @@ responding(enter,
                   MySample),
 
     %% Send our sample to the origin node
-    logger:info("Actor exchanger ~p : responding state, Sent partial view exchange "
+    ?'log-info'("Actor exchanger ~p : responding state, Sent partial view exchange "
                 "out to ~p   sample : ~p",
                 [Namespace, OriginNode#node_entry.node_id, ReplacedMySample]),
 
@@ -274,7 +275,7 @@ responding(enter,
 responding(info,
            {incoming_event, #exchange_accept{}},
            #state{my_node = MyNode, namespace = Namespace} = State) ->
-    logger:info("Actor exchanger ~p : responding state, Got exchange accept", [Namespace]),
+    ?'log-info'("Actor exchanger ~p : responding state, Got exchange accept", [Namespace]),
 
     %%Register to events from client connections on this namespace
     gproc:reg({p, l, {bbsvx_client_connection, Namespace}}),
@@ -294,7 +295,7 @@ responding(info,
 responding(info,
            {incoming_event, #exchange_cancelled{namespace = Namespace, reason = Reason}},
            State) ->
-    logger:info("Actor exchanger ~p : responding state, Got exchange cancelled "
+    ?'log-info'("Actor exchanger ~p : responding state, Got exchange cancelled "
                 " wth reason ~p",
                 [Namespace, Reason]),
     {stop, normal, State};
@@ -304,7 +305,7 @@ responding(timeout, _, State) ->
     {stop, normal, State}.
 
 wait_for_exchange_end(enter, _, #state{to_leave = []} = State) ->
-    logger:info("Actor exchanger ~p : Entering wait_for_exchange_end with no "
+    ?'log-info'("Actor exchanger ~p : Entering wait_for_exchange_end with no "
                 "node to leave, terminating",
                 [State#state.namespace]),
     {stop, normal, State};
@@ -313,7 +314,7 @@ wait_for_exchange_end(enter, _, State) ->
 wait_for_exchange_end(info,
                       {connected, _Namespace, RequesterNode, {outview, _}},
                       State) ->
-    logger:info("Actor exchanger ~p : wait_for_exchange_end, Got connected event "
+    ?'log-info'("Actor exchanger ~p : wait_for_exchange_end, Got connected event "
                 "from ~p",
                 [State#state.namespace, RequesterNode]),
     {next_state, initiator_disconnect, State, 500};
@@ -322,7 +323,7 @@ wait_for_exchange_end(info,
 wait_for_exchange_end(info,
                       {incoming_event, #exchange_end{}},
                       #state{namespace = Namespace} = State) ->
-    logger:info("Actor exchanger ~p : wait_for_exchange_end, Got exchange end "
+    ?'log-info'("Actor exchanger ~p : wait_for_exchange_end, Got exchange end "
                 "before connected, postponing, to connect : ~p",
                 [Namespace, State#state.proposed_sample]),
     {next_state, wait_for_exchange_end, State, [postpone]};
@@ -342,7 +343,7 @@ initiator_disconnect(info,
                      {incoming_event, #exchange_end{}},
                      #state{namespace = Namespace} = State) ->
     %% Disconnect from the nodes to leave
-    logger:info("Actor exchanger ~p : initiator_disconnect, Disconnect from "
+    ?'log-info'("Actor exchanger ~p : initiator_disconnect, Disconnect from "
                 "nodes to leave ~p",
                 [Namespace, State#state.to_leave]),
     bbsvx_client_connection:send(State#state.target_node#node_entry.pid, #exchange_end{}),
@@ -360,12 +361,12 @@ initiator_disconnect(Type, Event, State) ->
     {keep_state, State}.
 
 wait_for_exchange_end_responding(enter, _, #state{proposed_sample = []} = State) ->
-    logger:info("Actor exchanger ~p : Entering wait_for_exchange_end_responding "
+    ?'log-info'("Actor exchanger ~p : Entering wait_for_exchange_end_responding "
                 "with empty proposed sample, terminating",
                 [State#state.namespace]),
     {stop, normal, State};
 wait_for_exchange_end_responding(enter, _, #state{to_leave = []} = State) ->
-    logger:info("Actor exchanger ~p : Entering wait_for_exchange_end_responding "
+    ?'log-info'("Actor exchanger ~p : Entering wait_for_exchange_end_responding "
                 "with no node to leave, terminating",
                 [State#state.namespace]),
     {stop, normal, State};
@@ -374,14 +375,14 @@ wait_for_exchange_end_responding(enter, _, State) ->
 wait_for_exchange_end_responding(info,
                                  {connected, _Namespace, RequesterNode, {outview, _}},
                                  State) ->
-    logger:info("Actor exchanger ~p : wait_for_exchange_end_responding, Got "
+    ?'log-info'("Actor exchanger ~p : wait_for_exchange_end_responding, Got "
                 "connected event from ~p",
                 [State#state.namespace, RequesterNode]),
     {next_state, responding_disconnect, State, 500};
 wait_for_exchange_end_responding(info,
                                  {incoming_event, #exchange_end{}},
                                  #state{namespace = Namespace} = State) ->
-    logger:info("Actor exchanger ~p : wait_for_exchange_end_responding, Got "
+    ?'log-info'("Actor exchanger ~p : wait_for_exchange_end_responding, Got "
                 "exchange end before connected, postponing",
                 [Namespace]),
     {keep_state, State, [{postpone, true}]};
@@ -403,7 +404,7 @@ responding_disconnect(info,
                       {incoming_event, #exchange_end{}},
                       #state{namespace = Namespace} = State) ->
     %% Disconnect from the nodes to leave
-    logger:info("Actor exchanger ~p : wait_for_exchange_end_responding, Disconnect "
+    ?'log-info'("Actor exchanger ~p : wait_for_exchange_end_responding, Disconnect "
                 "from nodes to leave ~p",
                 [Namespace, State#state.to_leave]),
     lists:foreach(fun(Node) ->

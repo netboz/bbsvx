@@ -30,7 +30,7 @@ init([]) ->
       intensity => 5,
       period => 1},
   %% Retrieve port from configuration
-  Port = application:get_env(bbsvx, port, 2305),
+  Port = application:get_env(bbsvx, port, 2304),
   LocalIp = local_ip_v4(),
 
   ChildSpecs =

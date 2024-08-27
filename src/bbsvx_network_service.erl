@@ -10,7 +10,7 @@
 -author("yan").
 
 -include("bbsvx.hrl").
-
+-include_lib("logjam/include/logjam.hrl").
 -behaviour(gen_server).
 
 %%%=============================================================================
@@ -68,7 +68,7 @@ init([Host, Port]) ->
     {ok, _} =
         ranch:start_listener(bbsvx_spray_service,
                              ranch_tcp,
-                             #{socket_opts => [{port, 2305}], max_connections => infinity},
+                             #{socket_opts => [{port, 2304}], max_connections => infinity},
                              bbsvx_server_connection,
                              [#node_entry{node_id = MyId,
                                           host = Host,
@@ -87,7 +87,7 @@ handle_call(my_host_port, _From, #state{host = Host, port = Port} = State) ->
 %% Manage connections to new nodes
 %% Local connections are prevented
 handle_call(Request, From, State) ->
-    logger:info("bbsvx_connections_service:handle_call/3 called with Request: "
+   ?'log-warning'("Unmanaged handle_call/3 called with Request: "
                 "~p, From: ~p, State: ~p",
                 [Request, From, State]),
     Reply = ok,

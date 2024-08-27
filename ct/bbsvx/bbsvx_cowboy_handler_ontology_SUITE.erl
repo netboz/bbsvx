@@ -33,6 +33,7 @@ all() ->
 
 init_per_suite(Config) ->
     application:ensure_all_started(bbsvx),
+    application:start(bbsvx),
     Config.
 
 init_per_testcase(_TestName, Config) ->
@@ -49,6 +50,8 @@ end_per_suite(Config) ->
 %%%=============================================================================
 
 can_create_local_ontology(_Config) ->
+    application:ensure_all_started(bbsvx),
+    application:start(bbsvx),
     ct:pal("coucou"),
     DBody = jiffy:encode(#{namespace => <<"ont_test">>, type => <<"local">>}),
     ct:pal("DBody ~p", [DBody]),

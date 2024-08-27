@@ -14,6 +14,7 @@
 -behaviour(gen_statem).
 
 -include("bbsvx.hrl").
+-include_lib("logjam/include/logjam.hrl").
 
 %%%=============================================================================
 %%% Export and Defs
@@ -129,7 +130,6 @@ running(info,
                diameter = D,
                delta_e = DeltaE} =
             State) ->
-    %logger:info("Leader manager : next round. Current leader ~p", [State#state.leader]),
     M = 2 * D, % M = 2D + k − 1 with k = 1
     DeltaR = DeltaE + DeltaD,
     T = erlang:system_time(millisecond),
@@ -138,17 +138,14 @@ running(info,
         case ValidNeighbors of
             [] ->
                 %% No valid neighbors
-                %logger:info("Leader manager : no valid neighbors"),
                 {MyId, T, bbsvx_crypto_service:sign(term_to_binary(T))};
             _ ->
                 %% We have valid neighbors
                 %% Pick 3 random, neighbors from valid neighbors
                 RandomNeighbors = pick_three_random(Neighbors),
-                logger:info("Random neighbors ~p", [RandomNeighbors]),
                 %% chosen Leader is the most referenced leader among the 3 random neighbors
                 FollowedNeigbor = get_most_referenced_leader(RandomNeighbors),
-                %logger:info("Leader manager : chosen leader ~p",
-                %%[FollowedNeigbor#neighbor.chosen_leader]),
+        
                 %% Get neighbour entry with the highest Ts
                 Tsf = lists:foldl(fun (#neighbor{ts = Tsi}, Acc) when Tsi > Acc ->
                                           Tsi;
@@ -157,7 +154,6 @@ running(info,
                                   end,
                                   0,
                                   ValidNeighbors),
-                logger:info("Leader manager : Followed neighbor ~p", [FollowedNeigbor]),
                 {FollowedNeigbor#neighbor.chosen_leader,
                  Tsf,
                  bbsvx_crypto_service:sign(term_to_binary(Tsf))}
@@ -186,9 +182,7 @@ running(info,
 running(info,
         {incoming_event, #leader_election_info{payload = Payload}},
         #state{neighbors = Neighbors} = State) ->
-    %logger:info("Leader manager ~p received a leader election info ~p   vote "
-    %%           ":~p",
-    %%         [State#state.my_id, Payload#neighbor.node_id, Payload#neighbor.chosen_leader]),
+  
     {keep_state,
      State#state{neighbors =
                      lists:keystore(Payload#neighbor.node_id,
@@ -198,7 +192,7 @@ running(info,
 running({call, From}, get_leader, #state{leader = Leader}) ->
     {keep_state_and_data, [{reply, From, {ok, Leader}}]};
 running(EventType, EventContent, Data) ->
-    logger:info("Leader manager received an unmanaged event ~p ~p ~p",
+    ?'log-warning'("Leader manager received an unmanaged event ~p ~p ~p",
                 [EventType, EventContent, Data]),
     keep_state_and_data.
 
@@ -258,7 +252,7 @@ get_most_referenced_leader([#neighbor{chosen_leader = _A},
     when B == C ->
     NB;
 get_most_referenced_leader([#neighbor{} = A, #neighbor{} = B, #neighbor{} = C]) ->
-    logger:warning("Leader manager : get_most_referenced_leader failed A:~p ~n "
+    ?'log-warning'("Leader manager : get_most_referenced_leader failed A:~p ~n "
                    " B:~p ~n C:~p",
                    [A#neighbor.node_id, B#neighbor.node_id, C#neighbor.node_id]),
     none.

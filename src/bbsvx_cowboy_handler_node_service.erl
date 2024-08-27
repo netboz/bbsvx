@@ -10,6 +10,7 @@
 -author("yan").
 
 -include("bbsvx.hrl").
+-include_lib("logjam/include/logjam.hrl").
 
 -export([init/2]).
 
@@ -18,7 +19,6 @@
 %%%=============================================================================
 
 init(#{method := <<"GET">>, path := <<"/subs/", ClientId/binary>>} = Req0, State) ->
-    logger:info("Processing get subs request ~p", [Req0]),
     Conn = gproc:where({n, l, {bbsvx_mqtt_connection, ClientId}}),
     Result =
         case Conn of
@@ -35,10 +35,8 @@ init(#{method := <<"GET">>, path := <<"/subs/", ClientId/binary>>} = Req0, State
                            Req0),
     {ok, Req, State};
 init(#{method := <<"GET">>} = Req0, State) ->
-    logger:info("Processing get view request ~p", [Req0]),
     Onto = cowboy_req:binding(namespace, Req0),
     Type = view_type_to_atom(cowboy_req:binding(view_type, Req0)),
-    logger:info("Bindings ~p", [cowboy_req:bindings(Req0)]),
     %% Get my node id from crypto service
     MyId = bbsvx_crypto_service:my_id(),
     case get_view(Type, Onto) of
@@ -49,7 +47,6 @@ init(#{method := <<"GET">>} = Req0, State) ->
                                    Req0),
             {ok, Req, State};
         {ok, View} ->
-            logger:info("Got view : ~p", [View]),
             Result =
                 case Type of
                     get_outview ->
@@ -91,19 +88,17 @@ init(#{method := <<"GET">>} = Req0, State) ->
     end;
 init(#{method := <<"POST">>, path := <<"/epto/post/", Namespace/binary>>} = Req0,
      State) ->
-    logger:info("Processing post view request ~p", [Req0]),
-    logger:info("Namespace ~p", [Namespace]),
+
     {ok, Body, _} = cowboy_req:read_body(Req0),
     Comp = gproc:where({n, l, {bbsvx_epto_dissemination_comp, <<"bbsvx:root">>}}),
     gen_server:call(Comp, {epto_broadcast, Body}),
     {ok, Req0, State};
 init(Req0, State) ->
-    logger:info("Processing unknown request ~p", [Req0]),
+    ?'log-warning'("Processing unknown request ~p", [Req0]),
     Req = cowboy_req:reply(200,
                            #{<<"content-type">> => <<"text/plain">>},
                            <<"Hello Erlang!">>,
                            Req0),
-    logger:info("Request ~p", [Req]),
     {ok, Req, State}.
 
 get_view(undefined, _) ->
@@ -112,10 +107,9 @@ get_view(Type, Namespace) ->
     %% Look for spray agent
     case gproc:where({n, l, {bbsvx_actor_spray_view, Namespace}}) of
         undefined ->
-            logger:error("No view actor found"),
+            ?'log-error'("No view actor found ~p", [Namespace]),
             undefined;
         Pid ->
-            logger:info("Found view actor ~p", [Pid]),
             gen_statem:call(Pid, Type)
     end.
 

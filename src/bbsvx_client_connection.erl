@@ -13,6 +13,8 @@
 
 -include("bbsvx.hrl").
 
+-include_lib("logjam/include/logjam.hrl").
+
 %%%=============================================================================
 %%% Export and Defs
 %%%=============================================================================
@@ -45,7 +47,7 @@
 -spec start_link(contact | join_inview, binary(), node_entry(), node_entry()) ->
                     {ok, pid()} | {error, {already_started, pid()}} | {error, Reason :: any()}.
 start_link(Type, Namespace, #node_entry{} = MyNode, #node_entry{} = TargetNode) ->
-    logger:info("Startlinking connection to ~p", [TargetNode]),
+    ?'log-info'("Startlinking connection to ~p", [TargetNode]),
     gen_statem:start_link(?MODULE, [Type, Namespace, MyNode, TargetNode], []).
 
 new(Type, Namespace, MyNode, TargetNode) ->
@@ -65,7 +67,7 @@ stop() ->
 
 init([Type, Namespace, MyNode, TargetNode]) ->
     process_flag(trap_exit, true),
-    logger:info("Initializing connection from ~p, to ~p",
+    ?'log-info'("Initializing connection from ~p, to ~p",
                 [{TargetNode#node_entry.node_id, TargetNode#node_entry.host},
                  {MyNode#node_entry.node_id, MyNode#node_entry.host}]),
     MyPid = self(),
@@ -78,7 +80,7 @@ init([Type, Namespace, MyNode, TargetNode]) ->
             target_node = TargetNode#node_entry{pid = MyPid}}}.
 
 terminate(Reason, PreviousState, State) ->
-    logger:info("~p Terminating connection from ~p, to ~p while in state ~p "
+    ?'log-info'("~p Terminating connection from ~p, to ~p while in state ~p "
                 "with reason ~p",
                 [?MODULE, State#state.my_node, State#state.target_node, PreviousState, Reason]),
     ok.
@@ -106,7 +108,6 @@ connect(enter,
             Th ->
                 Th
         end,
-    logger:info("Connecting to ~p", [TargetNode]),
     case gen_tcp:connect(TargetHostInet,
                          TargetPort,
                          [binary,
@@ -141,7 +142,7 @@ connect(info,
                 ok ->
                     <<_:ByteRead/binary, BinLeft/binary>> = Bin,
 
-                    logger:info("Connected to ~p   nodeID: ~p~n",
+                    ?'log-info'("Connected to ~p   nodeID: ~p~n",
                                 [State#state.target_node, TargetNodeId]),
 
                     case Type of
@@ -190,7 +191,7 @@ connect(timeout, _, #state{namespace = Namespace, target_node = TargetNode}) ->
     {stop, normal};
 %% Ignore all other events
 connect(Type, Event, State) ->
-    logger:info("Connecting Ignoring event ~p~n", [{Type, Event}]),
+    ?'log-warning'("Connecting Ignoring event ~p~n", [{Type, Event}]),
     {keep_state, State}.
 
 %%-----------------------------------------------------------------------------
@@ -208,10 +209,26 @@ register(info,
              State) ->
     ConcatBuf = <<Buffer/binary, Bin/binary>>,
     case binary_to_term(ConcatBuf, [safe, used]) of
-        {#header_register_ack{result = Result}, ByteRead} ->
+        {#header_register_ack{result = Result,
+                              current_index = CurrentIndex,
+                              leader = Leader},
+         ByteRead} ->
             case Result of
                 ok ->
                     <<_:ByteRead/binary, BinLeft/binary>> = ConcatBuf,
+                    ?'log-info'("~p registering to ~p accepted   header ~p~n",
+                                [?MODULE,
+                                 TargetNode,
+                                 #header_register_ack{result = Result,
+                                                      current_index = CurrentIndex,
+                                                      leader = Leader}]),
+                    gproc:send({p, l, {?MODULE, Namespace}},
+                               {connected,
+                                Namespace,
+                                TargetNode,
+                                {outview, register, CurrentIndex, Leader}}),
+                    %% @TODO: we notify ontology actor we were accepted to ontology
+                    %% . Ideally this should be done at another layer
                     {next_state, connected, State#state{socket = Socket, buffer = BinLeft}};
                 Else ->
                     logger:error("~p registering to ~p refused : ~p~n",
@@ -245,10 +262,20 @@ join(info,
          State) ->
     ConcatBuf = <<Buffer/binary, Bin/binary>>,
     case binary_to_term(ConcatBuf, [safe, used]) of
-        {#header_join_ack{result = Result}, ByteRead} ->
+        {#header_join_ack{result = Result,
+                          current_index = CurrentIndex,
+                          leader = Leader},
+         ByteRead} ->
             case Result of
                 ok ->
                     <<_:ByteRead/binary, BinLeft/binary>> = ConcatBuf,
+
+                    %% Notify our join request was accepted
+                    gproc:send({p, l, {?MODULE, Namespace}},
+                               {connected,
+                                Namespace,
+                                TargetNode,
+                                {outview, join, CurrentIndex, Leader}}),
                     {next_state, connected, State#state{socket = Socket, buffer = BinLeft}};
                 Else ->
                     logger:error("~p Joining ~p refused : ~p~n", [?MODULE, TargetNode, Else]),
@@ -271,22 +298,15 @@ join(timeout, _, #state{namespace = Namespace, target_node = TargetNode} = State
                {connection_error, timeout, Namespace, TargetNode}),
     {stop, normal, State}.
 
-connected(enter,
-          _,
-          #state{type = Type,
-                 namespace = Namespace,
-                 target_node = TargetNode} =
-              State) ->
+connected(enter, _, #state{target_node = TargetNode} = State) ->
     MyPid = self(),
-    logger:info("~p Connected to ~p MyPid ~p target node pid ~p",
+    ?'log-info'("~p Connected to ~p MyPid ~p target node pid ~p",
                 [?MODULE, TargetNode, MyPid, TargetNode#node_entry.pid]),
-    gproc:send({p, l, {?MODULE, Namespace}},
-               {connected, Namespace, TargetNode, {outview, Type}}),
     {keep_state, State};
 connected(info, {tcp, _Socket, BinData}, #state{buffer = Buffer} = State) ->
     parse_packet(<<Buffer/binary, BinData/binary>>, keep_state, State);
 connected(cast, #forward_subscription{} = Subscription, State) ->
-    logger:info("~p Forwarding subscription static ~p   to ~p",
+    ?'log-info'("~p Forwarding subscription static ~p   to ~p",
                 [?MODULE, Subscription, State#state.target_node]),
     gen_tcp:send(State#state.socket, term_to_binary(Subscription)),
     {keep_state, State};
@@ -296,9 +316,9 @@ connected(cast, {send, Event}, State) ->
 connected({call, From},
           {disconnect, Reason},
           #state{namespace = Namespace, target_node = TargetNode}) ->
-    logger:info("~p Disconnecting with reason ~p   pid ~p",
+    ?'log-info'("~p Disconnecting with reason ~p   pid ~p",
                 [?MODULE, Reason, TargetNode#node_entry.pid]),
-    logger:info("My pid : ~p  target node pid ~p", [self(), TargetNode#node_entry.pid]),
+    ?'log-info'("My pid : ~p  target node pid ~p", [self(), TargetNode#node_entry.pid]),
     gproc:send({p, l, {?MODULE, Namespace}},
                {connection_terminated, {out, Reason}, Namespace, TargetNode}),
     gen_statem:reply(From, ok),
@@ -308,15 +328,15 @@ connected(info,
           #state{socket = Socket,
                  namespace = Namespace,
                  target_node = TargetNode}) ->
-    logger:info("~p Connection closed~n", [?MODULE]),
+    ?'log-info'("~p Connection closed~n", [?MODULE]),
     %% Notify spay agent to remove all occurences of this connection
     gproc:send({p, l, {?MODULE, Namespace}},
                {connection_terminated, {out, tcp_closed}, Namespace, TargetNode}),
     {stop, tcp_closed};
 %% Ignore all other events
 connected(Type, Event, State) ->
-    logger:info("~p Connected Ignoring event ~p  on socket ~p ~n",
-                [?MODULE, {Type, Event}, State#state.socket]),
+    ?'log-warning'("~p Connected Ignoring event ~p  on socket ~p ~n",
+                   [?MODULE, {Type, Event}, State#state.socket]),
     {keep_state, State}.
 
 %%%=============================================================================
@@ -329,7 +349,7 @@ event_connection_error(Reason, Namespace, TargetNode) ->
                {connection_error, Reason, Namespace, TargetNode}).
 
 event_spray(Event, Namespace) ->
-    gproc:send({p, l, {?MODULE, Namespace}}, {incoming_event, Event}).
+    gproc:send({p, l, {spray_exchange, Namespace}}, {incoming_event, Event}).
 
 -spec parse_packet(binary(), term(), state()) -> {term(), state()}.
 parse_packet(<<>>, Action, State) ->
@@ -341,34 +361,38 @@ parse_packet(Buffer, Action, #state{namespace = Namespace} = State) ->
                 {complete, DecodedEvent, NbBytesUsed}
         catch
             Error:Reason ->
-                logger:info("Parsing incomplete : ~p~n", [{Error, Reason}]),
+                ?'log-notice'("Parsing incomplete : ~p~n", [{Error, Reason}]),
                 {incomplete, Buffer}
         end,
 
     case Decoded of
+        %% Ontology management messages
+        {complete, #ontology_history{} = Event, Index} ->
+            <<_:Index/binary, BinLeft/binary>> = Buffer,
+            ?'log-info'("Connection received Ontology history ~p     ~p~n",
+                        [Event#ontology_history.oldest_index,
+                         Event#ontology_history.younger_index]),
+            gproc:send({p, l, {bbsvx_actor_ontology, Namespace}}, Event),
+            parse_packet(BinLeft, Action, State);
+        %% Spray related messages
         {complete, #exchange_cancelled{} = Event, Index} ->
             <<_:Index/binary, BinLeft/binary>> = Buffer,
-            logger:info("~p Incoming event ~p", [?MODULE, Event]),
             event_spray(Event, Namespace),
             parse_packet(BinLeft, Action, State);
         {complete, #exchange_out{} = Event, Index} ->
             <<_:Index/binary, BinLeft/binary>> = Buffer,
-            logger:info("~p Incoming event ~p", [?MODULE, Event]),
             event_spray(Event, Namespace),
             parse_packet(BinLeft, Action, State);
         {complete, #exchange_accept{} = Event, Index} ->
             <<_:Index/binary, BinLeft/binary>> = Buffer,
-            logger:info("~p Incoming event ~p", [?MODULE, Event]),
             event_spray(Event, Namespace),
             parse_packet(BinLeft, Action, State);
         {complete, #exchange_end{} = Event, Index} ->
             <<_:Index/binary, BinLeft/binary>> = Buffer,
-            logger:info("~p Incoming event ~p", [?MODULE, Event]),
             event_spray(Event, Namespace),
             parse_packet(BinLeft, Action, State);
         {complete, Event, Index} ->
             <<_:Index/binary, BinLeft/binary>> = Buffer,
-            logger:info("~p Incoming event ~p", [?MODULE, Event]),
             event_spray(Event, Namespace),
             parse_packet(BinLeft, Action, State);
         {incomplete, Buffer} ->

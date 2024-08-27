@@ -11,6 +11,8 @@
 
 -behaviour(supervisor).
 
+-include_lib("logjam/include/logjam.hrl").
+
 %%%=============================================================================
 %%% Export and Defs
 %%%=============================================================================
@@ -35,7 +37,7 @@ start_link() ->
 %%%=============================================================================
 
 init([]) ->
-    logger:info("Starting shared ontologies supervisor"),
+    ?'log-info'("Starting shared ontologies supervisor"),
     SupFlags =
         #{strategy => simple_one_for_one,
           intensity => 0,

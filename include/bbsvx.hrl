@@ -10,9 +10,8 @@
          contact_nodes = [] :: [node_entry()]}).
 %% Goal storage
 -record(goal,
-        {
-        %% @TODO: rename id to address        
-        id :: binary(),
+        {%% @TODO: rename id to address
+         id :: binary(),
          timestamp :: integer(),
          namespace :: binary(),
          leader :: binary(),
@@ -25,16 +24,19 @@
          diff :: term(),
          address :: binary(),
          signature :: binary()}).
--type(goal_result() :: #goal_result{}).
+
+-type goal_result() :: #goal_result{}.
+
 -record(ontology_history,
         {namespace :: binary(),
-         oldest_tx :: binary(),
-         younger_tx :: binary(),
+         oldest_index :: binary(),
+         younger_index :: binary(),
          list_tx :: [transaction()]}).
 -record(ontology_history_request,
         {namespace :: binary(),
-         oldest_tx :: binary(),
-         younger_tx :: binary()}).
+         requester :: node_entry(),
+         oldest_index :: integer(),
+         younger_index :: integer()}).
 -record(db_differ, {out_db :: db(), op_fifo = [] :: [functor()]}).
 
 %%%==============================================================================
@@ -47,7 +49,11 @@
 
 -record(ont_state,
         {namespace :: binary(),
+         previous_ts :: binary(),
+         current_ts :: binary(),
          prolog_state :: erlog_state(),
+         local_index = 0 :: integer(),
+         current_index = 0 :: integer(),
          current_address :: binary(),
          next_address :: binary()}).
 
@@ -62,13 +68,14 @@
 %%%=============================================================================
 
 -record(transaction,
-        {type :: creation | goal,
+        {index = 0 :: integer(),
+         type :: creation | goal,
          signature :: binary(),
          ts_created :: integer(),
          ts_processed :: integer(),
          source_ontology_id :: binary(),
-         next_address :: binary(),
          prev_address :: binary(),
+         prev_hash :: binary(),
          current_address :: binary(),
          namespace :: binary(),
          leader :: binary(),
@@ -109,11 +116,6 @@
 
 -type neighbor() :: #neighbor{}.
 -type neighbors() :: [neighbor()].
-
-
-
-
-
 -type ontology() :: #ontology{}.
 -type goal() :: #goal{}.
 -type db() :: #db{}.
@@ -129,9 +131,9 @@
          origin_node :: node_entry()}).
 -record(header_connect_ack, {result = <<>> :: term(), node_id :: binary()}).
 -record(header_register, {namespace :: binary()}).
--record(header_register_ack, {result = <<>> :: term(), leader :: binary()}).
+-record(header_register_ack, {result = <<>> :: term(), leader :: binary(), current_index :: integer()}).
 -record(header_join, {namespace :: binary()}).
--record(header_join_ack, {result = <<>> :: term()}).
+-record(header_join_ack, {result = <<>> :: term(), leader :: binary(), current_index :: integer()}).
 -record(epto_message, {payload :: term()}).
 -record(empty_inview, {node :: node_entry()}).
 -record(forward_subscription,
@@ -149,8 +151,9 @@
 -record(exchange_end, {namespace = <<>> :: binary()}).
 -record(exchange_cancelled, {namespace = <<>> :: binary(), reason :: atom()}).
 
+-opaque erlog_state() :: #est{}.
 
--opaque erlog_state()			:: #est{}.
--export_type(([erlog_state/0])).
--type functor()                         :: tuple().
--type erlog_return(Value)		:: {Value,erlog_state()}.
+-export_type([erlog_state/0]).
+
+-type functor() :: tuple().
+-type erlog_return(Value) :: {Value, erlog_state()}.

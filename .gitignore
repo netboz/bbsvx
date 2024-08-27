@@ -27,3 +27,7 @@ docker/prometheus/data
 docker/tempo/data
 positions.yaml
 settings.json
+.venv
+log.html
+output.xml
+report.html

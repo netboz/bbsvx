@@ -63,8 +63,8 @@ COPY --from=builded /buildroot/priv /bbsvx/priv
 COPY --from=builded /buildroot/run.sh /bbsvx/run.sh
 
 # Expose relevant ports
-EXPOSE 10300
+EXPOSE 2304
 #EXPOSE 8443
 
 # Run the application
-CMD ["sh", "/bbsvx/run.sh", "foreground"]
+CMD ["sh", "-c", "/bbsvx/bin/bbsvx foreground -init_root ${init_root}"]

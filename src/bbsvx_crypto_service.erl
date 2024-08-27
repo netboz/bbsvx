@@ -11,12 +11,15 @@
 
 -behaviour(gen_server).
 
+-include("bbsvx.hrl").
+-include_lib("logjam/include/logjam.hrl").
+
 %%%=============================================================================
 %%% Export and Defs
 %%%=============================================================================
 
 %% External API
--export([start_link/0, my_id/0, sign/1, get_public_key/0]).
+-export([start_link/0, my_id/0, sign/1, get_public_key/0, calculate_hash_address/2]).
 %% Callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
@@ -54,15 +57,32 @@ sign(Data) ->
 get_public_key() ->
     gen_server:call({via, gproc, {n, l, ?MODULE}}, get_public_key).
 
+calculate_hash_address(Index,
+                       #transaction{ts_created = TsCreated,
+                                    source_ontology_id = SourceOntologyId,
+                                    prev_address = PrevAddress,
+                                    prev_hash = PrevHash,
+                                    namespace = Namespace,
+                                    leader = Leader,
+                                    payload = Payload}) ->
+    crypto:hash(blake2b,
+                term_to_binary({Index,
+                                TsCreated,
+                                SourceOntologyId,
+                                PrevAddress,
+                                PrevHash,
+                                Namespace,
+                                Leader,
+                                Payload})).
+
 %%%=============================================================================
 %%% Gen Server Callbacks
 %%%=============================================================================
 
 init([]) ->
-    logger:info("Starting crypto service"),
+    ?'log-info'("Starting crypto service"),
     %% Create a private ets table to store the data loaded from DETS
     {PubKey, PrivKey} = crypto:generate_key(eddsa, ed25519),
-    logger:info("Generated keys.", []),
     {ok,
      #state{privkey = PrivKey,
             pubkey = PubKey,
@@ -72,7 +92,6 @@ init([]) ->
 handle_call(my_id, _From, State) ->
     {reply, State#state.node_id, State};
 handle_call({sign, Data}, _From, #state{pubkey = PubKey, privkey = PrivKey} = State) ->
-    %logger:info("Signing data ~p", [Data]),
     Signature = public_key:sign(Data, none, {ed_pri, ed25519, PubKey, PrivKey}, []),
     {reply, Signature, State};
 handle_call(get_public_key, _From, State) ->

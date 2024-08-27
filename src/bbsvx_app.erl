@@ -7,16 +7,19 @@
 
 -behaviour(application).
 
--include("bbsvx.hrl").
-
 -export([start/2, stop/1]).
 
+-include_lib("logjam/include/logjam.hrl").
+
 start(_StartType, _StartArgs) ->
+    load_schema(),
+    clique:register([bbsvx_cli]),
+    logger:info("all flags: ~p~n", [init:get_arguments()]),
+
+    ?'log-info'("BBSVX starting.", []),
     opentelemetry_cowboy:setup(),
     opentelemetry:get_application_tracer(?MODULE),
     mnesia:change_table_copy_type(schema, node(), disc_copies),
-
-    logger:info("BBSvx starting with args ~p", [_StartArgs]),
     Dispatch =
         cowboy_router:compile([{'_',
                                 [{"/transaction", bbsvx_cowboy_handler_transaction, #{}},
@@ -41,3 +44,11 @@ start(_StartType, _StartArgs) ->
 
 stop(_State) ->
     ok.
+
+load_schema() ->
+    case application:get_env(bbsvx, schema_dirs) of
+        {ok, Directories} ->
+            ok = clique_config:load_schema(Directories);
+        _ ->
+            ok = clique_config:load_schema([code:priv_dir(bbsvx)])
+    end.

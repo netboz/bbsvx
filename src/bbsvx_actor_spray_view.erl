@@ -13,6 +13,8 @@
 
 -include("bbsvx.hrl").
 
+-include_lib("logjam/include/logjam.hrl").
+
 %%%=============================================================================
 %%% Export and Defs
 %%%=============================================================================
@@ -50,9 +52,9 @@ start_link(Namespace) ->
                     {ok, pid()} | {error, {already_started, pid()}} | {error, Reason :: any()}.
 start_link(Namespace, Options) ->
     gen_statem:start_link({via, gproc, {n, l, {?MODULE, Namespace}}},
-                     ?MODULE,
-                     [Namespace, Options],
-                     []).
+                          ?MODULE,
+                          [Namespace, Options],
+                          []).
 
 %%%-----------------------------------------------------------------------------
 %%% @doc
@@ -124,7 +126,7 @@ init([Namespace, Options]) ->
     process_flag(trap_exit, true),
 
     _ = init_metrics(Namespace),
-    logger:info("spray Agent ~p : Starting state with Options ~p", [Namespace, Options]),
+    ?'log-info'("spray Agent ~p : Starting state with Options ~p", [Namespace, Options]),
     %% Get our node id
     MyNodeId = bbsvx_crypto_service:my_id(),
     %% Get our host and port
@@ -134,15 +136,20 @@ init([Namespace, Options]) ->
                     host = Host,
                     port = Port},
     %% Check options for contact_nodes to connect to
-    case maps:get(contact_nodes, Options, []) of
-        [] ->
+    case maps:get(boot, Options, root) of
+        root ->
             ok;
-        [_ | _] = ContactNodes ->
+        {join, []} ->
+            ?'log-notice'("spray Agent ~p : Starting state, No contact nodes, starting "
+                          "as root",
+                          [Namespace]),
+            ok;
+        {join, ContactNodes} ->
             %% Choose a random node from the contact nodes
             ContactNode =
                 lists:nth(
                     rand:uniform(length(ContactNodes)), ContactNodes),
-            logger:info("spray Agent ~p : Starting state, Connecting to contact node ~p",
+            ?'log-info'("spray Agent ~p : Starting state, Connecting to contact node ~p",
                         [Namespace, ContactNode]),
             %% Start a join to the contact node
             supervisor:start_child(bbsvx_sup_client_connections,
@@ -167,7 +174,7 @@ init([Namespace, Options]) ->
                             port = Port}}}.
 
 terminate(_Reason, _PreviousState, #state{namespace = Namespace}) ->
-    logger:info("spray Agent ~p : Terminating state", [Namespace]),
+    ?'log-info'("spray Agent ~p : Terminating state", [Namespace]),
     %% Notify outview we are leaving the node
     %% Maybe terminate epto service
     supervisor:terminate_child(bbsvx_sup_epto_agents,
@@ -195,7 +202,7 @@ callback_mode() ->
 running(enter, _OldState, State) ->
     case State#state.pid_exchange_timeout of
         undefined ->
-            logger:info("spray Agent ~p : Running state, Starting exchange timer",
+            ?'log-info'("spray Agent ~p : Running state, Starting exchange timer",
                         [State#state.namespace]),
             Me = self(),
             Timeref = erlang:start_timer(?EXCHANGE_TIMEOUT, Me, spray_loop),
@@ -204,10 +211,21 @@ running(enter, _OldState, State) ->
             keep_state_and_data
     end;
 running(info,
-        {connected, _Namespace, RequesterNode, {outview, _}},
+        {connected, _Namespace, RequesterNode, {outview, register, CurrentIndex, CurrentLeader}},
         #state{namespace = Namespace, out_view = OutView} = State) ->
-    logger:info(" --> spray Agent ~p : Running state, Connected to ~p, adding "
-                "to outview",
+    ?'log-info'(" --> spray Agent ~p : Running state, Connected to ~p, adding "
+                "to outview. Current index ~p, Current leader ~p",
+                [State#state.namespace, RequesterNode, CurrentIndex, CurrentLeader]),
+    NewOutView = [RequesterNode#node_entry{age = 0} | OutView],
+    gproc:send({n, l, {bbsvx_actor_ontology, Namespace}}, {registered, CurrentIndex}),
+    prometheus_gauge:set(build_metric_view_name(Namespace, <<"spray_outview_size_">>),
+                         length(NewOutView)),
+    {keep_state, State#state{out_view = NewOutView}};
+running(info,
+        {connected, _Namespace, RequesterNode, {outview, join, _, _}},
+        #state{namespace = Namespace, out_view = OutView} = State) ->
+    ?'log-info'(" --> spray Agent ~p : Running state, Connected to ~p, adding "
+                "to outview.",
                 [State#state.namespace, RequesterNode]),
     NewOutView = [RequesterNode#node_entry{age = 0} | OutView],
     prometheus_gauge:set(build_metric_view_name(Namespace, <<"spray_outview_size_">>),
@@ -221,21 +239,28 @@ running(info,
                in_view = InView} =
             State) ->
     NewInView = [RequesterNode#node_entry{age = 0} | InView],
-    logger:info("--> spray Agent ~p : Running state, Connected to ~p, adding "
+    ?'log-info'("--> spray Agent ~p : Running state, Connected to ~p, adding "
                 "to inview",
                 [State#state.namespace, RequesterNode]),
     prometheus_gauge:set(build_metric_view_name(Namespace, <<"spray_inview_size_">>),
                          length(NewInView)),
 
+    {ok, CurrentIndex} = bbsvx_actor_ontology:get_current_index(Namespace),
+    ?'log-info'("spray Agent ~p : current index : ~p", [Namespace, CurrentIndex]),
+    {ok, CurrentLeader} = bbsvx_actor_leader_manager:get_leader(Namespace),
+    bbsvx_server_connection:accept_register(RequesterNode#node_entry.pid,
+                                            #header_register_ack{result = ok,
+                                                                 leader = CurrentLeader,
+                                                                 current_index = CurrentIndex}),
     %% If our outview is empty, we should request a join to the new node
     case length(OutView) of
         A when A < 1 ->
-            logger:info("spray Agent ~p : Running state, Outview empty, requesting join "
+            ?'log-info'("spray Agent ~p : Running state, Outview empty, requesting join "
                         "to ~p",
                         [State#state.namespace, RequesterNode]),
             bbsvx_client_connection:new(join, Namespace, MyNode, RequesterNode);
         _ ->
-            logger:info("spray Agent ~p : Running state, Outview not empty, forwarding "
+            ?'log-info'("spray Agent ~p : Running state, Outview not empty, forwarding "
                         "join request",
                         [State#state.namespace]),
             %% Broadcast forward subscription to all nodes in the outview
@@ -252,20 +277,28 @@ running(info,
     end,
     {keep_state, State#state{in_view = NewInView}};
 running(info,
-        {connected, _Namespace, RequesterNode, {inview, _}},
+        {connected, _Namespace, #node_entry{pid = RequesterPid} = RequesterNode, {inview, join}},
         #state{namespace = Namespace, in_view = InView} = State) ->
-    logger:info("spray Agent ~p : Running state, Connected to ~p, adding to "
+    ?'log-info'("spray Agent ~p : Running state, Connected to ~p, adding to "
                 "inview",
                 [State#state.namespace, RequesterNode]),
     NewInView = [RequesterNode#node_entry{age = 0} | InView],
     prometheus_gauge:set(build_metric_view_name(Namespace, <<"spray_inview_size_">>),
                          length(NewInView)),
+
+    {ok, CurrentIndex} = bbsvx_actor_ontology:get_current_index(Namespace),
+
+    {ok, CurrentLeader} = bbsvx_actor_leader_manager:get_leader(Namespace),
+    bbsvx_server_connection:accept_join(RequesterPid,
+                                        #header_join_ack{result = ok,
+                                                         leader = CurrentLeader,
+                                                         current_index = CurrentIndex}),
     {keep_state, State#state{in_view = NewInView}};
 %% Manage forwarded subcription requests
 running(info,
         {forwarded_subscription, Namespace, #node_entry{} = RequesterNode},
         #state{my_node = MyNode} = State) ->
-    logger:info("spray Agent ~p : Running state, Received forwarded subscription "
+    ?'log-info'("spray Agent ~p : Running state, Received forwarded subscription "
                 "request from ~p",
                 [State#state.namespace, RequesterNode]),
     %% Spawn spray join agent to join the inview of forwarded subscription
@@ -273,18 +306,18 @@ running(info,
     {keep_state, State};
 %% Diconnection management
 running(info, {connection_terminated, {out, Reason}, Namespace, TargetNode}, State) ->
-    logger:info("spray Agent ~p : Running state, Connection out terminated to "
+    ?'log-info'("spray Agent ~p : Running state, Connection out terminated to "
                 "~p   reason ~p",
                 [Namespace, TargetNode, Reason]),
-    logger:info("Current out view ~p", [State#state.out_view]),
+    ?'log-info'("Current out view ~p", [State#state.out_view]),
     NewOutView =
         lists:keydelete(TargetNode#node_entry.pid, #node_entry.pid, State#state.out_view),
     prometheus_gauge:set(build_metric_view_name(Namespace, <<"spray_outview_size_">>),
                          length(NewOutView)),
-    logger:info("New out view ~p", [NewOutView]),
+    ?'log-info'("New out view ~p", [NewOutView]),
     case NewOutView of
         [] ->
-            logger:info("spray Agent ~p : Running state, Outview depleted",
+            ?'log-info'("spray Agent ~p : Running state, Outview depleted",
                         [State#state.namespace]),
             prometheus_counter:inc(build_metric_view_name(Namespace,
                                                           <<"spray_outview_depleted_">>));
@@ -293,7 +326,7 @@ running(info, {connection_terminated, {out, Reason}, Namespace, TargetNode}, Sta
     end,
     {keep_state, State#state{out_view = NewOutView}};
 running(info, {connection_terminated, {in, Reason}, Namespace, TargetNode}, State) ->
-    logger:info("spray Agent ~p : Running state, Connection in terminated to "
+    ?'log-info'("spray Agent ~p : Running state, Connection in terminated to "
                 "~p   Reason ~p",
                 [Namespace, TargetNode, Reason]),
     NewInView =
@@ -302,7 +335,8 @@ running(info, {connection_terminated, {in, Reason}, Namespace, TargetNode}, Stat
                          length(NewInView)),
     case NewInView of
         [] ->
-            logger:info("spray Agent ~p : Running state, Inview depleted", [State#state.namespace]),
+            ?'log-warning'("spray Agent ~p : Running state, Inview depleted",
+                           [State#state.namespace]),
             prometheus_counter:inc(build_metric_view_name(Namespace, <<"spray_inview_depleted_">>));
         _ ->
             ok
@@ -311,14 +345,14 @@ running(info, {connection_terminated, {in, Reason}, Namespace, TargetNode}, Stat
 running(info,
         {connection_error, connection_to_self, Namespace, TargetNode},
         #state{namespace = Namespace} = State) ->
-    logger:info("spray Agent ~p : Running state, Connection to self to ~p",
+    ?'log-info'("spray Agent ~p : Running state, Connection to self to ~p",
                 [State#state.namespace, TargetNode]),
     {keep_state, State};
 running(info,
         {connection_error, Reason, Namespace, TargetNode},
         #state{namespace = Namespace} = State) ->
-    logger:info("spray Agent ~p : Running state, Connection error to ~p  Reason ~p",
-                [State#state.namespace, TargetNode, Reason]),
+    ?'log-error'("spray Agent ~p : Running state, Connection error to ~p  Reason ~p",
+                 [State#state.namespace, TargetNode, Reason]),
     {keep_state, State};
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Old API
 %% Remove nodes from outview
@@ -334,6 +368,7 @@ running(info,
                namespace = Namespace,
                out_view = OutView} =
             State) ->
+    ?'log-info'("spray Agent ~p : starting spray loop", [Namespace]),
     %% Increment age of nodes in out view
     AgedPartialView =
         lists:map(fun(Node) -> Node#node_entry{age = Node#node_entry.age + 1} end, OutView),
@@ -352,9 +387,9 @@ running(info, {timeout, _, spray_loop}, #state{} = State) ->
 running(info,
         {partial_view_exchange_in, _Namespace, #node_entry{node_id = OriginNodeId}, _},
         #state{in_view = [#node_entry{node_id = OriginNodeId, pid = OriginNodePid}]} = State) ->
-    logger:info("spray Agent ~p : Running state, cancelling exchange : empty "
-                "inview",
-                [State#state.namespace]),
+    ?'log-notice'("spray Agent ~p : Running state, cancelling exchange : empty "
+                  "inview",
+                  [State#state.namespace]),
     bbsvx_server_connection:reject_exchange(OriginNodePid, responding_empty_inview),
     keep_state_and_data;
 %% Received partial view exchange in and no exchanger running
@@ -364,7 +399,7 @@ running(info,
          #node_entry{} = OriginNode,
          IncomingSamplePartialView},
         #state{pid_exchanger = undefined, my_node = MyNode} = State) ->
-    logger:info("spray Agent ~p : Running state, Got partial view exchange in "
+    ?'log-info'("spray Agent ~p : Running state, Got partial view exchange in "
                 "from ~p proposing : ~p",
                 [State#state.namespace, OriginNode, IncomingSamplePartialView]),
     %% Add the incoming partial view to our inview
@@ -379,9 +414,9 @@ running(info,
 running(info,
         {partial_view_exchange_in, _Namespace, #node_entry{pid = OriginNodePid} = OriginNode, _},
         State) ->
-    logger:info("spray Agent ~p : Running state, busy rejecting  partial view "
-                "exchange in from ~p",
-                [State#state.namespace, OriginNode]),
+    ?'log-notice'("spray Agent ~p : Running state, busy rejecting  partial view "
+                  "exchange in from ~p",
+                  [State#state.namespace, OriginNode]),
 
     bbsvx_server_connection:reject_exchange(OriginNodePid, busy),
 
@@ -404,6 +439,7 @@ running({call, From},
     RandomSubset =
         lists:sublist(
             lists:usort(fun(_N1, _N2) -> rand:uniform(2) =< 1 end, OutView), N),
+
     lists:foreach(fun(#node_entry{pid = Pid}) -> bbsvx_client_connection:send(Pid, Payload)
                   end,
                   RandomSubset),
@@ -412,10 +448,19 @@ running({call, From},
 running(info,
         {'DOWN', MonitorRef, process, PidTerminating, _Info},
         #state{pid_exchanger = {PidTerminating, MonitorRef}} = State) ->
-    logger:info("spray Agent ~p : Running state, Partial view exchange done",
+    ?'log-info'("spray Agent ~p : Running state, Partial view exchange done",
                 [State#state.namespace]),
 
     {keep_state, State#state{pid_exchanger = undefined}};
+running(info,
+        {'EXIT', PidTerminating, Info},
+        #state{pid_exchanger = {PidTerminating, _MonitorRef}} = State) ->
+    ?'log-info'("spray Agent ~p : Running state, Partial view exchange exited, "
+                "reason ~p",
+                [State#state.namespace, Info]),
+    Me = self(),
+    Timeref = erlang:start_timer(?EXCHANGE_TIMEOUT, Me, spray_loop),
+    {keep_state, State#state{pid_exchange_timeout = Timeref, pid_exchanger = undefined}};
 %% Answer get inview request
 running({call, From}, get_outview, #state{out_view = OutView} = State) ->
     gen_statem:reply(From, {ok, OutView}),
@@ -429,7 +474,7 @@ running({call, From}, get_views, #state{in_view = InView, out_view = OutView} = 
     gen_statem:reply(From, {ok, {InView, OutView}}),
     {keep_state, State};
 running({call, From}, {reinit_age, TargetNodePid}, #state{out_view = OutView} = State) ->
-    logger:info("spray Agent ~p : Running state, Reinit age for ~p",
+    ?'log-info'("spray Agent ~p : Running state, Reinit age for ~p",
                 [State#state.namespace, TargetNodePid]),
     %% Update the age of the outview node designed by NodeId to 0
     {_, Node, TempOutview} = lists:keytake(TargetNodePid, #node_entry.pid, OutView),
@@ -445,17 +490,23 @@ running({call, From}, {get_n_unique_random, N}, #state{out_view = OutView} = Sta
                           lists:usort(fun(_N1, _N2) -> rand:uniform(2) =< 1 end, OutView), N)}),
     {keep_state, State};
 running(info, {'EXIT', Pid, shutdown}, State) ->
-    logger:info("spray Agent ~p : Running state, Exchanger ~p shutdown",
+    ?'log-info'("spray Agent ~p : Running state, Exchanger ~p shutdown",
                 [State#state.namespace, Pid]),
     {stop, normal, State};
 running(Type, Event, State) ->
-    logger:info("spray Agent ~p : Running state, Unhandled event ~p",
-                [State#state.namespace, {Type, Event}]),
+    ?'log-warning'("spray Agent ~p : Running state, Unhandled event ~p",
+                   [State#state.namespace, {Type, Event}]),
     {keep_state, State}.
 
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
+
+get_random([]) ->
+    [];
+get_random(List) ->
+    lists:nth(
+        rand:uniform(length(List)), List).
 
 -spec build_metric_view_name(Namespace :: binary(), MetricName :: binary()) -> atom().
 build_metric_view_name(Namespace, MetricName) ->

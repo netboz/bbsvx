@@ -10,7 +10,7 @@
 -author("yan").
 
 -behaviour(gen_server).
-
+-include_lib("logjam/include/logjam.hrl").
 %%%=============================================================================
 %%% Export and Defs
 %%%=============================================================================
@@ -134,7 +134,6 @@ handle_call({order_events, Ball},
 
     SortedDeliverableEvents = lists:keysort(3, FilteredDeliverableEvent),
 
-    %logger:info("Sorted deilverable : ~p", [SortedDeliverableEvents]),
     {NewDeliveredEvents, NewLastDeliveredTs} =
         lists:foldl(fun (#event{ts = EvtTs, id = EvtId} = Evt,
                          {AccDelivered, _AccLastDeliveredTs}) ->
@@ -180,10 +179,9 @@ is_above(_MinQueueTs, _EvtTs) ->
     false.
 
 deliver(#event{payload = #transaction{} = Transaction}) ->
-    logger:info("Recevied new tranaction ~p", [Transaction]),
-    bbsvx_transaction_pipeline:accept_transaction(Transaction);
+    bbsvx_transaction_pipeline:receive_transaction(Transaction);
 deliver(#event{payload = #goal_result{} = GoalResult}) ->
-    logger:info("Recevied new tranaction ~p", [GoalResult]),
+    ?'log-info'("Received goal result ~p", [GoalResult]),
     bbsvx_transaction_pipeline:accept_transaction_result(GoalResult);
 deliver(#event{payload = <<"leader">>}) ->
     %% Get leader from leader manager
@@ -193,7 +191,6 @@ deliver(#event{payload = <<"leader">>}) ->
     file:close(F),
     ok;
 deliver(Evt) ->
-    logger:info("Delivering ~p", [Evt]),
     {ok, F} = file:open("/logs/" ++ atom_to_list(node()) ++ ".log", [append]),
     file:write(F, iolist_to_binary(Evt#event.payload)),
     file:close(F),
