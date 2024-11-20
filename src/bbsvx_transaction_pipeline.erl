@@ -337,7 +337,7 @@ do_prove_goal(#goal{namespace = Namespace, payload = ReceivedPred} = Goal,
                                      signature = <<>>,
                                      address = Goal#goal.id,
                                      diff = []},
-                    bbsvx_actor_spray_view:broadcast_unique(Namespace, GoalResult),
+                    bbsvx_actor_spray:broadcast_unique(Namespace, GoalResult),
                     {error, Other}
             end
     end;

@@ -28,7 +28,7 @@
 -export([stop/0]).
 %% Ranch Protocol Callbacks
 -export([start_link/3, accept_exchange/2, reject_exchange/2, exchange_end/1,
-         send_history/2, accept_join/2, accept_register/2]).
+         send_history/2, accept_join/2, accept_register/2, peer_connect_to_sample/2]).
 -export([init/1]).
 %% Gen State Machine Callbacks
 -export([code_change/4, callback_mode/0, terminate/3]).
@@ -36,12 +36,14 @@
 -export([authenticate/3, wait_for_subscription/3, connected/3]).
 
 -record(state,
-        {ref :: ranch_tcp:ref(),
-         socket :: ranch_tcp:socket(),
+        {ref :: any(),
+         my_ulid :: binary() | undefined,
+         lock = <<>> :: binary(),
+         socket,
          namespace :: binary() | undefined,
-         mynode :: #node_entry{},
+         my_node :: #node_entry{},
          origin_node :: #node_entry{} | undefined,
-         transport :: ranch_transport:transport(),
+         transport :: atom(),
          buffer = <<>>}).
 
 -type state() :: #state{}.
@@ -52,15 +54,14 @@
 %%%=============================================================================
 
 start_link(Ref, Transport, Opts) ->
-  ?'log-info'("~p Incoming connection on ~p...", [?MODULE, Opts]),
   gen_statem:start_link(?MODULE, {Ref, Transport, Opts}, []).
 
 init({Ref, Transport, [MyNode]}) ->
-  ?'log-info'("Initializing server connection ~p  Transport :~p", [MyNode, Transport]),
-  %% Perform any required state initialization here.
+  ?'log-info'("Node ~p Initializing server connection. Transport :~p", [MyNode, Transport]),
+
   {ok,
    authenticate,
-   #state{mynode = MyNode,
+   #state{my_node = MyNode,
           transport = Transport,
           ref = Ref}}.
 
@@ -83,6 +84,9 @@ exchange_end(ConnectionPid) ->
 send_history(ConnectionPid, #ontology_history{} = History) ->
   gen_statem:cast(ConnectionPid, {send_history, History}).
 
+peer_connect_to_sample(ConnectionPid, #peer_connect_to_sample{} = Msg) ->
+  gen_statem:cast(ConnectionPid, {peer_connect_to_sample, Msg}).
+
 %%%=============================================================================
 %%% Gen Statem API
 %%%=============================================================================
@@ -95,8 +99,9 @@ stop() ->
 %%% Gen State Machine Callbacks
 %%%=============================================================================
 
-terminate(Reason, State, _Data) ->
-  ?'log-info'("~p Terminating...~p   Reason ~p", [?MODULE, State, Reason]),
+terminate(Reason, _CurrentState, State) ->
+  ?'log-info'("~p Terminating conenction in...~p   Reason ~p", [?MODULE, State, Reason]),
+  gen_tcp:close(State#state.socket),
   void.
 
 code_change(_Vsn, State, Data, _Extra) ->
@@ -109,20 +114,35 @@ callback_mode() ->
 %%% State transitions
 %%%=============================================================================
 
+%% @doc
+%% authenticate/3
+%% This is the first state of the connection. It is responsible for
+%% authenticating the connection at the node level.
+%% TODO: Implement authentication. Authentication should be done
+%% by querying the ontology and excpect a succeed result from the proved goal
+%% @end
+
 -spec authenticate(enter | info, any(), state()) ->
                     {keep_state, state()} | {next_state, atom(), state()} | {stop, any(), state()}.
 authenticate(enter, _, #state{ref = Ref, transport = Transport} = State) ->
-  {ok, Socket} = ranch:handshake(Ref),
+  {ok, Socket} = ranch:handshake(Ref, 500),
+  {ok, {Host, _Port}} = Transport:peername(Socket),
+
   ok = Transport:setopts(Socket, [{active, once}]),
   %% Perform any required state initialization here.
-  {keep_state, State#state{socket = Socket}};
+  %% TODO: Fx literal port number
+  {keep_state,
+   State#state{socket = Socket, origin_node = #node_entry{host = Host, port = 2304}}};
 authenticate(info,
              {tcp, _Ref, BinData},
-             #state{mynode = #node_entry{node_id = MyNodeId}} = State) ->
+             #state{origin_node = #node_entry{} = OriginNode,
+                    my_node = #node_entry{node_id = MyNodeId}} =
+               State)
+  when is_binary(BinData) andalso MyNodeId =/= undefined ->
   %% Perform authentication
   Decoded =
     try binary_to_term(BinData, [safe, used]) of
-      {DecodedTerm, Index} ->
+      {DecodedTerm, Index} when is_number(Index) ->
         <<_:Index/binary, Rest/binary>> = BinData,
         {ok, DecodedTerm, Rest}
     catch
@@ -130,35 +150,40 @@ authenticate(info,
         logger:error("Failed to decode binary data: ~p", [BinData]),
         {error, "Failed to decode binary data"}
     end,
-  MyPid = self(),
   case Decoded of
-    {ok, #header_connect{origin_node = #node_entry{node_id = MyNodeId}}, _} ->
+    {ok, #header_connect{node_id = MyNodeId}, _} ->
       %% Connecting to self
       ranch_tcp:send(State#state.socket,
                      term_to_binary(#header_connect_ack{node_id = MyNodeId,
                                                         result = connection_to_self})),
       {stop, normal, State};
-    {ok,
-     #header_connect{origin_node = OriginNode, namespace = Namespace} = Header,
-     NewBuffer} ->
-      gproc:send({p, l, {?MODULE, Header#header_connect.namespace}},
-                 {incoming_client_connection, Namespace, OriginNode#node_entry{pid = MyPid}}),
-
+    {ok, #header_connect{node_id = IncomingNodeId} = Header, NewBuffer} ->
       ranch_tcp:send(State#state.socket,
                      term_to_binary(#header_connect_ack{node_id =
-                                                          State#state.mynode#node_entry.node_id,
+                                                          State#state.my_node#node_entry.node_id,
                                                         result = ok})),
       ranch_tcp:setopts(State#state.socket, [{active, once}]),
       {next_state,
        wait_for_subscription,
        State#state{buffer = NewBuffer,
-                   namespace = Header#header_connect.namespace,
-                   origin_node = OriginNode#node_entry{pid = MyPid}}};
+                   origin_node = OriginNode#node_entry{node_id = IncomingNodeId},
+                   namespace = Header#header_connect.namespace}};
     {error, Reason} ->
       logger:error("Failed to decode binary data: ~p", [Reason]),
       {stop, normal, State}
-  end.
+  end;
+%% catch all
+authenticate(Type, Event, State) ->
+  ?'log-warning'("~p Unmanaged event ~p", [?MODULE, {authenticate, {Type, Event}}]),
+  {keep_state, State}.
 
+%% @doc
+%% wait_for_subscription/3
+%% This state is responsible for waiting for the subscription message.
+%% Upon the subscription message, it will be decided if the connection is
+%% a join, register or forward subscription.
+%% Lock is checked at this stage.
+%% @end
 wait_for_subscription(enter, _, State) ->
   {keep_state, State};
 wait_for_subscription(info,
@@ -172,7 +197,7 @@ wait_for_subscription(info,
   ConcatBuffer = <<Buffer/binary, BinData/binary>>,
   Decoded =
     try binary_to_term(ConcatBuffer, [safe, used]) of
-      {DecodedTerm, Index} ->
+      {DecodedTerm, Index} when is_integer(Index) ->
         <<_:Index/binary, Rest/binary>> = ConcatBuffer,
         {ok, DecodedTerm, Rest}
     catch
@@ -181,60 +206,211 @@ wait_for_subscription(info,
         {error, "Failed to decode binary data"}
     end,
   case Decoded of
-    {ok, #header_register{} = Header, NewBuffer} ->
-      %% Get current leader
+    {ok, #header_register{ulid = Ulid, lock = Lock}, NewBuffer} ->
+      %% Register this arc. If collision, this process will crash
+      %% with the incoming connection on ther side. At least
+      %% it keeps arcs consistent.
+      gproc:reg({n, l, {arc, in, Ulid}}, Lock),
+
+      %% Notify spray agent to add to inview
+      arc_event(Namespace,
+                Ulid,
+                #evt_arc_connected_in{ulid = Ulid,
+                                      lock = Lock,
+                                      source = OriginNode,
+                                      spread = {true, Lock}}),
+      %% Acknledge the registration and activate socket
+      %% TODO : Fix leader initialisation, it should be requested
+      %% from the ontology
+      Transport:send(Socket,
+                     term_to_binary(#header_register_ack{result = ok,
+                                                         leader = OriginNode#node_entry.node_id,
+                                                         current_index = 0})),
       Transport:setopts(State#state.socket, [{active, true}]),
-      %% Notify spray agent to add to inview
-      gproc:send({p, l, {ontology, Header#header_register.namespace}},
-                 {connected, Namespace, OriginNode, {inview, register}}),
-      {next_state, connected, State#state{buffer = NewBuffer}};
-    {ok, #header_join{}, NewBuffer} ->
-      Transport:send(Socket, term_to_binary(#header_join_ack{result = ok})),
-      Transport:setopts(Socket, [{active, true}]),
-      %% Notify spray agent to add to inview
-      gproc:send({p, l, {ontology, Namespace}},
-                 {connected, Namespace, OriginNode, {inview, join}}),
-      {next_state, connected, State#state{buffer = NewBuffer}};
-    {error, _} ->
-      logger:error("~p Failed to decode binary data: ~p", [?MODULE, BinData]),
-      {stop, normal, State}
+      {next_state, connected, State#state{my_ulid = Ulid, buffer = NewBuffer}};
+    {ok, #header_forward_join{ulid = Ulid, lock = Lock}, NewBuffer} ->
+      %% TOO: There is no security here. Lock should be checked against the
+      %% registration lock as an exemple.
+      %% There shouldn't be any arc registered for this ulid, here, as, like in register,
+      %% a new arc is created.
+      gproc:reg({n, l, {arc, in, Ulid}}, Lock),
+      %% Notify spray agent to add this new arc to inview
+      arc_event(Namespace,
+                Ulid,
+                #evt_arc_connected_in{ulid = Ulid,
+                                      lock = Lock,
+                                      source = OriginNode}),
+      %% Acknledge the registration and activate socket
+      %% TODO: type seems unused
+      Transport:send(Socket,
+                     term_to_binary(#header_forward_join_ack{result = ok, type = forward_join})),
+      Transport:setopts(State#state.socket, [{active, true}]),
+      {next_state,
+       connected,
+       State#state{my_ulid = Ulid,
+                   lock = Lock,
+                   buffer = NewBuffer}};
+    {ok,
+     #header_join{type = mirror = Type,
+                  ulid = Ulid,
+                  options = Options,
+                  current_lock = CurrentLock,
+                  new_lock = NewLock},
+     NewBuffer} ->
+      ?'log-info'("~p Mirror connection ~p   current lock ~p", [?MODULE, Ulid, CurrentLock]),
+      Key = {arc, '_', '_'},
+      GProcKey = {'_', '_', Key},
+      MatchHead = {GProcKey, '_', '_'},
+      Guard = [],
+      Result = ['$$'],
+      GG = gproc:select([{MatchHead, Guard, Result}]),
+      ?'log-info'("GG: ~p", [GG]),
+      case gproc:lookup_value({n, l, {arc, out, Ulid}}) of
+        {gproc_error, Error} ->
+          ?'log-alert'("~p No arc found for ulid ~p", [?MODULE, Ulid]),
+          Transport:send(Socket,
+                         term_to_binary(#header_join_ack{result = {error, Error},
+                                                         type = Type,
+                                                         options = Options})),
+          {stop, normal, State};
+        CurrentLock ->
+          ?'log-info'("~p Locks match ~p", [?MODULE, CurrentLock]),
+          %% Change change the connection attributed to ulid to this one
+          OtherConnectionPid = gproc:where({n, l, {arc, out, Ulid}}),
+          gproc:unreg_other({n, l, {arc, out, Ulid}}, OtherConnectionPid),
+          gproc:reg({n, l, {arc, in, Ulid}}, NewLock),
+          %% Stop the previous connection
+          gen_statem:stop(OtherConnectionPid),
+          arc_event(Namespace,
+                    Ulid,
+                    #evt_arc_connected_in{ulid = Ulid,
+                                          lock = NewLock,
+                                          source = OriginNode}),
+          %% Notify other side we accepted the connection
+          Transport:send(Socket,
+                         term_to_binary(#header_join_ack{result = ok,
+                                                         type = Type,
+                                                         options = Options})),
+          Transport:setopts(Socket, [{active, true}]),
+          {next_state, connected, State#state{my_ulid = Ulid, buffer = NewBuffer}};
+        Else ->
+          ?'log-warning'("~p Locks don't match incoming arc lock ~p    stored lock : ~p",
+                         [?MODULE, CurrentLock, Else]),
+          Transport:send(Socket,
+                         term_to_binary(#header_join_ack{result = {error, lock_mismatch},
+                                                         type = Type,
+                                                         options = Options})),
+          {stop, normal, State}
+      end;
+    {ok,
+     #header_join{type = normal = Type,
+                  ulid = Ulid,
+                  current_lock = CurrentLock,
+                  new_lock = NewLock,
+                  options = Options},
+     NewBuffer} ->
+      Key = {arc, '_', '_'},
+      GProcKey = {'_', '_', Key},
+      MatchHead = {GProcKey, '_', '_'},
+      Guard = [],
+      Result = ['$$'],
+      GG = gproc:select([{MatchHead, Guard, Result}]),
+      ?'log-info'("GG: ~p", [GG]),
+      ?'log-info'("~p Normal connection ~p   current lock ~p", [?MODULE, Ulid, CurrentLock]),
+      %% This is a swapped connection, so we shoud already have a
+      %% server connection undr this arc ulid.
+      case gproc:lookup_value({n, l, {arc, in, Ulid}}) of
+        {gproc_error, Error} ->
+          ?'log-alert'("~p No arc found for ulid ~p", [?MODULE, Ulid]),
+          Transport:send(Socket,
+                         term_to_binary(#header_join_ack{result = {error, Error},
+                                                         type = Type,
+                                                         options = Options})),
+          {stop, normal, State};
+        CurrentLock ->
+          ?'log-info'("~p Locks match ~p", [?MODULE, CurrentLock]),
+          %% Change change the connection attributed to ulid to this one
+          Key = {arc, '_', '_'},
+          GProcKey = {'_', '_', Key},
+          MatchHead = {GProcKey, '_', '_'},
+          Guard = [],
+          Result = ['$$'],
+          GG = gproc:select([{MatchHead, Guard, Result}]),
+          ?'log-info'("GG: ~p", [GG]),
+          OtherConnectionPid = gproc:where({n, l, {arc, in, Ulid}}),
+          gproc:unreg_other({n, l, {arc, in, Ulid}}, OtherConnectionPid),
+          gproc:reg({n, l, {arc, in, Ulid}}, NewLock),
+          %% Stop the previous connection
+          gen_statem:stop(OtherConnectionPid),
+          %% Notifiy spray agent to change origin of this node
+          arc_event(Namespace,
+                    Ulid,
+                    #evt_arc_swapped_in{ulid = Ulid,
+                                        newlock = NewLock,
+                                        new_source = OriginNode}),
+          %% Notify other side we accepted the connection
+          Transport:send(Socket,
+                         term_to_binary(#header_join_ack{result = ok,
+                                                         type = Type,
+                                                         options = Options})),
+          Transport:setopts(Socket, [{active, true}]),
+          {next_state, connected, State#state{my_ulid = Ulid, buffer = NewBuffer}};
+        Else ->
+          ?'log-warning'("~p Locks don't match ~p    incoming lock : ~p",
+                         [?MODULE, CurrentLock, Else]),
+          Transport:send(Socket,
+                         term_to_binary(#header_join_ack{result = {error, lock_mismatch},
+                                                         type = Type,
+                                                         options = Options})),
+          {stop, normal, State}
+      end
   end;
 %% Cathc all
 wait_for_subscription(Type, Data, State) ->
   ?'log-warning'("~p Unamaneged event ~p", [?MODULE, {Type, Data}]),
   {keep_state, State}.
 
-connected({call, From}, {accept_register, #header_register_ack{} = Header}, State) ->
+connected(info, #incoming_event{event = #peer_connect_to_sample{} = Msg}, State) ->
+  ?'log-info'("~p sending peer connect to sample to  ~p",
+              [?MODULE, State#state.origin_node]),
+  ranch_tcp:send(State#state.socket, term_to_binary(Msg)),
+  {keep_state, State};
+connected(info, #incoming_event{event = #header_register_ack{} = Header}, State) ->
   ?'log-info'("~p sending register ack to  ~p    header : ~p",
               [?MODULE, State#state.origin_node, Header]),
   ranch_tcp:send(State#state.socket, term_to_binary(Header)),
-  gen_statem:reply(From, ok),
   {keep_state, State};
 connected({call, From}, {accept_join, #header_join_ack{} = Header}, State) ->
   ?'log-info'("~p sending join ack to  ~p", [?MODULE, State#state.origin_node]),
   ranch_tcp:send(State#state.socket, term_to_binary(Header)),
   gen_statem:reply(From, ok),
   {keep_state, State};
+connected({call, From},
+          {close, Reason},
+          #state{namespace = Namespace, my_ulid = MyUlid} = State) ->
+  ?'log-info'("~p closing connection from  ~p to us. Reason : ~p",
+              [?MODULE, State#state.origin_node, Reason]),
+  gen_statem:reply(From, ok),
+  arc_event(Namespace, MyUlid, #evt_arc_disconnected{direction = in, ulid = MyUlid}),
+
+  {stop, normal, State};
 connected(enter, _, State) ->
   {keep_state, State};
-connected({call, From}, {exchange_out, ProposedSample}, State) ->
+connected(info,
+          #incoming_event{event = #exchange_out{proposed_sample = ProposedSample}},
+          #state{} = State) ->
   ?'log-info'("~p sending exchange out to  ~p", [?MODULE, State#state.origin_node]),
   ranch_tcp:send(State#state.socket,
-                 term_to_binary(#exchange_out{namespace = State#state.namespace,
-                                              origin_node = State#state.mynode,
-                                              proposed_sample = ProposedSample})),
-  gen_statem:reply(From, ok),
+                 term_to_binary(#exchange_out{proposed_sample = ProposedSample})),
   {keep_state, State};
-connected(cast, {reject_exchange, Reason}, State) ->
+connected(info,
+          #incoming_event{event = {reject, Reason}},
+          #state{namespace = Namespace} = State) ->
   ?'log-info'("~p sending exchange cancelled to  ~p", [?MODULE, State#state.origin_node]),
-  ranch_tcp:send(State#state.socket,
-                 term_to_binary(#exchange_cancelled{namespace = State#state.namespace,
-                                                    reason = Reason})),
-  {keep_state, State};
-connected(cast, {exchange_end}, State) ->
-  ?'log-info'("~p sending exchange end to  ~p", [?MODULE, State#state.origin_node]),
-  ranch_tcp:send(State#state.socket,
-                 term_to_binary(#exchange_end{namespace = State#state.namespace})),
+  Result =
+    ranch_tcp:send(State#state.socket,
+                   term_to_binary(#exchange_cancelled{namespace = Namespace, reason = Reason})),
+  ?'log-info'("~p Exchange cancelled sent ~p", [?MODULE, Result]),
   {keep_state, State};
 connected(cast, {send_history, #ontology_history{} = History}, State) ->
   ?'log-info'("~p sending history to  ~p", [?MODULE, State#state.origin_node]),
@@ -244,11 +420,9 @@ connected(info, {tcp, _Ref, BinData}, #state{buffer = Buffer} = State) ->
   parse_packet(<<Buffer/binary, BinData/binary>>, keep_state, State);
 connected(info,
           {tcp_closed, _Ref},
-          #state{namespace = Namespace, origin_node = OriginNode} = State) ->
-  ?'log-info'("~p Connection closed...~p", [?MODULE, State#state.origin_node]),
-  gproc:send({p, l, {ontology, State#state.namespace}},
-             {connection_terminated, {in, tcp_closed}, Namespace, OriginNode}),
-
+          #state{namespace = Namespace, my_ulid = MyUlid} = State) ->
+  ?'log-info'("~p Connection in closed...~p", [?MODULE, State#state.origin_node]),
+  arc_event(Namespace, MyUlid, #evt_arc_disconnected{direction = in, ulid = MyUlid}),
   {stop, normal, State}.
 
 %%%=============================================================================
@@ -257,10 +431,10 @@ connected(info,
 
 parse_packet(<<>>, Action, State) ->
   {Action, State#state{buffer = <<>>}};
-parse_packet(Buffer, Action, #state{namespace = Namespace} = State) ->
+parse_packet(Buffer, Action, #state{namespace = Namespace, my_ulid = MyUlid} = State) ->
   Decoded =
     try binary_to_term(Buffer, [used]) of
-      {DecodedEvent, NbBytesUsed} ->
+      {DecodedEvent, NbBytesUsed} when is_number(NbBytesUsed) ->
         {complete, DecodedEvent, NbBytesUsed}
     catch
       _Error:_Reason ->
@@ -277,36 +451,32 @@ parse_packet(Buffer, Action, #state{namespace = Namespace} = State) ->
      Index} ->
       <<_:Index/binary, BinLeft/binary>> = Buffer,
       gproc:send({n, l, {bbsvx_actor_ontology, Namespace}},
-                 Event#ontology_history_request{requester = Requester#node_entry{pid = self()}}),
+                 Event#ontology_history_request{requester = Requester#node_entry{}}),
       parse_packet(BinLeft, Action, State);
-    {complete,
-     #exchange_in{origin_node = OriginNode, proposed_sample = ProposedSample},
-     Index} ->
+    {complete, #exchange_in{} = Msg, Index} ->
       <<_:Index/binary, BinLeft/binary>> = Buffer,
-      MyPid = self(),
-      gproc:send({p, l, {ontology, Namespace}},
-                 {partial_view_exchange_in,
-                  Namespace,
-                  OriginNode#node_entry{pid = MyPid},
-                  ProposedSample}),
-
+      arc_event(Namespace, MyUlid, Msg),
       parse_packet(BinLeft, Action, State);
-    {complete, #exchange_end{} = Event, Index} ->
+    {complete, #change_lock{} = Event, Index} ->
       <<_:Index/binary, BinLeft/binary>> = Buffer,
-      event_spray_exchange(Namespace, Event),
-      parse_packet(BinLeft, Action, State);
+      arc_event(Namespace, MyUlid, Event),
+      %% Update the lock at the connection level
+      parse_packet(BinLeft, Action, State#state{lock = Event#change_lock.new_lock});
     {complete, #exchange_cancelled{} = Event, Index} ->
       <<_:Index/binary, BinLeft/binary>> = Buffer,
-      event_spray_exchange(Namespace, Event),
+      arc_event(Namespace, MyUlid, Event),
       parse_packet(BinLeft, Action, State);
     {complete, #exchange_accept{} = Event, Index} ->
       <<_:Index/binary, BinLeft/binary>> = Buffer,
-      event_spray_exchange(Namespace, Event),
+      arc_event(Namespace, MyUlid, Event),
       parse_packet(BinLeft, Action, State);
-    {complete, #forward_subscription{subscriber_node = SubscriberNode}, Index} ->
+    {complete, #peer_connect_to_sample{} = Event, Index} ->
       <<_:Index/binary, BinLeft/binary>> = Buffer,
-      gproc:send({p, l, {ontology, Namespace}},
-                 {forwarded_subscription, Namespace, #node_entry{} = SubscriberNode}),
+      arc_event(Namespace, MyUlid, Event),
+      parse_packet(BinLeft, Action, State);
+    {complete, #open_forward_join{} = Event, Index} ->
+      <<_:Index/binary, BinLeft/binary>> = Buffer,
+      arc_event(Namespace, MyUlid, Event),
       parse_packet(BinLeft, Action, State);
     {complete, #epto_message{payload = Payload}, Index} ->
       <<_:Index/binary, BinLeft/binary>> = Buffer,
@@ -319,9 +489,6 @@ parse_packet(Buffer, Action, #state{namespace = Namespace} = State) ->
     {complete, Event, Index} ->
       ?'log-error'("~p Event received ~p", [?MODULE, Event]),
       <<_:Index/binary, BinLeft/binary>> = Buffer,
-      gproc:send({p, l, {?MODULE, State#state.namespace, element(1, Event)}},
-                 {incoming_event, State#state.namespace, Event}),
-
       parse_packet(BinLeft, Action, State);
     {incomplete, Buffer} ->
       ?'log-info'("~p Incomplete packet received", [?MODULE]),
@@ -335,8 +502,16 @@ parse_packet(Buffer, Action, #state{namespace = Namespace} = State) ->
 %%% Internal functions
 %%%=============================================================================
 
-event_spray_exchange(Namespace, Event) ->
-  gproc:send({p, l, {spray_exchange, Namespace}}, {incoming_event, Event}).
+%%-----------------------------------------------------------------------------
+%% @doc
+%% ontology_arc_event/3
+%% Send an event related to arcs events on this namespace
+%% @end
+%% ----------------------------------------------------------------------------
+-spec arc_event(binary(), binary(), term()) -> ok.
+arc_event(Namespace, MyUlid, Event) ->
+  gproc:send({p, l, {spray_exchange, Namespace}},
+             #incoming_event{event = Event, origin_arc = MyUlid}).
 
 %%%=============================================================================
 %%% Eunit Tests

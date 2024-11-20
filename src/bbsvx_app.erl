@@ -14,11 +14,11 @@
 start(_StartType, _StartArgs) ->
     load_schema(),
     clique:register([bbsvx_cli]),
-    logger:info("all flags: ~p~n", [init:get_arguments()]),
-
+    ?'log-info'("all flags: ~p~n", [init:get_arguments()]),
     ?'log-info'("BBSVX starting.", []),
     opentelemetry_cowboy:setup(),
     opentelemetry:get_application_tracer(?MODULE),
+    init_ulid_generator(),
     mnesia:change_table_copy_type(schema, node(), disc_copies),
     Dispatch =
         cowboy_router:compile([{'_',
@@ -26,9 +26,8 @@ start(_StartType, _StartArgs) ->
                                  {"/ontologies/prove", bbsvx_cowboy_handler_ontology, #{}},
                                  {"/ontologies/:namespace", bbsvx_cowboy_handler_ontology, #{}},
                                  %% debugging routes
-                                 {"/views/:namespace/:view_type",
-                                  bbsvx_cowboy_handler_node_service,
-                                  []},
+                                 {"/spray/outview", bbsvx_rest_service_spray, #{}},
+                                 {"/spray/inview", bbsvx_rest_service_spray, #{}},
                                  {"/subs/:namespace", bbsvx_cowboy_handler_node_service, []},
                                  {"/subsm/:namespace", bbsvx_cowboy_handler_node_service, []},
                                  {"/epto/post/:namespace", bbsvx_cowboy_handler_node_service, []},
@@ -52,3 +51,8 @@ load_schema() ->
         _ ->
             ok = clique_config:load_schema([code:priv_dir(bbsvx)])
     end.
+
+
+init_ulid_generator() ->
+    UlidGen = ulid:new(),
+    persistent_term:put(ulid_gen, UlidGen).

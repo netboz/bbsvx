@@ -5,7 +5,7 @@
   {registered, []},
   {mod, {bbsvx_app, []}},
   {applications, [kernel, stdlib, opentelemetry_api, cowboy_telemetry, cuttlefish, prometheus, cowboy, logjam, jobs, jiffy, 
-    prometheus_httpd, mnesia, gproc, erlog, uuid, quickrand, clique]},
+    prometheus_httpd, mnesia, gproc, erlog, uuid, quickrand, ulid, clique]},
   {env, []},
   {modules, [prometheus_httpd]},
   {licenses, ["Apache-2.0"]},

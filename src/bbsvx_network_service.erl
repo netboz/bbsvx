@@ -10,7 +10,9 @@
 -author("yan").
 
 -include("bbsvx.hrl").
+
 -include_lib("logjam/include/logjam.hrl").
+
 -behaviour(gen_server).
 
 %%%=============================================================================
@@ -49,7 +51,8 @@ start_link(Host, Port) ->
 %% @end
 %% -----------------------------------------------------------------------------
 -spec my_host_port() ->
-                      {ok, {Host :: binary(), Port :: integer()}} | {error, not_started}.
+                      {ok, {Host :: inet:ip4_address(), Port :: inet:port_number()}} |
+                      {error, not_started}.
 my_host_port() ->
     case gproc:where({n, l, ?SERVER}) of
         undefined ->
@@ -61,7 +64,6 @@ my_host_port() ->
 %%%=============================================================================
 %%% Gen Server Callbacks
 %%%=============================================================================
-
 init([Host, Port]) ->
     %% Publish my id to the welcome topic
     MyId = bbsvx_crypto_service:my_id(),
@@ -87,9 +89,9 @@ handle_call(my_host_port, _From, #state{host = Host, port = Port} = State) ->
 %% Manage connections to new nodes
 %% Local connections are prevented
 handle_call(Request, From, State) ->
-   ?'log-warning'("Unmanaged handle_call/3 called with Request: "
-                "~p, From: ~p, State: ~p",
-                [Request, From, State]),
+    ?'log-warning'("Unmanaged handle_call/3 called with Request: ~p, From: ~p, "
+                   "State: ~p",
+                   [Request, From, State]),
     Reply = ok,
     {reply, Reply, State}.
 

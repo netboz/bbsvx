@@ -9,11 +9,10 @@
 
 -module(bbsvx_actor_leader_manager).
 
--author("yan").
-
 -behaviour(gen_statem).
 
 -include("bbsvx.hrl").
+
 -include_lib("logjam/include/logjam.hrl").
 
 %%%=============================================================================
@@ -45,13 +44,12 @@
 %%% API
 %%%=============================================================================
 
--spec start_link(Namespace :: binary(), Options :: map()) ->
-                    {ok, pid()} | {error, {already_started, pid()}} | {error, Reason :: any()}.
+-spec start_link(Namespace :: binary(), Options :: map()) -> gen_statem:start_ret().
 start_link(Namespace, Options) ->
     gen_statem:start_link({via, gproc, {n, l, {leader_manager, Namespace}}},
-                     ?MODULE,
-                     [Namespace, Options],
-                     []).
+                          ?MODULE,
+                          [Namespace, Options],
+                          []).
 
 -spec stop() -> ok.
 stop() ->
@@ -97,7 +95,7 @@ init([Namespace, Options]) ->
     gproc:reg({p, l, {leader_election, Namespace}}),
 
     %% Send election info to neighborhood
-    bbsvx_actor_spray_view:broadcast_unique(Namespace,
+    bbsvx_actor_spray:broadcast_unique(Namespace,
                                             #leader_election_info{payload = Payload}),
 
     DeltaR = DeltaE + DeltaD,
@@ -119,7 +117,8 @@ callback_mode() ->
 %%%=============================================================================
 %%% State transitions
 %%%=============================================================================
--spec running(gen_statem:event_type(), atom(), state()) -> {next_state, atom(), state()}.
+-spec running(gen_statem:event_type(), term(), state()) ->
+                 gen_statem:state_function_result().
 running(info,
         next_round,
         #state{namespace = Namespace,
@@ -145,7 +144,6 @@ running(info,
                 RandomNeighbors = pick_three_random(Neighbors),
                 %% chosen Leader is the most referenced leader among the 3 random neighbors
                 FollowedNeigbor = get_most_referenced_leader(RandomNeighbors),
-        
                 %% Get neighbour entry with the highest Ts
                 Tsf = lists:foldl(fun (#neighbor{ts = Tsi}, Acc) when Tsi > Acc ->
                                           Tsi;
@@ -158,12 +156,15 @@ running(info,
                  Tsf,
                  bbsvx_crypto_service:sign(term_to_binary(Tsf))}
         end,
-    {FinalTs, SignedFinalTs} =
+    {FinalVote, FinalTs, SignedFinalTs} =
         case Vote of
+            undefined ->
+                %% No valid neighbors
+                {MyId, T, bbsvx_crypto_service:sign(term_to_binary(T))};
             MyId ->
-                {T, bbsvx_crypto_service:sign(term_to_binary(T))};
+                {MyId, T, bbsvx_crypto_service:sign(term_to_binary(T))};
             _ ->
-                {Ts, SignedTs}
+                {Vote, Ts, SignedTs}
         end,
     PublicKey = bbsvx_crypto_service:get_public_key(),
     Payload =
@@ -171,18 +172,17 @@ running(info,
                   public_key = PublicKey,
                   signed_ts = SignedFinalTs,
                   ts = FinalTs,
-                  chosen_leader = Vote},
+                  chosen_leader = FinalVote},
     %% Publish payload to Outview
-    bbsvx_actor_spray_view:broadcast_unique(Namespace,
+    bbsvx_actor_spray:broadcast_unique(Namespace,
                                             #leader_election_info{payload = Payload}),
     Me = self(),
     %% Set timer to DeltaR for next round
     erlang:send_after(DeltaR, Me, next_round),
-    {next_state, running, State#state{leader = Vote}};
+    {next_state, running, State#state{leader = FinalVote}};
 running(info,
-        {incoming_event, #leader_election_info{payload = Payload}},
+        {incoming_event, #leader_election_info{payload = #neighbor{} = Payload}},
         #state{neighbors = Neighbors} = State) ->
-  
     {keep_state,
      State#state{neighbors =
                      lists:keystore(Payload#neighbor.node_id,
@@ -193,7 +193,7 @@ running({call, From}, get_leader, #state{leader = Leader}) ->
     {keep_state_and_data, [{reply, From, {ok, Leader}}]};
 running(EventType, EventContent, Data) ->
     ?'log-warning'("Leader manager received an unmanaged event ~p ~p ~p",
-                [EventType, EventContent, Data]),
+                   [EventType, EventContent, Data]),
     keep_state_and_data.
 
 %%%=============================================================================
@@ -235,7 +235,7 @@ pick_three_random(Neigh) ->
 %% Get the most referenced leader from the given list.
 %% @end
 
--spec get_most_referenced_leader(neighbors()) -> neighbor() | none.
+-spec get_most_referenced_leader(neighbors()) -> neighbor().
 get_most_referenced_leader([#neighbor{chosen_leader = A} = NA,
                             #neighbor{chosen_leader = B},
                             #neighbor{chosen_leader = _C}])
@@ -252,10 +252,9 @@ get_most_referenced_leader([#neighbor{chosen_leader = _A},
     when B == C ->
     NB;
 get_most_referenced_leader([#neighbor{} = A, #neighbor{} = B, #neighbor{} = C]) ->
-    ?'log-warning'("Leader manager : get_most_referenced_leader failed A:~p ~n "
-                   " B:~p ~n C:~p",
-                   [A#neighbor.node_id, B#neighbor.node_id, C#neighbor.node_id]),
-    none.
+    %% Then we choose a random leader among those three
+    lists:nth(
+        rand:uniform(3), [A, B, C]).
 
 %%%=============================================================================
 %%% Eunit Tests

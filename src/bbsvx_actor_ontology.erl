@@ -7,14 +7,11 @@
 
 -module(bbsvx_actor_ontology).
 
--author("yan").
-
 -behaviour(gen_statem).
 
 -include("bbsvx.hrl").
 
 -include_lib("logjam/include/logjam.hrl").
--include_lib("stdlib/include/ms_transform.hrl").
 -include_lib("stdlib/include/ms_transform.hrl").
 
 %%%=============================================================================
@@ -45,16 +42,14 @@
 %%% API
 %%%=============================================================================
 
--spec start_link(Namespace :: binary()) ->
-                    {ok, pid()} | {error, {already_started, pid()}} | {error, Reason :: any()}.
+-spec start_link(Namespace :: binary()) -> gen_statem:start_ret().
 start_link(Namespace) ->
     gen_statem:start_link({via, gproc, {n, l, {?MODULE, Namespace}}},
                           ?MODULE,
                           [Namespace, #{}],
                           []).
 
--spec start_link(Namespace :: binary(), Options :: map()) ->
-                    {ok, pid()} | {error, {already_started, pid()}} | {error, Reason :: any()}.
+-spec start_link(Namespace :: binary(), Options :: map()) -> gen_statem:start_ret().
 start_link(Namespace, Options) ->
     gen_statem:start_link({via, gproc, {n, l, {?MODULE, Namespace}}},
                           ?MODULE,
@@ -88,6 +83,8 @@ init([Namespace, Options]) ->
             Boot = maps:get(boot, Options, root),
             OntState =
                 #ont_state{namespace = Namespace,
+                           current_ts = 0,
+                           previous_ts = -1,
                            current_address = <<"0">>,
                            next_address = <<"0">>,
                            prolog_state = PrologState},
@@ -126,15 +123,20 @@ initialize_ontology(enter,
     gproc:reg({p, l, {?MODULE, Namespace}}),
     ?'log-info'("Ontology Agent ~p booting  ontology as root", [Namespace]),
     %% For now we consider booting allowed to have history
-    NewOntState = load_history(OntState, State#state.repos_table),
-    ?'log-info'("Ontology Agent ~p loaded history ~p",
-                [Namespace, NewOntState#ont_state.current_index]),
+    case load_history(OntState, State#state.repos_table) of
+        #ont_state{} = NewOntState ->
+            ?'log-info'("Ontology Agent ~p loaded history ~p",
+                        [Namespace, NewOntState#ont_state.current_index]),
 
-    %% Register to events from pipeline
-    gproc:reg({p, l, {bbsvx_transaction_pipeline, Namespace}}),
+            %% Register to events from pipeline
+            gproc:reg({p, l, {bbsvx_transaction_pipeline, Namespace}}),
 
-    gproc:send({p, l, {?MODULE, Namespace}}, {syncing, Namespace}),
-    {keep_state, State#state{ont_state = NewOntState, boot = root}};
+            gproc:send({p, l, {?MODULE, Namespace}}, {syncing, Namespace}),
+            {keep_state, State#state{ont_state = NewOntState, boot = root}};
+        {error, Reason} ->
+            ?'log-error'("Ontology Agent ~p failed to load history ~p", [Namespace, Reason]),
+            {stop, {error, Reason}, State}
+    end;
 initialize_ontology(enter,
                     _,
                     #state{namespace = Namespace,
@@ -143,16 +145,21 @@ initialize_ontology(enter,
                         State) ->
     gproc:reg({p, l, {?MODULE, Namespace}}),
     ?'log-info'("Ontology Agent ~p booting joined ontology", [Namespace]),
-    NewOntState = load_history(OntState, State#state.repos_table),
-    ?'log-info'("Ontology Agent ~p loaded history ~p",
-                [Namespace, NewOntState#ont_state.current_index]),
+    case load_history(OntState, State#state.repos_table) of
+        #ont_state{} = NewOntState ->
+            ?'log-info'("Ontology Agent ~p loaded history ~p",
+                        [Namespace, NewOntState#ont_state.current_index]),
 
-    %% Register to events from pipeline
-    gproc:reg({p, l, {bbsvx_transaction_pipeline, Namespace}}),
+            %% Register to events from pipeline
+            gproc:reg({p, l, {bbsvx_transaction_pipeline, Namespace}}),
 
-    gproc:send({p, l, {?MODULE, Namespace}}, {wait_current_index, Namespace}),
+            gproc:send({p, l, {?MODULE, Namespace}}, {wait_current_index, Namespace}),
 
-    {keep_state, State#state{ont_state = NewOntState}};
+            {keep_state, State#state{ont_state = NewOntState}};
+        {error, Reason} ->
+            ?'log-error'("Ontology Agent ~p failed to load history ~p", [Namespace, Reason]),
+            {stop, {error, Reason}, State}
+    end;
 initialize_ontology(info, {registered, _CurrentIndex}, State) ->
     %% Postpone the event
     {keep_state, State, [{pospone, true}]};
@@ -218,7 +225,8 @@ syncing({call, From},
     {keep_state, State};
 syncing(info,
         #ontology_history_request{namespace = Namespace,
-                                  requester = #node_entry{pid = RequesterPid},
+                                  %% TODO : change node_entry to arc
+                                  requester = #node_entry{}, %%#node_entry{pid = RequesterPid},
                                   oldest_index = OldestIndex,
                                   younger_index = YoungerIndex},
         #state{} = State) ->
@@ -240,9 +248,10 @@ syncing(info,
             [O | _] ->
                 O#transaction.index
         end,
-
-    bbsvx_server_connection:send_history(RequesterPid,
-                                         #ontology_history{list_tx = History,
+%% TODO : change self to valid destination
+    bbsvx_server_connection:send_history(self(),
+                                         #ontology_history{namespace = Namespace,
+                                                           list_tx = History,
                                                            oldest_index = OldestIndexRetrieved,
                                                            younger_index = YoungerIndexRetrieved}),
     {next_state, syncing, State};
@@ -265,57 +274,71 @@ ready(Type, Event, _State) ->
 %%% Internal functions
 %%%=============================================================================
 
--spec request_segment(binary(), binary(), binary()) -> {ok, integer()}.
+-spec request_segment(binary(), integer(), integer()) -> {ok, integer()}.
 request_segment(Namespace, OldestIndex, YoungerIndex) ->
     ?'log-info'("Requesting segment ~p ~p ~p", [Namespace, OldestIndex, YoungerIndex]),
     MyId = bbsvx_crypto_service:my_id(),
     {ok, {Host, Port}} = bbsvx_network_service:my_host_port(),
-    bbsvx_actor_spray_view:broadcast_unique_random_subset(Namespace,
-                                                          #ontology_history_request{namespace =
-                                                                                        Namespace,
-                                                                                    requester =
-                                                                                        #node_entry{host
-                                                                                                        =
-                                                                                                        Host,
-                                                                                                    port
-                                                                                                        =
-                                                                                                        Port,
-                                                                                                    node_id
-                                                                                                        =
-                                                                                                        MyId},
-                                                                                    oldest_index =
-                                                                                        OldestIndex,
-                                                                                    younger_index =
-                                                                                        YoungerIndex},
-                                                          1).
+    bbsvx_actor_spray:broadcast_unique_random_subset(Namespace,
+                                                     #ontology_history_request{namespace =
+                                                                                   Namespace,
+                                                                               requester =
+                                                                                   #node_entry{host
+                                                                                                   =
+                                                                                                   Host,
+                                                                                               port
+                                                                                                   =
+                                                                                                   Port,
+                                                                                               node_id
+                                                                                                   =
+                                                                                                   MyId},
+                                                                               oldest_index =
+                                                                                   OldestIndex,
+                                                                               younger_index =
+                                                                                   YoungerIndex},
+                                                     1).
 
--spec load_history(ont_state(), atom()) -> {binary(), db()}.
+-spec load_history(ont_state(), atom()) -> ont_state() | {error, term()}.
 load_history(OntState, ReposTable) ->
     FrstTransationKey = mnesia:dirty_first(ReposTable),
-    do_load_history(FrstTransationKey, OntState, ReposTable).
+    %% This is not beautifull but fix ELP warning
+    case FrstTransationKey of
+        '$end_of_table' ->
+            do_load_history('$end_of_table', OntState, ReposTable);
+        Key when is_number(Key) ->
+            do_load_history(Key, OntState, ReposTable)
+    end.
 
--spec do_load_history(term(), ont_state(), atom()) -> {binary(), db()}.
+-spec do_load_history(number() | '$end_of_table', ont_state(), atom()) ->
+                         ont_state() | {error, term()}.
 do_load_history('$end_of_table', #ont_state{} = OntState, _ReposTable) ->
     OntState;
 do_load_history(Key, #ont_state{prolog_state = PrologState} = OntState, ReposTable) ->
     OntDb = PrologState#est.db,
     %% @TODO : Current Adrress should match the transaction previous address field
     TransacEntry = bbsvx_transaction:read_transaction(ReposTable, Key),
-    {ok, #db{ref = Ref} = NewOntDb} =
-        bbsvx_erlog_db_differ:apply_diff(TransacEntry#transaction.diff, OntDb),
-    NextKey = mnesia:dirty_next(ReposTable, Key),
-    %% @TODO : The way op_fifo is resetted is not good and coud be done by using
-    %% standard erlog state instead of differ
-    do_load_history(NextKey,
-                    OntState#ont_state{prolog_state =
-                                           PrologState#est{db =
-                                                               NewOntDb#db{ref =
-                                                                               Ref#db_differ{op_fifo
-                                                                                                 =
-                                                                                                 []}}},
-                                       current_address = TransacEntry#transaction.current_address,
-                                       local_index = TransacEntry#transaction.index},
-                    ReposTable).
+    case TransacEntry of
+        not_found ->
+            ?'log-error'("Transaction ~p not found", [Key]),
+            {error, {not_found, Key}};
+        #transaction{} ->
+            {ok, #db{ref = Ref} = NewOntDb} =
+                bbsvx_erlog_db_differ:apply_diff(TransacEntry#transaction.diff, OntDb),
+            NextKey = mnesia:dirty_next(ReposTable, Key),
+            %% @TODO : The way op_fifo is resetted is not good and coud be done by using
+            %% standard erlog state instead of differ
+            do_load_history(NextKey,
+                            OntState#ont_state{prolog_state =
+                                                   PrologState#est{db =
+                                                                       NewOntDb#db{ref =
+                                                                                       Ref#db_differ{op_fifo
+                                                                                                         =
+                                                                                                         []}}},
+                                               current_address =
+                                                   TransacEntry#transaction.current_address,
+                                               local_index = TransacEntry#transaction.index},
+                            ReposTable)
+    end.
 
 retrieve_transaction_history(Namespace, OldestIndex, YoungerIndex) ->
     TableName = bbsvx_ont_service:binary_to_table_name(Namespace),

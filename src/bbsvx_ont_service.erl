@@ -168,7 +168,7 @@ init([]) ->
                     %% Format contact nodes
                     ContactNodes =
                         [#node_entry{host = Host, port = Port}
-                         || {Host, Port} <- ListOfContactNodes],
+                         || #node_entry{host = Host, port = Port} <- ListOfContactNodes],
                     logger:info("Onto service : contact nodes ~p", [ContactNodes]),
                     OntEntry =
                         #ontology{namespace = <<"bbsvx:root">>,
@@ -399,8 +399,10 @@ boot_indexed_ontologies() ->
 do_boot_ontologies('$end_of_table') ->
     ok;
 do_boot_ontologies(Key) ->
-    ?'log-info'("Booting onlogy : ~p", [Key]),
+    ?'log-info'("Booting ontology : ~p", [Key]),
     [Ont] = mnesia:dirty_read({?INDEX_TABLE, Key}),
+    ?'log-info'("stored ont desc : ~p", [Ont]),
+
     case Ont#ontology.type of
         shared ->
             supervisor:start_child(bbsvx_sup_shared_ontologies,

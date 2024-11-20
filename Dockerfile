@@ -67,4 +67,4 @@ EXPOSE 2304
 #EXPOSE 8443
 
 # Run the application
-CMD ["sh", "-c", "/bbsvx/bin/bbsvx foreground -init_root ${init_root}"]
+CMD ["sh", "-c", "/bbsvx/bin/bbsvx foreground -init_root ${BBSVX_INIT_ROOT}"]

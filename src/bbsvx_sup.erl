@@ -67,7 +67,14 @@ init([]) ->
        restart => permanent,
        shutdown => brutal_kill,
        type => worker,
-       modules => [bbsvx_ont_service]}],
+       modules => [bbsvx_ont_service]},
+      %% Start metrics arc reporter
+      #{id => bbsvx_metrics_arc_reporter,
+       start => {bbsvx_metrics_arc_reporter, start_link, []},
+       restart => permanent,
+       shutdown => brutal_kill,
+       type => worker,
+       modules => [bbsvx_metrics_arc_reporter]}],
   {ok, {SupFlags, ChildSpecs}}.
 
 %% internal functions

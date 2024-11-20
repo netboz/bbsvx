@@ -16,7 +16,7 @@ services:
         - DOCKER_COMPOSE=true
         - ERLANG_NODE_ARG=bbsvx@bbsvx_root
         - ERLANG_COOKIE=bbsvx
-        - init_root=root
+        - BBSVX_INIT_ROOT=root
       networks:
         - bbsvx-net
       logging:
@@ -30,7 +30,9 @@ services:
         - ./docker/logs:/logs
       labels:
         - "logging=grafana"
-
+        - "monitoring=enabled"
+      depends_on:
+        - graph-visualizer
 
   bbsvx_client:
     image: bbsvx:latest
@@ -44,7 +46,7 @@ services:
       - DOCKER_COMPOSE=true
       - ERLANG_NODE_ARG=bbsvx@bbsvx_root
       - ERLANG_COOKIE=bbsvx
-      - init_root=join bbsvx-bbsvx_root-1 2304
+      - BBSVX_INIT_ROOT=join bbsvx-bbsvx_root-1 2304
     networks:
       - bbsvx-net
     logging:
@@ -60,6 +62,8 @@ services:
       - bbsvx_root
     labels:
       - "logging=grafana"
+      - "monitoring=enabled"
+
 
   dozzle:
     container_name: dozzle
@@ -113,7 +117,7 @@ services:
     environment:
       - GF_LOG_LEVEL=info
       - TZ="Europe/Paris"
-      - GF_INSTALL_PLUGINS=https://github.com/VictoriaMetrics/victoriametrics-datasource/releases/download/v0.8.2/victoriametrics-datasource-v0.8.2.zip;victoriametrics-datasource
+      - GF_INSTALL_PLUGINS=https://github.com/VictoriaMetrics/victoriametrics-datasource/releases/download/v0.10.1/victoriametrics-datasource-v0.10.1.zip;victoriametrics-datasource
       - GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=victoriametrics-datasource
     ports:
       - 3000:3000
@@ -125,6 +129,15 @@ services:
     networks:
       - bbsvx-net
     restart: always
+  graph-visualizer:
+    image: graph-visualizer:latest
+    hostname: graph-visualizer
+    ports:
+      - "3400:3400"
+    networks:
+      - bbsvx-net
+    environment:
+      - NODE_ENV=production
   # prometheus:
   #   image: prom/prometheus
   #   hostname: prometheus
@@ -169,19 +182,19 @@ services:
 # #      placement:
 # #        constraints:
 # #          - node.hostname == ${HOSTNAME}
-#   loki:
-#     image: grafana/loki:latest
-#     hostname: loki_collector
-#     ports:
-#       - "3100:3100"
-#     command: 
-#       - '-config.file=/etc/loki/local-config.yaml'
-#     volumes:
-#       - ./docker/loki/conf:/etc/loki
-#     networks:
-#       - bbsvx-net
-#     environment:
-#       - TZ="Europe/Paris"
+  loki:
+    image: grafana/loki:latest
+    hostname: loki_collector
+    ports:
+      - "3100:3100"
+    command: 
+      - '-config.file=/etc/loki/local-config.yaml'
+    volumes:
+      - ./docker/loki/conf:/etc/loki
+    networks:
+      - bbsvx-net
+    environment:
+      - TZ="Europe/Paris"
   
 #   tempo:
 #     image: grafana/tempo:latest

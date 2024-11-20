@@ -106,10 +106,12 @@ record_transaction(Transaction) ->
     mnesia:activity(transaction, F).
 
 -spec read_transaction(Namespace :: binary() | atom(), TransactonAddress :: binary()) ->
-                          transaction() | [].
+                          transaction() | not_found.
 read_transaction(TableName, TransactonAddress) when is_atom(TableName) ->
-    [Transaction] = mnesia:dirty_read({TableName, TransactonAddress}),
-    Transaction;
+    case  mnesia:dirty_read({TableName, TransactonAddress}) of
+        [] -> not_found;
+        [Transaction] -> Transaction
+    end;
 read_transaction(Namespace, TransactonAddress) ->
     TableName = bbsvx_ont_service:binary_to_table_name(Namespace),
     read_transaction(TableName, TransactonAddress).

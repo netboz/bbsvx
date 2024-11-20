@@ -107,7 +107,7 @@ handle_call(next_round, _From, #state{namespace = Namespace} = State) ->
                  State#state.next_ball),
 
     %% Broadcast next ball to sample peers
-    bbsvx_actor_spray_view:broadcast_unique(Namespace,
+    bbsvx_actor_spray:broadcast_unique(Namespace,
                                             #epto_message{payload = {receive_ball, NewBall}}),
     gen_server:call(State#state.orderer, {order_events, NewBall}),
     {reply, ok, State#state{next_ball = #{}}};
