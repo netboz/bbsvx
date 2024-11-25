@@ -43,18 +43,10 @@ malformed_request(Req, State) ->
         end
     catch
         A:B ->
-            ?'log-warning'("Malformed request ~p:~p", [A, B]),
-            Req3 =
-                cowboy_req:set_resp_body(
-                    jiffy:encode([#{error => <<"invalid_json">>}]), Req),
-            {true, Req3, State}
+            {false, Req, State#{namespace => <<"bbsvx:root">>}}
     end;
 malformed_request(Req, State) ->
-    ?'log-warning'("Malformed Request ~p", [Req]),
-    Req1 =
-        cowboy_req:set_resp_body(
-            jiffy:encode([#{error => <<"invalid_json">>}]), Req),
-    {true, Req1, State}.
+    {false, Req, State#{namespace => <<"bbsvx:root">>}}.
 
 resource_exists(Req, #{namespace := Namespace} = State) ->
     case bbsvx_ont_service:get_ontology(Namespace) of
@@ -91,15 +83,14 @@ get_view(Type, Namespace) when Type == get_inview orelse Type == get_outview ->
     end.
 
 provide_outview(Req, #{namespace := Namespace} = State) ->
-    ?'log-info'("provide_outview: ~p", [Namespace]),
-    ?'log-info'("State: ~p", [State]),
-    ?'log-info'("Req: ~p", [Req]),
     MyId = bbsvx_crypto_service:my_id(),
     case get_view(get_outview, Namespace) of
         {error, Reason} ->
             ?'log-error'("Error: ~p", [Reason]),
             {jiffy:encode([#{error => Reason}]), Req, State};
         {ok, View} ->
+            %% Add Access-Control-Allow-Origin header
+            Req1 = cowboy_req:set_resp_header(<<"Access-Control-Allow-Origin">>, <<"*">>, Req),
             ?'log-info'("Got View: ~p", [View]),
             {jiffy:encode(
                  lists:map(fun(#arc{ulid = Ulid,
@@ -107,8 +98,7 @@ provide_outview(Req, #{namespace := Namespace} = State) ->
                                     target = Target,
                                     lock = Lock,
                                     age = Age}) ->
-                              #{
-                                my_id => MyId,
+                              #{my_id => MyId,
                                 ulid => Ulid,
                                 source => node_entry_to_map(Source),
                                 target => node_entry_to_map(Target),
@@ -116,19 +106,18 @@ provide_outview(Req, #{namespace := Namespace} = State) ->
                                 age => Age}
                            end,
                            View)),
-             Req,
+             Req1,
              State}
     end.
 
 provide_inview(Req, #{namespace := Namespace} = State) ->
-    ?'log-info'("provide_inview: ~p", [Namespace]),
-    ?'log-info'("State: ~p", [State]),
-    ?'log-info'("Req: ~p", [Req]),
     MyId = bbsvx_crypto_service:my_id(),
     case get_view(get_inview, Namespace) of
         {error, Reason} ->
             {jiffy:encode([#{error => Reason}]), Req, State};
         {ok, View} ->
+            %% Add Access-Control-Allow-Origin header
+            Req1 = cowboy_req:set_resp_header(<<"Access-Control-Allow-Origin">>, <<"*">>, Req),
             ?'log-info'("Got View: ~p", [View]),
             {jiffy:encode(
                  lists:map(fun(#arc{ulid = Ulid,
@@ -136,8 +125,7 @@ provide_inview(Req, #{namespace := Namespace} = State) ->
                                     target = Target,
                                     lock = Lock,
                                     age = Age}) ->
-                              #{
-                                my_id => MyId,
+                              #{my_id => MyId,
                                 ulid => Ulid,
                                 source => node_entry_to_map(Source),
                                 target => node_entry_to_map(Target),
@@ -145,7 +133,7 @@ provide_inview(Req, #{namespace := Namespace} = State) ->
                                 age => Age}
                            end,
                            View)),
-             Req,
+             Req1,
              State}
     end.
 
@@ -156,8 +144,11 @@ format_host(Host) when is_list(Host) ->
 format_host({A, B, C, D}) ->
     list_to_binary(io_lib:format("~p.~p.~p.~p", [A, B, C, D])).
 
-
 %% Convert a node_entry to a map
 -spec node_entry_to_map(node_entry()) -> map().
-node_entry_to_map(#node_entry{node_id = NodeId, host = Host, port = Port}) ->
-    #{node_id => NodeId, host => format_host(Host), port => Port}.
+node_entry_to_map(#node_entry{node_id = NodeId,
+                              host = Host,
+                              port = Port}) ->
+    #{node_id => NodeId,
+      host => format_host(Host),
+      port => Port}.

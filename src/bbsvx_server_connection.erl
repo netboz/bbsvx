@@ -152,6 +152,7 @@ authenticate(info,
     end,
   case Decoded of
     {ok, #header_connect{node_id = MyNodeId}, _} ->
+      ?'log-warning'("~p Connection to self   ~p", [?MODULE, MyNodeId]),
       %% Connecting to self
       ranch_tcp:send(State#state.socket,
                      term_to_binary(#header_connect_ack{node_id = MyNodeId,
@@ -340,19 +341,21 @@ wait_for_subscription(info,
           OtherConnectionPid = gproc:where({n, l, {arc, in, Ulid}}),
           gproc:unreg_other({n, l, {arc, in, Ulid}}, OtherConnectionPid),
           gproc:reg({n, l, {arc, in, Ulid}}, NewLock),
-          %% Stop the previous connection
-          gen_statem:stop(OtherConnectionPid),
+          %% Notify other side we accepted the connection
+          Transport:send(Socket,
+                         term_to_binary(#header_join_ack{result = ok,
+                                                         type = Type,
+                                                         options = Options})),
+
           %% Notifiy spray agent to change origin of this node
           arc_event(Namespace,
                     Ulid,
                     #evt_arc_swapped_in{ulid = Ulid,
                                         newlock = NewLock,
                                         new_source = OriginNode}),
-          %% Notify other side we accepted the connection
-          Transport:send(Socket,
-                         term_to_binary(#header_join_ack{result = ok,
-                                                         type = Type,
-                                                         options = Options})),
+
+          %% Stop the previous connection
+          gen_statem:stop(OtherConnectionPid),
           Transport:setopts(Socket, [{active, true}]),
           {next_state, connected, State#state{my_ulid = Ulid, buffer = NewBuffer}};
         Else ->

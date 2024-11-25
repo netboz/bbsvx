@@ -124,6 +124,12 @@ stop() ->
 %%%=============================================================================
 %%% Gen State Machine Callbacks
 %%%=============================================================================
+format_host(Host) when is_binary(Host) ->
+    Host;
+format_host(Host) when is_list(Host) ->
+    list_to_binary(Host);
+format_host({A, B, C, D}) ->
+    list_to_binary(io_lib:format("~p.~p.~p.~p", [A, B, C, D])).
 
 init([Namespace, Options]) ->
     process_flag(trap_exit, true),
@@ -138,13 +144,28 @@ init([Namespace, Options]) ->
         #node_entry{node_id = MyNodeId,
                     host = Host,
                     port = Port},
-    %%  Try to register to the ontology node mesh
-    register_namespace(Namespace, MyNode, maps:get(contact_nodes, Options, [])),
-    %% Notify this node + namespace is ready
-    gproc:send({p, l, {spray_exchange, Namespace}}, {node_started, Namespace, MyNode}),
 
     %% Register to events for this ontolgy namespace
     gproc:reg({p, l, {spray_exchange, Namespace}}),
+    %%  Try to register to the ontology node mesh
+    register_namespace(Namespace, MyNode, maps:get(contact_nodes, Options, [])),
+
+    Data =
+        #{action => <<"add">>,
+          node_id => MyNodeId,
+          metadata =>
+              #{host => format_host(Host),
+                port => Port,
+                namespace => Namespace,
+                node_id => MyNodeId}},
+    %?'log-info'("add node post data: ~p", [Data]),
+    %% Encode Data to json
+    Json = jiffy:encode(Data),
+    %% Post json data to http://graph-visualizer/nodes
+    httpc:request(post,
+                  {"http://graph-visualizer:3400/nodes", [], "application/json", Json},
+                  [],
+                  []),
 
     Me = self(),
     SprayTimer = erlang:start_timer(?EXCHANGE_INTERVAL, Me, spray_time),
@@ -431,13 +452,10 @@ iddle(info,
                   #exchange_cancelled{reason = exchange_out_cause_empty_outview,
                                       namespace = Namespace}}),
 
-            %% Trigger next exchange
-            SprayTimer = erlang:start_timer(?EXCHANGE_INTERVAL, self(), spray_time),
             {keep_state,
              State#state{current_exchange_peer = undefined,
                          proposed_sample = [],
-                         incoming_sample = [],
-                         spray_timer = SprayTimer}};
+                         incoming_sample = []}};
         _ ->
             Me = self(),
             %% Program removal of arcs from nodes to leave after timeout
@@ -524,7 +542,7 @@ iddle(info,
             %% Send our sample to the origin node
             ?'log-info'("Actor exchanger ~p : responding state, Sent partial view exchange "
                         "out to ~p   sample : ~p",
-                        [Namespace, OriginUlid, MySample]),
+                        [Namespace, OriginUlid, MySampleEntry]),
 
             %% Send exchange out to origin node
             send(OriginUlid, in, #exchange_out{proposed_sample = MySampleEntry}),
@@ -764,12 +782,13 @@ swap_connections(Namespace,
     lists:foreach(fun (#exchange_entry{target = #node_entry{node_id = TargetNodeId}} =
                            ExchangeEntry)
                           when TargetNodeId == ExchangePeerNodeId ->
-                          ?'log-info'("spray Agent ~p : mirror Swapping connection with ~p",
-                                      [Namespace, TargetNodeId]),
+                          ?'log-info'("spray Agent ~p : mirror Swapping arc ~p to ~p",
+                                      [Namespace, ExchangeEntry#exchange_entry.ulid, TargetNodeId]),
                           swap_connection(Namespace, MyNode, mirror, ExchangeEntry);
                       (ExchangeEntry) ->
-                          ?'log-info'("spray Agent ~p : normal Swapping connection with ~p",
+                          ?'log-info'("spray Agent ~p : normal Swapping arc ~p to ~p",
                                       [Namespace,
+                                       ExchangeEntry#exchange_entry.ulid,
                                        ExchangeEntry#exchange_entry.target#node_entry.node_id]),
                           swap_connection(Namespace, MyNode, normal, ExchangeEntry)
                   end,

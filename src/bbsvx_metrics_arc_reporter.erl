@@ -55,6 +55,7 @@ example_action() ->
 init([]) ->
     MyId = bbsvx_crypto_service:my_id(),
     gproc:reg({p, l, {spray_exchange, <<"bbsvx:root">>}}),
+    ?'log-info'("Starting graph visualizer arc reporter with id: ~p", [MyId]),
     {ok, running, #state{my_id = MyId}}.
 
 terminate(_Reason, _State, _Data) ->
@@ -158,7 +159,6 @@ running(info,
                       {"http://graph-visualizer:3400/nodes/add", [], "application/json", Json},
                       [],
                       []),
-    %?'log-info'("add node response: ~p", [R]),
     {next_state, running, State};
 %% Catch all
 running(Type, Msg, State) ->

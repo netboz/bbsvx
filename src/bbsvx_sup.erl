@@ -41,6 +41,13 @@ init([]) ->
        shutdown => brutal_kill,
        type => worker,
        modules => [bbsvx_crypto_service]},
+     %% Start metrics arc reporter
+     #{id => bbsvx_metrics_arc_reporter,
+       start => {bbsvx_metrics_arc_reporter, start_link, []},
+       restart => permanent,
+       shutdown => brutal_kill,
+       type => worker,
+       modules => [bbsvx_metrics_arc_reporter]},
      %% Start connections Supervisor
      #{id => bbsvx_sup_client_connections,
        start => {bbsvx_sup_client_connections, start_link, []},
@@ -67,14 +74,7 @@ init([]) ->
        restart => permanent,
        shutdown => brutal_kill,
        type => worker,
-       modules => [bbsvx_ont_service]},
-      %% Start metrics arc reporter
-      #{id => bbsvx_metrics_arc_reporter,
-       start => {bbsvx_metrics_arc_reporter, start_link, []},
-       restart => permanent,
-       shutdown => brutal_kill,
-       type => worker,
-       modules => [bbsvx_metrics_arc_reporter]}],
+       modules => [bbsvx_ont_service]}],
   {ok, {SupFlags, ChildSpecs}}.
 
 %% internal functions

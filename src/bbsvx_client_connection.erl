@@ -131,8 +131,8 @@ init([join, Namespace, MyNode, TargetNode, Ulid, TargetLock, Type, Options]) ->
 init([register, Namespace, MyNode, TargetNode, Options]) ->
     process_flag(trap_exit, true),
     ?'log-info'("Initializing register connection from ~p, to ~p",
-                [{TargetNode#node_entry.node_id, TargetNode#node_entry.host},
-                 {MyNode#node_entry.node_id, MyNode#node_entry.host}]),
+                [{MyNode#node_entry.node_id, MyNode#node_entry.host},
+                 {TargetNode#node_entry.node_id, TargetNode#node_entry.host}]),
     Lock = get_lock(?LOCK_SIZE),
 
     Ulid = get_ulid(),
