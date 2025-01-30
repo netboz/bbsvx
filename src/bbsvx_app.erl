@@ -16,6 +16,7 @@ start(_StartType, _StartArgs) ->
     clique:register([bbsvx_cli]),
     ?'log-info'("all flags: ~p~n", [init:get_arguments()]),
     ?'log-info'("BBSVX starting.", []),
+    init_metrics(),
     opentelemetry_cowboy:setup(),
     opentelemetry:get_application_tracer(?MODULE),
     init_ulid_generator(),
@@ -26,8 +27,9 @@ start(_StartType, _StartArgs) ->
                                  {"/ontologies/prove", bbsvx_cowboy_handler_ontology, #{}},
                                  {"/ontologies/:namespace", bbsvx_cowboy_handler_ontology, #{}},
                                  %% debugging routes
-                                 {"/spray/outview", bbsvx_rest_service_spray, #{}},
-                                 {"/spray/inview", bbsvx_rest_service_spray, #{}},
+                                 {"/spray/outview", bbsvx_cowboy_handler_spray, #{}},
+                                 {"/spray/nodes", bbsvx_cowboy_handler_spray, #{}},
+                                 {"/spray/inview", bbsvx_cowboy_handler_spray, #{}},
                                  {"/subs/:namespace", bbsvx_cowboy_handler_node_service, []},
                                  {"/subsm/:namespace", bbsvx_cowboy_handler_node_service, []},
                                  {"/epto/post/:namespace", bbsvx_cowboy_handler_node_service, []},
@@ -56,3 +58,33 @@ load_schema() ->
 init_ulid_generator() ->
     UlidGen = ulid:new(),
     persistent_term:put(ulid_gen, UlidGen).
+
+    -spec init_metrics() -> ok.
+init_metrics() ->
+    %% Create some metrics
+    prometheus_gauge:declare([{name, <<"bbsvx_spray_outview_size">>},
+                              {labels, [<<"namespace">>]},
+                              {help, "Number of nodes in outview"}]),
+
+    prometheus_gauge:declare([{name, <<"bbsvx_spray_inview_size">>},
+                              {labels, [<<"namespace">>]},
+                              {help, "Number of nodes in inview"}]),
+
+    prometheus_counter:declare([{name, <<"bbsvx_spray_exchange_timeout">>},
+                                {labels, [<<"namespace">>]},
+                                {help, <<"Count of exchange timeout">>}]),
+
+    prometheus_counter:declare([{name, <<"bbsvx_spray_exchange_cancelled">>},
+                                {labels, [<<"namespace">>]},
+                                {help, "Count of exchange cancelled"}]),
+    prometheus_counter:declare([{name, <<"bbsvx_spray_inview_depleted">>},
+                                {labels, [<<"namespace">>]},
+                                {help, "Number of times inview size reach 0"}]),
+
+    prometheus_counter:declare([{name, <<"bbsvx_spray_outview_depleted">>},
+                                {labels, [<<"namespace">>]},
+                                {help, "Number of times outview reach 0"}]),
+
+    prometheus_counter:declare([{name, <<"spray_empty_inview_answered_">>},
+                                {labels, [<<"namespace">>]},
+                                {help, "Number times this node answered a refuel inview request"}]).

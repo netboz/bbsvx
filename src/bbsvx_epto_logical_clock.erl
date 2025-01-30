@@ -32,8 +32,7 @@
 %%% API
 %%%=============================================================================
 
--spec start_link(Namespace :: binary(), Ttl :: integer()) ->
-                    {ok, pid()} | {error, {already_started, pid()}} | {error, Reason :: any()}.
+-spec start_link(Namespace :: binary(), Ttl :: integer()) -> gen_server:start_ret().
 start_link(Namespace, Ttl) ->
     gen_server:start_link({via, gproc, {n, l, {?MODULE, Namespace}}},
                           ?MODULE,
@@ -52,15 +51,15 @@ init([Namespace, Ttl]) ->
                      {reply, Reply :: term(), State :: state()} |
                      {noreply, State :: state()} |
                      {stop, Reason :: term(), Reply :: term(), State :: state()}.
-handle_call({set_ttl, Ttl}, _From, State) ->
+handle_call({set_ttl, Ttl}, _From, State) when is_number(Ttl) ->
     {reply, ok, State#state{ttl = Ttl}};
-handle_call({is_deliverable, Event}, _From, State) ->
-    Reply = Event#event.ttl > State#state.ttl,
+handle_call({is_deliverable, #event{ttl = Ttl}}, _From, State) ->
+    Reply = Ttl > State#state.ttl,
     {reply, Reply, State};
 handle_call(get_clock, _From, State) ->
     NewClock = State#state.logical_clock + 1,
     {reply, NewClock, State};
-handle_call({update_clock, Ts}, _From, State) ->
+handle_call({update_clock, Ts}, _From, State) when is_number(Ts) ->
     case Ts > State#state.logical_clock of
         true ->
             {reply, ok, State#state{logical_clock = Ts}};

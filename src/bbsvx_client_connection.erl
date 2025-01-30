@@ -56,9 +56,9 @@
                  atom(),
                  [term()]) ->
                     gen_statem:start_ret().
-start_link(join, Namespace, MyNode, TargetNode, Ulid, Lock, Type, Options) ->
+start_link(join, NameSpace, MyNode, TargetNode, Ulid, Lock, Type, Options) ->
     gen_statem:start_link(?MODULE,
-                          [join, Namespace, MyNode, TargetNode, Ulid, Lock, Type, Options],
+                          [join, NameSpace, MyNode, TargetNode, Ulid, Lock, Type, Options],
                           []).
 
 -spec start_link(forward_join | register,
@@ -67,16 +67,16 @@ start_link(join, Namespace, MyNode, TargetNode, Ulid, Lock, Type, Options) ->
                  node_entry(),
                  [term()]) ->
                     gen_statem:start_ret().
-start_link(forward_join, Namespace, MyNode, TargetNode, Options) ->
+start_link(forward_join, NameSpace, MyNode, TargetNode, Options) ->
     gen_statem:start_link(?MODULE,
-                          [forward_join, Namespace, MyNode, TargetNode, Options],
+                          [forward_join, NameSpace, MyNode, TargetNode, Options],
                           []);
-start_link(register, Namespace, MyNode, TargetNode, Options) ->
-    gen_statem:start_link(?MODULE, [register, Namespace, MyNode, TargetNode, Options], []).
+start_link(register, NameSpace, MyNode, TargetNode, Options) ->
+    gen_statem:start_link(?MODULE, [register, NameSpace, MyNode, TargetNode, Options], []).
 
-new(Type, Namespace, MyNode, TargetNode) ->
+new(Type, NameSpace, MyNode, TargetNode) ->
     supervisor:start_child(bbsvx_sup_client_connections,
-                           [Type, Namespace, MyNode, TargetNode]).
+                           [Type, NameSpace, MyNode, TargetNode]).
 
 -spec send(pid() | term(), term()) -> ok | {error, term()}.
 send(NodePid, Event) when is_pid(NodePid) ->
@@ -92,7 +92,7 @@ stop() ->
 %%% Gen State Machine Callbacks
 %%%=============================================================================
 
-init([forward_join, Namespace, MyNode, TargetNode, Options]) ->
+init([forward_join, NameSpace, MyNode, TargetNode, Options]) ->
     ?'log-info'("Initializing forward join connection from ~p, to ~p", [MyNode, TargetNode]),
     Lock = get_lock(?LOCK_SIZE),
     Ulid = get_ulid(),
@@ -100,14 +100,14 @@ init([forward_join, Namespace, MyNode, TargetNode, Options]) ->
     {ok,
      connect,
      #state{type = forward_join,
-            namespace = Namespace,
+            namespace = NameSpace,
             my_node = MyNode,
             current_lock = Lock,
             ulid = Ulid,
             buffer = <<>>,
             options = Options,
             target_node = TargetNode}};
-init([join, Namespace, MyNode, TargetNode, Ulid, TargetLock, Type, Options]) ->
+init([join, NameSpace, MyNode, TargetNode, Ulid, TargetLock, Type, Options]) ->
     process_flag(trap_exit, true),
     ?'log-info'("Initializing join connection, exchanged arc ~p, to ~p   type "
                 ": ~p",
@@ -120,7 +120,7 @@ init([join, Namespace, MyNode, TargetNode, Ulid, TargetLock, Type, Options]) ->
     {ok,
      connect,
      #state{type = Type,
-            namespace = Namespace,
+            namespace = NameSpace,
             my_node = MyNode,
             ulid = Ulid,
             current_lock = TargetLock,
@@ -128,7 +128,7 @@ init([join, Namespace, MyNode, TargetNode, Ulid, TargetLock, Type, Options]) ->
             buffer = <<>>,
             options = Options,
             target_node = TargetNode}};
-init([register, Namespace, MyNode, TargetNode, Options]) ->
+init([register, NameSpace, MyNode, TargetNode, Options]) ->
     process_flag(trap_exit, true),
     ?'log-info'("Initializing register connection from ~p, to ~p",
                 [{MyNode#node_entry.node_id, MyNode#node_entry.host},
@@ -140,7 +140,7 @@ init([register, Namespace, MyNode, TargetNode, Options]) ->
     {ok,
      connect,
      #state{type = register,
-            namespace = Namespace,
+            namespace = NameSpace,
             ulid = Ulid,
             current_lock = Lock,
             my_node = MyNode,
@@ -148,12 +148,12 @@ init([register, Namespace, MyNode, TargetNode, Options]) ->
             options = Options,
             target_node = TargetNode}}.
 
-terminate(Reason, connected, #state{ulid = MyUlid, namespace = Namespace} = State) ->
+terminate(Reason, connected, #state{ulid = MyUlid, namespace = NameSpace} = State) ->
     ?'log-info'("~p Terminating connection from ~p, to ~p while in state ~p "
                 "with reason ~p",
                 [?MODULE, State#state.my_node, State#state.target_node, connected, Reason]),
-    arc_event(Namespace, MyUlid, #evt_arc_disconnected{ulid = MyUlid, direction = out}),
-
+    arc_event(NameSpace, MyUlid, #evt_arc_disconnected{ulid = MyUlid, direction = out}),
+    prometheus_gauge:dec(<<"bbsvx_spray_outview_size">>, [NameSpace]),
     ok;
 terminate(Reason, PreviousState, State) ->
     ?'log-info'("~p Terminating connection from ~p, to ~p while in state ~p "
@@ -177,7 +177,7 @@ callback_mode() ->
                  gen_statem:state_function_result().
 connect(enter,
         _,
-        #state{namespace = Namespace,
+        #state{namespace = NameSpace,
                my_node = #node_entry{node_id = NodeId} = MyNode,
                ulid = MyUlid,
                target_node = #node_entry{host = TargetHost, port = TargetPort} = TargetNode} =
@@ -204,11 +204,11 @@ connect(enter,
         {ok, Socket} ->
             ok =
                 gen_tcp:send(Socket,
-                             term_to_binary(#header_connect{namespace = Namespace,
+                             term_to_binary(#header_connect{namespace = NameSpace,
                                                             node_id = NodeId})),
             {keep_state, State#state{socket = Socket}, ?HEADER_TIMEOUT};
         {error, Reason} ->
-            arc_event(Namespace,
+            arc_event(NameSpace,
                       MyUlid,
                       {connection_error,
                        Reason,
@@ -221,7 +221,7 @@ connect(enter,
     end;
 connect(info,
         {tcp, Socket, Bin},
-        #state{namespace = Namespace,
+        #state{namespace = NameSpace,
                type = Type,
                ulid = MyUlid,
                current_lock = CurrentLock,
@@ -238,7 +238,7 @@ connect(info,
                     case Type of
                         register ->
                             gen_tcp:send(Socket,
-                                         term_to_binary(#header_register{namespace = Namespace,
+                                         term_to_binary(#header_register{namespace = NameSpace,
                                                                          lock = CurrentLock,
                                                                          ulid = MyUlid})),
                             {next_state,
@@ -250,7 +250,7 @@ connect(info,
                              ?HEADER_TIMEOUT};
                         forward_join ->
                             gen_tcp:send(Socket,
-                                         term_to_binary(#header_forward_join{namespace = Namespace,
+                                         term_to_binary(#header_forward_join{namespace = NameSpace,
                                                                              ulid = MyUlid,
                                                                              type = Type,
                                                                              lock = CurrentLock,
@@ -267,7 +267,7 @@ connect(info,
                             gproc:set_value({n, l, {arc, out, MyUlid}}, NewLock),
 
                             gen_tcp:send(Socket,
-                                         term_to_binary(#header_join{namespace = Namespace,
+                                         term_to_binary(#header_join{namespace = NameSpace,
                                                                      ulid = MyUlid,
                                                                      current_lock = CurrentLock,
                                                                      new_lock = NewLock,
@@ -285,7 +285,7 @@ connect(info,
                             NewLock = get_lock(?LOCK_SIZE),
                             gproc:set_value({n, l, {arc, out, MyUlid}}, NewLock),
                             gen_tcp:send(Socket,
-                                         term_to_binary(#header_join{namespace = Namespace,
+                                         term_to_binary(#header_join{namespace = NameSpace,
                                                                      ulid = MyUlid,
                                                                      current_lock = CurrentLock,
                                                                      new_lock = NewLock,
@@ -301,7 +301,7 @@ connect(info,
                              ?HEADER_TIMEOUT}
                     end;
                 OtherConnectionResult ->
-                    arc_event(Namespace,
+                    arc_event(NameSpace,
                               MyUlid,
                               #evt_connection_error{ulid = MyUlid,
                                                     direction = out,
@@ -314,7 +314,7 @@ connect(info,
             end;
         _ ->
             logger:error("Invalid header received~n"),
-            arc_event(Namespace,
+            arc_event(NameSpace,
                       MyUlid,
                       #evt_connection_error{ulid = MyUlid,
                                             direction = out,
@@ -325,10 +325,10 @@ connect(info,
     end;
 connect(info,
         {tcp_closed, _Socket},
-        #state{namespace = Namespace,
+        #state{namespace = NameSpace,
                target_node = TargetNode,
                ulid = MyUlid}) ->
-    arc_event(Namespace,
+    arc_event(NameSpace,
               MyUlid,
               #evt_connection_error{ulid = MyUlid,
                                     direction = out,
@@ -339,11 +339,11 @@ connect(info,
     {stop, normal};
 connect(timeout,
         _,
-        #state{namespace = Namespace,
+        #state{namespace = NameSpace,
                target_node = TargetNode,
                my_node = MyNode,
                ulid = MyUlid}) ->
-    arc_event(Namespace,
+    arc_event(NameSpace,
               MyUlid,
               #evt_connection_error{ulid = MyUlid,
                                     direction = out,
@@ -368,7 +368,7 @@ register(enter, _, State) ->
     {keep_state, State};
 register(info,
          {tcp, Socket, Bin},
-         #state{namespace = Namespace,
+         #state{namespace = NameSpace,
                 buffer = Buffer,
                 ulid = MyUlid,
                 current_lock = CurrentLock,
@@ -390,7 +390,7 @@ register(info,
                                  #header_register_ack{result = Result,
                                                       current_index = CurrentIndex,
                                                       leader = Leader}]),
-                    arc_event(Namespace,
+                    arc_event(NameSpace,
                               MyUlid,
                               #evt_arc_connected_out{ulid = MyUlid,
                                                      lock = CurrentLock,
@@ -400,7 +400,7 @@ register(info,
                 Else ->
                     logger:error("~p registering to ~p refused : ~p~n",
                                  [?MODULE, State#state.target_node, Else]),
-                    arc_event(Namespace,
+                    arc_event(NameSpace,
                               MyUlid,
                               #evt_connection_error{ulid = MyUlid,
                                                     node = TargetNode,
@@ -411,7 +411,7 @@ register(info,
             end;
         _ ->
             logger:error("Invalid header received~n"),
-            arc_event(Namespace,
+            arc_event(NameSpace,
                       MyUlid,
                       #evt_connection_error{ulid = MyUlid,
                                             direction = out,
@@ -422,25 +422,29 @@ register(info,
 %% Timeout
 register(timeout,
          _,
-         #state{namespace = Namespace,
+         #state{namespace = NameSpace,
                 ulid = Ulid,
                 target_node = TargetNode} =
              State) ->
     logger:error("Contact timeout~n"),
-    arc_event(Namespace,
+    arc_event(NameSpace,
               Ulid,
               #evt_connection_error{ulid = Ulid,
                                     direction = out,
                                     reason = timeout,
                                     node = TargetNode}),
 
-    {stop, normal, State}.
+    {stop, normal, State};
+%% Ignore all other events
+register(Type, Event, State) ->
+    ?'log-warning'("Registering Ignoring event ~p~n", [{Type, Event}]),
+    {keep_state, State}.
 
 forward_join(enter, _, State) ->
     {keep_state, State};
 forward_join(info,
              {tcp, Socket, Bin},
-             #state{namespace = Namespace,
+             #state{namespace = NameSpace,
                     target_node = TargetNode,
                     ulid = MyUlid,
                     current_lock = CurrentLock,
@@ -455,7 +459,7 @@ forward_join(info,
                 ok ->
                     <<_:ByteRead/binary, BinLeft/binary>> = ConcatBuf,
                     %% Notify our join request was accepted
-                    arc_event(Namespace,
+                    arc_event(NameSpace,
                               MyUlid,
                               #evt_arc_connected_out{target = TargetNode,
                                                      lock = CurrentLock,
@@ -465,7 +469,7 @@ forward_join(info,
                 Else ->
                     ?'log-error'("~p Forward joining ~p refused : ~p~n",
                                  [?MODULE, TargetNode, Else]),
-                    arc_event(Namespace,
+                    arc_event(NameSpace,
                               MyUlid,
                               #evt_connection_error{ulid = MyUlid,
                                                     direction = out,
@@ -476,7 +480,7 @@ forward_join(info,
         Else ->
             logger:error("~p Invalid forward header received from ~p   Header ~p",
                          [?MODULE, TargetNode, Else]),
-            arc_event(Namespace,
+            arc_event(NameSpace,
                       MyUlid,
                       #evt_connection_error{ulid = MyUlid,
                                             direction = out,
@@ -488,24 +492,28 @@ forward_join(info,
 %% Timeout
 forward_join(timeout,
              _,
-             #state{namespace = Namespace,
+             #state{namespace = NameSpace,
                     target_node = TargetNode,
                     ulid = Ulid} =
                  State) ->
     ?'log-error'("Forward join timeout to node : ~p", [?MODULE, TargetNode]),
-    arc_event(Namespace,
+    arc_event(NameSpace,
               Ulid,
               #evt_connection_error{ulid = Ulid,
                                     direction = out,
                                     reason = timeout,
                                     node = TargetNode}),
-    {stop, normal, State}.
+    {stop, normal, State};
+%% Ignore all other events
+forward_join(Type, Event, State) ->
+    ?'log-warning'("Forward Join Ignoring event ~p~n", [{Type, Event}]),
+    {keep_state, State}.
 
 join(enter, _, State) ->
     {keep_state, State};
 join(info,
      {tcp, Socket, Bin},
-     #state{namespace = Namespace,
+     #state{namespace = NameSpace,
             target_node = TargetNode,
             current_lock = CurrentLock,
             join_timer = JoinTimer,
@@ -521,9 +529,9 @@ join(info,
                     %% Cancel connection timerout
                     erlang:cancel_timer(JoinTimer),
                     ?'log-info'("~p Joining accepted  Ulid: ~p on namespace ~p",
-                                [?MODULE, TargetNode, Namespace]),
+                                [?MODULE, TargetNode, NameSpace]),
                     %% Notify our join request was accepted
-                    arc_event(Namespace,
+                    arc_event(NameSpace,
                               MyUlid,
                               #evt_arc_connected_out{ulid = MyUlid,
                                                      lock = CurrentLock,
@@ -532,7 +540,7 @@ join(info,
                     {next_state, connected, State#state{socket = Socket, buffer = BinLeft}};
                 Else ->
                     logger:error("~p Joining ~p refused : ~p~n", [?MODULE, TargetNode, Else]),
-                    arc_event(Namespace,
+                    arc_event(NameSpace,
                               MyUlid,
                               #evt_connection_error{ulid = MyUlid,
                                                     direction = out,
@@ -542,48 +550,65 @@ join(info,
             end;
         _ ->
             logger:error("~p Invalid header received from ~p~n", [?MODULE, TargetNode]),
-            gproc:send({p, l, {?MODULE, Namespace}},
-                       {connection_error, invalid_header, Namespace, TargetNode}),
+            gproc:send({p, l, {?MODULE, NameSpace}},
+                       {connection_error, invalid_header, NameSpace, TargetNode}),
             {stop, normal, State}
     end;
 %% Timeout
 join(timeout,
      _,
-     #state{namespace = Namespace,
+     #state{namespace = NameSpace,
             target_node = TargetNode,
             ulid = Ulid} =
          State) ->
     logger:error("~p Join timeout~n", [?MODULE]),
-    arc_event(Namespace,
+    arc_event(NameSpace,
               Ulid,
               #evt_connection_error{ulid = Ulid,
                                     direction = out,
                                     reason = timeout,
                                     node = TargetNode}),
-    {stop, normal, State}.
+    {stop, normal, State};
+%% Ignore all other events
+join(Type, Event, State) ->
+    ?'log-warning'("Join Ignoring event ~p~n", [{Type, Event}]),
+    {keep_state, State}.
 
 -spec connected(gen_statem:event_type() | enter,
                 {tcp, gen_tcp:socket(), binary()} |
                 {tcp_closed, gen_tcp:socket()} |
                 incoming_event() |
-                {disconnect, term()},
+                {send, term()} |
+                reset_age |
+                inc_age |
+                {terminate, term()},
                 state()) ->
                    gen_statem:state_function_result().
 connected(enter,
           _,
-          #state{target_node = TargetNode,
+          #state{namespace = NameSpace,
+                 target_node = TargetNode,
                  my_node = MyNode,
                  ulid = MyUlid} =
               State) ->
-    ?'log-info'("~p Arc connected :~p, type : ~p",
-                [?MODULE,
-                 #arc{source = MyNode,
-                      target = TargetNode,
-                      ulid = MyUlid},
-                 State#state.type]),
+    gproc:reg({p, l, {outview, NameSpace}},
+              #arc{source = MyNode,
+                   target = TargetNode,
+                   lock = State#state.current_lock,
+                   ulid = MyUlid}),
+    prometheus_gauge:inc(<<"bbsvx_spray_outview_size">>, [NameSpace]),
+
     {keep_state, State};
 connected(info, {tcp, _Socket, BinData}, #state{buffer = Buffer} = State) ->
     parse_packet(<<Buffer/binary, BinData/binary>>, State);
+connected(info, reset_age, #state{namespace = NameSpace} = State) ->
+    #arc{} = Arc = gproc:get_value({p, l, {outview, NameSpace}}),
+    gproc:set_value({p, l, {outview, NameSpace}}, Arc#arc{age = 0}),
+    {keep_state, State};
+connected(info, inc_age, #state{namespace = NameSpace} = State) ->
+    #arc{age = CurrentAge} = Arc = gproc:get_value({p, l, {outview, NameSpace}}),
+    gproc:set_value({p, l, {outview, NameSpace}}, Arc#arc{age = CurrentAge + 1}),
+    {keep_state, State};
 connected(info,
           #incoming_event{event = #open_forward_join{} = Msg},
           #state{socket = Socket} = State)
@@ -592,21 +617,15 @@ connected(info,
                 [?MODULE, Msg, State#state.target_node]),
     gen_tcp:send(Socket, term_to_binary(Msg)),
     {keep_state, State};
-connected(info, #incoming_event{event = {send, Event}}, #state{socket = Socket} = State)
+connected(info, {send, Event}, #state{socket = Socket} = State)
     when Socket =/= undefined ->
     gen_tcp:send(Socket, term_to_binary(Event)),
     {keep_state, State};
-connected(info,
-          #incoming_event{event = {close_connection, Reason}},
-          #state{ulid = MyUlid, namespace = Namespace}) ->
-    ?'log-info'("~p Closing out connection with reason ~p~n", [?MODULE, Reason]),
-    {stop, normal};
-connected(info,
-          {tcp_closed, Socket},
-          #state{socket = Socket,
-                 ulid = MyUlid,
-                 namespace = Namespace}) ->
+connected(info, {tcp_closed, Socket}, #state{socket = Socket, ulid = MyUlid}) ->
     ?'log-info'("~p Connection out closed ~p Reason tcp_closed", [?MODULE, MyUlid]),
+    {stop, normal};
+connected(info, {terminate, Reason}, #state{ulid = MyUlid}) ->
+    ?'log-info'("~p Connection out closed ~p Reason ~p", [?MODULE, MyUlid, Reason]),
     {stop, normal};
 %% Ignore all other events
 connected(Type, Event, State) ->
@@ -623,10 +642,11 @@ handle_event(info, {close, connection_timeout}, State) ->
 %% Catch all
 handle_event(Type, Event, State) ->
     ?'log-warning'("~p Unmanaged event ~p", [?MODULE, {Type, Event}]),
-    {keep_state,
-     State}.%%%=============================================================================
-            %%% Internal functions
-            %%%=============================================================================
+    {keep_state, State}.
+
+%%%=============================================================================
+%%% Internal functions
+%%%=============================================================================
 
 %%-----------------------------------------------------------------------------
 %% @doc
@@ -658,17 +678,23 @@ get_ulid() ->
 %% @end
 %% ----------------------------------------------------------------------------
 -spec arc_event(binary(), binary(), term()) -> ok.
-arc_event(Namespace, MyUlid, Event) ->
-    gproc:send({p, l, {spray_exchange, Namespace}},
-               #incoming_event{event = Event, origin_arc = MyUlid}).
+arc_event(NameSpace, MyUlid, Event) ->
+    gproc:send({p, l, {spray_exchange, NameSpace}},
+               #incoming_event{event = Event,
+                               direction = out,
+                               origin_arc = MyUlid}).
 
-ontology_event(Namespace, Event) ->
-    gproc:send({p, l, {bbsvx_actor_ontology, Namespace}}, Event).
+ontology_event(NameSpace, Event) ->
+    gproc:send({p, l, {bbsvx_actor_ontology, NameSpace}}, Event).
 
 -spec parse_packet(binary(), state()) -> gen_statem:state_function_result().
 parse_packet(<<>>, State) ->
     {keep_state, State#state{buffer = <<>>}};
-parse_packet(Buffer, #state{namespace = Namespace, ulid = MyUlid} = State) ->
+parse_packet(Buffer,
+             #state{namespace = NameSpace,
+                    ulid = MyUlid,
+                    target_node = #node_entry{node_id = TargetNodeId, host = Host, port = Port}} =
+                 State) ->
     Decoded =
         try binary_to_term(Buffer, [used]) of
             {DecodedEvent, NbBytesUsed} when is_number(NbBytesUsed) ->
@@ -686,31 +712,43 @@ parse_packet(Buffer, #state{namespace = Namespace, ulid = MyUlid} = State) ->
             ?'log-info'("Connection received Ontology history ~p     ~p~n",
                         [Event#ontology_history.oldest_index,
                          Event#ontology_history.younger_index]),
-            ontology_event(Namespace, Event),
+            ontology_event(NameSpace, Event),
             parse_packet(BinLeft, State);
         %% Spray related messages
-        {complete, #peer_connect_to_sample{} = Event, Index} ->
-            <<_:Index/binary, BinLeft/binary>> = Buffer,
-            ?'log-info'("Connection received Peer connect to sample ~p~n", [Event]),
-            arc_event(Namespace, MyUlid, Event),
-            parse_packet(BinLeft, State);
         {complete, #exchange_cancelled{} = Event, Index} ->
             <<_:Index/binary, BinLeft/binary>> = Buffer,
             ?'log-info'("Connection received Exchange cancelled ~p~n", [Event]),
-            arc_event(Namespace, MyUlid, Event),
+            arc_event(NameSpace, MyUlid, Event),
             parse_packet(BinLeft, State);
         {complete, #exchange_out{} = Event, Index} ->
             ?'log-info'("Client Connection received Exchange out ~p~n", [Event]),
             <<_:Index/binary, BinLeft/binary>> = Buffer,
-            arc_event(Namespace, MyUlid, Event),
+            arc_event(NameSpace, MyUlid, Event),
             parse_packet(BinLeft, State);
         {complete, #exchange_accept{} = Event, Index} ->
             <<_:Index/binary, BinLeft/binary>> = Buffer,
-            arc_event(Namespace, MyUlid, Event),
+            arc_event(NameSpace, MyUlid, Event),
+            parse_packet(BinLeft, State);
+        {complete, #node_quitting{reason = Reason2}, Index} ->
+            <<_:Index/binary, BinLeft/binary>> = Buffer,
+            arc_event(NameSpace,
+                      MyUlid,
+                      #evt_node_quitted{reason = Reason2,
+                                        direction = out,
+                                        node_id = TargetNodeId,
+                                        host = Host,
+                                        port = Port}),
             parse_packet(BinLeft, State);
         {incomplete, Buffer} ->
             {keep_state, State#state{buffer = Buffer}}
     end.
+
+
+
+-spec build_metric_view_name(NameSpace :: binary(), MetricName :: binary()) -> atom().
+build_metric_view_name(NameSpace, MetricName) ->
+    binary_to_atom(iolist_to_binary([MetricName,
+                                     binary:replace(NameSpace, <<":">>, <<"_">>)])).
 
 %%%=============================================================================
 %%% Eunit Tests

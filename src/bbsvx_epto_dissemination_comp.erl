@@ -12,6 +12,7 @@
 -behaviour(gen_server).
 
 -include("bbsvx.hrl").
+
 -include_lib("logjam/include/logjam.hrl").
 
 %%%=============================================================================
@@ -32,7 +33,7 @@
 %% fsm state
 -record(state,
         {namespace :: binary(),
-         round_timer :: term(),
+         round_timer :: timer:tref(),
          fanout :: integer(),
          ttl :: integer(),
          next_ball :: map(),
@@ -50,7 +51,7 @@
                  Ttl :: integer(),
                  Orderer :: pid(),
                  LogicalClock :: pid()) ->
-                    {ok, pid()} | {error, {already_started, pid()}} | {error, Reason :: any()}.
+                    gen_statem:start_ret().
 start_link(Namespace, Fanout, Ttl, Orderer, LogicalClock) ->
     gen_server:start_link({via, gproc, {n, l, {?SERVER, Namespace}}},
                           ?MODULE,
@@ -64,26 +65,24 @@ start_link(Namespace, Fanout, Ttl, Orderer, LogicalClock) ->
 init([Namespace, Fanout, Ttl, Orderer, LogicalClock]) ->
     quickrand:seed(),
 
-    State =
-        #state{namespace = Namespace,
-               orderer = Orderer,
-               logical_clock_pid = LogicalClock,
-               fanout = Fanout,
-               ttl = Ttl,
-               next_ball = #{}},
-
     %% Register to epto messages received at inview (ejabberd mod )
-    ?'log-info'("Epto dissemination component starting ~p",
-                [Namespace]),
+    ?'log-info'("Epto dissemination component starting ~p", [Namespace]),
     gproc:reg({p, l, {epto_event, Namespace}}),
 
     {ok, RoundTimer} =
         timer:apply_interval(?DEFAULT_ROUND_TIME, gen_server, call, [self(), next_round]),
 
-    {ok, State#state{round_timer = RoundTimer}}.
+    {ok,
+     #state{round_timer = RoundTimer,
+            namespace = Namespace,
+            orderer = Orderer,
+            logical_clock_pid = LogicalClock,
+            fanout = Fanout,
+            ttl = Ttl,
+            next_ball = #{}}}.
 
 -spec handle_call(Request :: term(), From :: gen_server:from(), State :: state()) ->
-                    {reply, Reply :: term(), State :: state()}.
+                     {reply, Reply :: term(), State :: state()}.
 handle_call({epto_broadcast, Payload}, _From, #state{next_ball = NextBall} = State) ->
     ?'log-info'("Epto dissemination component : Broadcast ~p", [Payload]),
 
@@ -108,10 +107,11 @@ handle_call(next_round, _From, #state{namespace = Namespace} = State) ->
 
     %% Broadcast next ball to sample peers
     bbsvx_actor_spray:broadcast_unique(Namespace,
-                                            #epto_message{payload = {receive_ball, NewBall}}),
+                                       #epto_message{payload = {receive_ball, NewBall}}),
     gen_server:call(State#state.orderer, {order_events, NewBall}),
     {reply, ok, State#state{next_ball = #{}}};
-handle_call({set_fanout_ttl, Fanout, Ttl}, _From, State) ->
+handle_call({set_fanout_ttl, Fanout, Ttl}, _From, State)
+    when is_number(Fanout) andalso is_number(Ttl) ->
     gen_server:call(State#state.logical_clock_pid, {set_ttl, Ttl}),
     {reply, ok, State#state{fanout = Fanout, ttl = Ttl}};
 handle_call(Request, _From, State) ->

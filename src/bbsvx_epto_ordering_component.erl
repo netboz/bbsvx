@@ -30,7 +30,7 @@
 -record(state,
         {namespace :: binary(),
          received = #{} :: map(),
-         delivered = undefined :: term(),
+         delivered :: ordsets:ordset(term()),
          last_delivered_ts = 0 :: integer(),
          logical_clock :: pid()}).
 
@@ -41,7 +41,7 @@
 %%%=============================================================================
 
 -spec start_link(Namespace :: binary(), LogicalClockPid :: pid()) ->
-                    {ok, pid()} | {error, {already_started, pid()}} | {error, Reason :: any()}.
+                    gen_server:start_ret().
 start_link(Namespace, LogicalClockPid) ->
     gen_server:start_link({via, gproc, {n, l, {?SERVER, Namespace}}},
                           ?MODULE,

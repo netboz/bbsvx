@@ -99,8 +99,33 @@ stop() ->
 %%% Gen State Machine Callbacks
 %%%=============================================================================
 
-terminate(Reason, _CurrentState, State) ->
-  ?'log-info'("~p Terminating conenction in...~p   Reason ~p", [?MODULE, State, Reason]),
+terminate(normal,
+          connected,
+          #state{namespace = NameSpace,
+                 origin_node = OriginNode,
+                 my_ulid = MyUlid} =
+            State) ->
+  ?'log-info'("~p Normally Terminating conenction IN from ...~p   Reason ~p",
+              [?MODULE, OriginNode, normal]),
+  prometheus_gauge:dec(<<"bbsvx_spray_inview_size">>, [NameSpace]),
+  gen_tcp:close(State#state.socket),
+  arc_event(NameSpace, MyUlid, #evt_arc_disconnected{direction = in, ulid = MyUlid}),
+  void;
+terminate(OtherReason,
+          connected,
+          #state{namespace = NameSpace,
+                 origin_node = OriginNode,
+                 my_ulid = MyUlid} =
+            State) ->
+  ?'log-info'("~p Terminating conenction IN from ...~p   Reason ~p",
+              [?MODULE, OriginNode, OtherReason]),
+  prometheus_gauge:dec(<<"bbsvx_spray_inview_size">>, [NameSpace]),
+  gen_tcp:close(State#state.socket),
+  arc_event(NameSpace, MyUlid, #evt_arc_disconnected{direction = in, ulid = MyUlid}),
+  void;
+terminate(Reason, _CurrentState, #state{origin_node = OriginNode} = State) ->
+  ?'log-info'("~p Terminating unconnected connection IN from...~p   Reason ~p",
+              [?MODULE, OriginNode, Reason]),
   gen_tcp:close(State#state.socket),
   void.
 
@@ -189,7 +214,7 @@ wait_for_subscription(enter, _, State) ->
   {keep_state, State};
 wait_for_subscription(info,
                       {tcp, _Ref, BinData},
-                      #state{namespace = Namespace,
+                      #state{namespace = NameSpace,
                              origin_node = OriginNode,
                              socket = Socket,
                              buffer = Buffer,
@@ -214,7 +239,7 @@ wait_for_subscription(info,
       gproc:reg({n, l, {arc, in, Ulid}}, Lock),
 
       %% Notify spray agent to add to inview
-      arc_event(Namespace,
+      arc_event(NameSpace,
                 Ulid,
                 #evt_arc_connected_in{ulid = Ulid,
                                       lock = Lock,
@@ -236,7 +261,7 @@ wait_for_subscription(info,
       %% a new arc is created.
       gproc:reg({n, l, {arc, in, Ulid}}, Lock),
       %% Notify spray agent to add this new arc to inview
-      arc_event(Namespace,
+      arc_event(NameSpace,
                 Ulid,
                 #evt_arc_connected_in{ulid = Ulid,
                                       lock = Lock,
@@ -282,7 +307,7 @@ wait_for_subscription(info,
           gproc:reg({n, l, {arc, in, Ulid}}, NewLock),
           %% Stop the previous connection
           gen_statem:stop(OtherConnectionPid),
-          arc_event(Namespace,
+          arc_event(NameSpace,
                     Ulid,
                     #evt_arc_connected_in{ulid = Ulid,
                                           lock = NewLock,
@@ -293,7 +318,11 @@ wait_for_subscription(info,
                                                          type = Type,
                                                          options = Options})),
           Transport:setopts(Socket, [{active, true}]),
-          {next_state, connected, State#state{my_ulid = Ulid, buffer = NewBuffer}};
+          {next_state,
+           connected,
+           State#state{my_ulid = Ulid,
+                       lock = NewLock,
+                       buffer = NewBuffer}};
         Else ->
           ?'log-warning'("~p Locks don't match incoming arc lock ~p    stored lock : ~p",
                          [?MODULE, CurrentLock, Else]),
@@ -336,8 +365,8 @@ wait_for_subscription(info,
           MatchHead = {GProcKey, '_', '_'},
           Guard = [],
           Result = ['$$'],
-          GG = gproc:select([{MatchHead, Guard, Result}]),
-          ?'log-info'("GG: ~p", [GG]),
+          GP = gproc:select([{MatchHead, Guard, Result}]),
+          ?'log-info'("GP: ~p", [GP]),
           OtherConnectionPid = gproc:where({n, l, {arc, in, Ulid}}),
           gproc:unreg_other({n, l, {arc, in, Ulid}}, OtherConnectionPid),
           gproc:reg({n, l, {arc, in, Ulid}}, NewLock),
@@ -347,17 +376,20 @@ wait_for_subscription(info,
                                                          type = Type,
                                                          options = Options})),
 
-          %% Notifiy spray agent to change origin of this node
-          arc_event(Namespace,
+          arc_event(NameSpace,
                     Ulid,
-                    #evt_arc_swapped_in{ulid = Ulid,
-                                        newlock = NewLock,
-                                        new_source = OriginNode}),
+                    #evt_arc_connected_in{ulid = Ulid,
+                                          lock = NewLock,
+                                          source = OriginNode}),
 
           %% Stop the previous connection
           gen_statem:stop(OtherConnectionPid),
           Transport:setopts(Socket, [{active, true}]),
-          {next_state, connected, State#state{my_ulid = Ulid, buffer = NewBuffer}};
+          {next_state,
+           connected,
+           State#state{my_ulid = Ulid,
+                       lock = NewLock,
+                       buffer = NewBuffer}};
         Else ->
           ?'log-warning'("~p Locks don't match ~p    incoming lock : ~p",
                          [?MODULE, CurrentLock, Else]),
@@ -373,6 +405,26 @@ wait_for_subscription(Type, Data, State) ->
   ?'log-warning'("~p Unamaneged event ~p", [?MODULE, {Type, Data}]),
   {keep_state, State}.
 
+connected(enter,
+          _,
+          #state{namespace = NameSpace,
+                 my_ulid = MyUlid,
+                 lock = Lock,
+                 my_node = MyNode,
+                 origin_node = OriginNode} =
+            State) ->
+  gproc:reg({p, l, {inview, NameSpace}},
+            #arc{age = 0,
+                 ulid = MyUlid,
+                 target = MyNode,
+                 lock = Lock,
+                 source = OriginNode}),
+
+  prometheus_gauge:inc(<<"bbsvx_spray_inview_size">>, [NameSpace]),
+
+  {keep_state, State};
+connected(info, {tcp, _Ref, BinData}, #state{buffer = Buffer} = State) ->
+  parse_packet(<<Buffer/binary, BinData/binary>>, keep_state, State);
 connected(info, #incoming_event{event = #peer_connect_to_sample{} = Msg}, State) ->
   ?'log-info'("~p sending peer connect to sample to  ~p",
               [?MODULE, State#state.origin_node]),
@@ -390,15 +442,11 @@ connected({call, From}, {accept_join, #header_join_ack{} = Header}, State) ->
   {keep_state, State};
 connected({call, From},
           {close, Reason},
-          #state{namespace = Namespace, my_ulid = MyUlid} = State) ->
+          #state{namespace = NameSpace, my_ulid = MyUlid} = State) ->
   ?'log-info'("~p closing connection from  ~p to us. Reason : ~p",
               [?MODULE, State#state.origin_node, Reason]),
   gen_statem:reply(From, ok),
-  arc_event(Namespace, MyUlid, #evt_arc_disconnected{direction = in, ulid = MyUlid}),
-
   {stop, normal, State};
-connected(enter, _, State) ->
-  {keep_state, State};
 connected(info,
           #incoming_event{event = #exchange_out{proposed_sample = ProposedSample}},
           #state{} = State) ->
@@ -406,27 +454,30 @@ connected(info,
   ranch_tcp:send(State#state.socket,
                  term_to_binary(#exchange_out{proposed_sample = ProposedSample})),
   {keep_state, State};
-connected(info,
-          #incoming_event{event = {reject, Reason}},
-          #state{namespace = Namespace} = State) ->
+connected(info, {reject, Reason}, #state{namespace = NameSpace} = State) ->
   ?'log-info'("~p sending exchange cancelled to  ~p", [?MODULE, State#state.origin_node]),
   Result =
     ranch_tcp:send(State#state.socket,
-                   term_to_binary(#exchange_cancelled{namespace = Namespace, reason = Reason})),
+                   term_to_binary(#exchange_cancelled{namespace = NameSpace, reason = Reason})),
   ?'log-info'("~p Exchange cancelled sent ~p", [?MODULE, Result]),
   {keep_state, State};
 connected(cast, {send_history, #ontology_history{} = History}, State) ->
   ?'log-info'("~p sending history to  ~p", [?MODULE, State#state.origin_node]),
   ranch_tcp:send(State#state.socket, term_to_binary(History)),
   {keep_state, State};
-connected(info, {tcp, _Ref, BinData}, #state{buffer = Buffer} = State) ->
-  parse_packet(<<Buffer/binary, BinData/binary>>, keep_state, State);
+connected(info, {send, Data}, State) ->
+  ranch_tcp:send(State#state.socket, term_to_binary(Data)),
+  {keep_state, State};
 connected(info,
           {tcp_closed, _Ref},
-          #state{namespace = Namespace, my_ulid = MyUlid} = State) ->
-  ?'log-info'("~p Connection in closed...~p", [?MODULE, State#state.origin_node]),
-  arc_event(Namespace, MyUlid, #evt_arc_disconnected{direction = in, ulid = MyUlid}),
-  {stop, normal, State}.
+          #state{namespace = NameSpace, my_ulid = MyUlid} = State) ->
+  ?'log-info'("Namespace : ~p ; Node :~p Connection in from ~p closed...",
+              [NameSpace, MyUlid, State#state.origin_node]),
+  {stop, normal, State};
+connected(info, {terminate, Reason}, State) ->
+  ?'log-info'("~p Terminating connection from ~p   Reason ~p",
+              [?MODULE, State#state.origin_node, Reason]),
+  {stop, Reason, State}.
 
 %%%=============================================================================
 %%% Internal functions
@@ -434,7 +485,7 @@ connected(info,
 
 parse_packet(<<>>, Action, State) ->
   {Action, State#state{buffer = <<>>}};
-parse_packet(Buffer, Action, #state{namespace = Namespace, my_ulid = MyUlid} = State) ->
+parse_packet(Buffer, Action, #state{namespace = NameSpace, my_ulid = MyUlid} = State) ->
   Decoded =
     try binary_to_term(Buffer, [used]) of
       {DecodedEvent, NbBytesUsed} when is_number(NbBytesUsed) ->
@@ -450,47 +501,45 @@ parse_packet(Buffer, Action, #state{namespace = Namespace, my_ulid = MyUlid} = S
       bbsvx_transaction_pipeline:receive_transaction(Transacion),
       parse_packet(BinLeft, Action, State);
     {complete,
-     #ontology_history_request{namespace = Namespace, requester = Requester} = Event,
+     #ontology_history_request{namespace = NameSpace, requester = Requester} = Event,
      Index} ->
       <<_:Index/binary, BinLeft/binary>> = Buffer,
-      gproc:send({n, l, {bbsvx_actor_ontology, Namespace}},
+      gproc:send({n, l, {bbsvx_actor_ontology, NameSpace}},
                  Event#ontology_history_request{requester = Requester#node_entry{}}),
       parse_packet(BinLeft, Action, State);
     {complete, #exchange_in{} = Msg, Index} ->
       <<_:Index/binary, BinLeft/binary>> = Buffer,
-      arc_event(Namespace, MyUlid, Msg),
+      arc_event(NameSpace, MyUlid, Msg),
       parse_packet(BinLeft, Action, State);
     {complete, #change_lock{} = Event, Index} ->
       <<_:Index/binary, BinLeft/binary>> = Buffer,
-      arc_event(Namespace, MyUlid, Event),
       %% Update the lock at the connection level
       parse_packet(BinLeft, Action, State#state{lock = Event#change_lock.new_lock});
     {complete, #exchange_cancelled{} = Event, Index} ->
       <<_:Index/binary, BinLeft/binary>> = Buffer,
-      arc_event(Namespace, MyUlid, Event),
+      arc_event(NameSpace, MyUlid, Event),
       parse_packet(BinLeft, Action, State);
     {complete, #exchange_accept{} = Event, Index} ->
       <<_:Index/binary, BinLeft/binary>> = Buffer,
-      arc_event(Namespace, MyUlid, Event),
-      parse_packet(BinLeft, Action, State);
-    {complete, #peer_connect_to_sample{} = Event, Index} ->
-      <<_:Index/binary, BinLeft/binary>> = Buffer,
-      arc_event(Namespace, MyUlid, Event),
+      arc_event(NameSpace, MyUlid, Event),
       parse_packet(BinLeft, Action, State);
     {complete, #open_forward_join{} = Event, Index} ->
       <<_:Index/binary, BinLeft/binary>> = Buffer,
-      arc_event(Namespace, MyUlid, Event),
+      arc_event(NameSpace, MyUlid, Event),
       parse_packet(BinLeft, Action, State);
     {complete, #epto_message{payload = Payload}, Index} ->
       <<_:Index/binary, BinLeft/binary>> = Buffer,
-      gproc:send({p, l, {epto_event, Namespace}}, {incoming_event, Payload}),
+      gproc:send({p, l, {epto_event, NameSpace}}, {incoming_event, Payload}),
       parse_packet(BinLeft, Action, State);
     {complete, #leader_election_info{} = Event, Index} ->
       <<_:Index/binary, BinLeft/binary>> = Buffer,
-      gproc:send({p, l, {leader_election, Namespace}}, {incoming_event, Event}),
+      gproc:send({p, l, {leader_election, NameSpace}}, {incoming_event, Event}),
       parse_packet(BinLeft, Action, State);
+    {complete, #node_quitting{reason = Reason} = Event, _Index} ->
+      ?'log-notice'("~p Event received ~p", [?MODULE, Event]),
+      {stop, Reason, State};
     {complete, Event, Index} ->
-      ?'log-error'("~p Event received ~p", [?MODULE, Event]),
+      ?'log-warn'("~p Event received ~p", [?MODULE, Event]),
       <<_:Index/binary, BinLeft/binary>> = Buffer,
       parse_packet(BinLeft, Action, State);
     {incomplete, Buffer} ->
@@ -512,9 +561,16 @@ parse_packet(Buffer, Action, #state{namespace = Namespace, my_ulid = MyUlid} = S
 %% @end
 %% ----------------------------------------------------------------------------
 -spec arc_event(binary(), binary(), term()) -> ok.
-arc_event(Namespace, MyUlid, Event) ->
-  gproc:send({p, l, {spray_exchange, Namespace}},
-             #incoming_event{event = Event, origin_arc = MyUlid}).
+arc_event(NameSpace, MyUlid, Event) ->
+  gproc:send({p, l, {spray_exchange, NameSpace}},
+             #incoming_event{event = Event,
+                             direction = in,
+                             origin_arc = MyUlid}).
+
+-spec build_metric_view_name(NameSpace :: binary(), MetricName :: binary()) -> atom().
+build_metric_view_name(NameSpace, MetricName) ->
+  binary_to_atom(iolist_to_binary([MetricName,
+                                   binary:replace(NameSpace, <<":">>, <<"_">>)])).
 
 %%%=============================================================================
 %%% Eunit Tests

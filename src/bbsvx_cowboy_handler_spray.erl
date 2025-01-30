@@ -5,36 +5,53 @@
 %%% @end
 %%%-----------------------------------------------------------------------------
 
--module(bbsvx_rest_service_spray).
+-module(bbsvx_cowboy_handler_spray).
 
 -include("bbsvx.hrl").
 
 -include_lib("logjam/include/logjam.hrl").
 
 -export([init/2, allowed_methods/2, malformed_request/2, resource_exists/2,
-         content_types_provided/2]).
--export([provide_outview/2, provide_inview/2]).
+         content_types_provided/2, content_types_accepted/2, options/2]).
+-export([provide_outview/2, provide_inview/2, stop_spray_agent/2]).
 
 %%%=============================================================================
 %%% Global Definitions
 %%%=============================================================================
 
 init(Req0, State) ->
+    ?'log-info'("---->   Init", []),
     {cowboy_rest, Req0, State}.
 
+options(Req, State) ->
+    ?'log-info'("Options: ~p", [Req]),
+    Resp =
+        cowboy_req:reply(204,
+                         #{<<"access-control-allow-origin">> => <<"*">>,
+                           <<"access-control-allow-methods">> =>
+                               <<"GET, POST, PUT, DELETE, OPTIONS">>,
+                           <<"access-control-allow-headers">> => <<"*">>},
+                         <<>>,
+                         Req),
+    {stop, Resp, State}.
+
 allowed_methods(Req, State) ->
-    {[<<"GET">>, <<"HEAD">>, <<"POST">>, <<"OPTIONS">>], Req, State}.
+    {[<<"GET">>, <<"HEAD">>, <<"POST">>, <<"PUT">>, <<"OPTIONS">>, <<"DELETE">>], Req, State}.
 
 malformed_request(Req, State) ->
+    ?'log-info'("Malformed Request: ~p", [Req]),
     try
         {ok, Body, Req1} = cowboy_req:read_body(Req),
         ?'log-info'("Body: ~p", [Body]),
+        ?'log-info'("Req: ~p", [Req]),
+
         DBody = jiffy:decode(Body, [return_maps]),
         ?'log-info'("BBody: ~p", [DBody]),
 
         case DBody of
             #{<<"namespace">> := Namespace} ->
-                {false, Req1, State#{namespace => Namespace}};
+                ?'log-info'("request ok : Namespace: ~p", [Namespace]),
+                {false, Req1, State#{namespace => Namespace, body => DBody}};
             _ ->
                 Req2 =
                     cowboy_req:set_resp_body(
@@ -49,6 +66,7 @@ malformed_request(Req, State) ->
     {false, Req, State#{namespace => <<"bbsvx:root">>}}.
 
 resource_exists(Req, #{namespace := Namespace} = State) ->
+    ?'log-info'("Resource Exists: ~p", [Req]),
     case bbsvx_ont_service:get_ontology(Namespace) of
         {ok, #ontology{} = Onto} ->
             {true, Req, State#{onto => Onto}};
@@ -59,27 +77,45 @@ resource_exists(Req, #{namespace := Namespace} = State) ->
             {false, Req1, State}
     end.
 
+content_types_accepted(Req, State) ->
+    ?'log-info'("Content Types Accepted: ~p", [Req]),
+    {[{{<<"application">>, <<"json">>, []}, stop_spray_agent}], Req, State}.
+
 content_types_provided(#{path := <<"/spray/inview">>} = Req, State) ->
     {[{{<<"application">>, <<"json">>, []}, provide_inview}], Req, State};
 content_types_provided(#{path := <<"/spray/outview">>} = Req, State) ->
     {[{{<<"application">>, <<"json">>, []}, provide_outview}], Req, State};
 content_types_provided(Req, State) ->
-    ?'log-info'("Path: ~p", [Req]),
-    ?'log-info'("State: ~p", [State]),
-    Req2 =
-        cowboy_req:set_resp_body(
-            jiffy:encode([#{error => <<"missing_namespace">>}]), Req),
-    {false, Req2, State}.
+    ?'log-info'("Content Types Provided: ~p", [Req]),
+    {[{{<<"application">>, <<"json">>, []}, stop_spray_agent}], Req, State}.
+
+stop_spray_agent(Req, #{namespace := Namespace} = State) ->
+    ?'log-info'("Stopping spray agent on namespace ~p", [Namespace]),
+    Req1 = cowboy_req:set_resp_header(<<"Access-Control-Allow-Origin">>, <<"*">>, Req),
+    case gproc:where({n, l, {bbsvx_actor_spray, Namespace}}) of
+        undefined ->
+            ?'log-error'("No spray agent on namespace ~p", [Namespace]),
+            {jiffy:encode([#{result => ok}]), Req1, State};
+        Pid ->
+            ?'log-info'("Sending delete_node event to spray agent ~p", [Pid]),
+            %% Send a delete_node event to the spray agent
+
+            gen_statem:stop(Pid),
+            ?'log-info'("Spray agent ~p stopped", [Pid]),
+            Req2 = cowboy_req:set_resp_body(jiffy:encode([#{result => <<"ok">>}]), Req1),
+            {true, Req2, State}
+    end.
 
 -spec get_view(atom(), binary()) -> {ok, [arc()]} | {error, binary()}.
 get_view(Type, Namespace) when Type == get_inview orelse Type == get_outview ->
     %% Look for spray agent
-    case gproc:where({n, l, {bbsvx_actor_spray, Namespace}}) of
-        undefined ->
-            ?'log-error'("No view actor on namespace ~p:", [Namespace]),
-            {error, <<"no_actor_on_namespace_", Namespace/binary>>};
-        Pid ->
-            gen_statem:call(Pid, Type)
+    case Type of
+        get_inview ->
+            InView = bbsvx_actor_spray:get_inview(Namespace),
+            {ok, InView};
+        get_outview ->
+            OutView = bbsvx_actor_spray:get_outview(Namespace),
+            {ok, OutView}
     end.
 
 provide_outview(Req, #{namespace := Namespace} = State) ->

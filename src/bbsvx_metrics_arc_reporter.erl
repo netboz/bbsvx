@@ -27,6 +27,7 @@
 -export([init/1, code_change/4, callback_mode/0, terminate/3]).
 %% State transitions
 -export([running/3]).
+-export([do/1]).
 
 -record(state, {my_id :: binary()}).
 
@@ -56,6 +57,17 @@ init([]) ->
     MyId = bbsvx_crypto_service:my_id(),
     gproc:reg({p, l, {spray_exchange, <<"bbsvx:root">>}}),
     ?'log-info'("Starting graph visualizer arc reporter with id: ~p", [MyId]),
+    %% Get my host port
+    {ok, {Host, Port}} = bbsvx_network_service:my_host_port(),
+    inets:start(),
+    R = inets:start(httpd,
+                    [{port, 7080},
+                     {server_name, "simple_server"},
+                     {modules, [?MODULE]},
+                     {document_root, "/tmp"},
+                     {server_root, "/tmp"}, % Not used in our custom handler
+                     {bind_address, Host}]),
+    ?'log-info'("httpd started with result: ~p", [R]),
     {ok, running, #state{my_id = MyId}}.
 
 terminate(_Reason, _State, _Data) ->
@@ -160,9 +172,85 @@ running(info,
                       [],
                       []),
     {next_state, running, State};
+running(info,
+        #incoming_event{event =
+                            {node_stopped,
+                             Namespace,
+                             #node_entry{node_id = NodeId,
+                                         host = Host,
+                                         port = Port}}},
+        State) ->
+    %% Prepare body as json :
+    %% {
+    %   "action": "add",
+    %   "node_id": "node12345",
+    %   "metadata": {
+    %     "host": Host,
+    %    "port": Port,
+    %   "namespace": Namespace,
+    %  "node_id": NodeId
+    %   }
+    % }
+    Data =
+        #{action => <<"add">>,
+          node_id => NodeId,
+          metadata =>
+              #{host => Host,
+                port => Port,
+                namespace => Namespace,
+                node_id => NodeId}},
+    %?'log-info'("add node post data: ~p", [Data]),
+    %% Encode Data to json
+    Json = jiffy:encode(Data),
+    %% Post json data to http://graph-visualizer/nodes
+    R = httpc:request(post,
+                      {"http://graph-visualizer:3400/nodes/add", [], "application/json", Json},
+                      [],
+                      []),
+    {next_state, running, State};
 %% Catch all
-running(Type, Msg, State) ->
+running(_Type, _Msg, State) ->
     {next_state, running, State}.
+
+%%%=============================================================================
+%%% Termination REST handler
+%%% This is a simple REST handler that will either stop a node ( spray agent )
+%%% or a connectioon ( in or out ) between two nodes, upon patssed json payload
+%%% =============================================================================
+
+do(Req) ->
+    ?'log-info'("Received request: ~p", [Req]),
+    case get_method(Req) of
+        options ->
+            handle_cors_preflight(Req); % Handle preflight OPTIONS request
+        put ->
+            handle_put(Req);
+        _ ->
+            {405, [], "Method Not Allowed"}
+    end.
+
+% Handle PUT requests
+handle_put(Req) ->
+    % Process the PUT request body and respond
+    Body = proplists:get_value(content, Req, ""),
+    io:format("Received PUT request: ~s~n", [Body]),
+    {200, cors_headers(), <<"PUT request received">>}.
+
+% Handle OPTIONS requests for preflight
+handle_cors_preflight(_Req) ->
+    %% Console log
+    io:format("Received CORS preflight request~n"),
+    {204, cors_headers(), <<>>}.
+
+% Utility function to determine the request method
+get_method(Req) ->
+    proplists:get_value(method, Req).
+
+% Define CORS headers
+cors_headers() ->
+    [{"Access-Control-Allow-Origin", "*"}, % Allow all origins, or specify one
+     {"Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS"},
+     {"Access-Control-Allow-Headers", "Content-Type, Authorization"}].
 
 %%%=============================================================================
 %%% Internal functions

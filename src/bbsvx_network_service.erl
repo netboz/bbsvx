@@ -20,7 +20,7 @@
 %%%=============================================================================
 
 %% External API
--export([start_link/1, start_link/2, my_host_port/0]).
+-export([start_link/2, my_host_port/0]).
 %% Callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
@@ -37,11 +37,7 @@
 %%% API
 %%%=============================================================================
 
-start_link([Host, Port]) ->
-    start_link(Host, Port).
-
--spec start_link(Host :: nonempty_list() | [nonempty_list()], Port :: integer()) ->
-                    {ok, pid()} | {error, {already_started, pid()}} | {error, Reason :: any()}.
+-spec start_link(string(), integer()) -> gen_server:start_ret().
 start_link(Host, Port) ->
     gen_server:start_link({via, gproc, {n, l, ?SERVER}}, ?MODULE, [Host, Port], []).
 
@@ -83,7 +79,7 @@ init([Host, Port]) ->
 
 %% Handle request to get host port
 -spec handle_call(Event :: term(), _From :: gen_server:from(), State :: state()) ->
-                     term().
+                     {reply, Reply :: term(), NewState :: term()}.
 handle_call(my_host_port, _From, #state{host = Host, port = Port} = State) ->
     {reply, {ok, {Host, Port}}, State};
 %% Manage connections to new nodes

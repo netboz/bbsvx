@@ -128,7 +128,7 @@
 -type db() :: #db{}.
 
 %%%%%%%%%%% Events %%%%%%%%%%%%%
--record(incoming_event, {origin_arc :: binary(), event :: term()}).
+-record(incoming_event, {origin_arc :: binary(), direction :: in | out, event :: term()}).
 
 -type incoming_event() :: #incoming_event{}.
 
@@ -151,7 +151,14 @@
 -record(evt_connection_error,
         {ulid :: binary(), direction :: in | out, reason :: term(), node :: node_entry()}).
 -record(evt_arc_disconnected, {ulid :: binary(), direction :: in | out}).
--record(evt_end_exchange, {exchanged_ulids :: list(binary())}).
+-record(evt_end_exchange, {exchanged_ulids :: [binary()]}).
+-record(evt_node_quitted,
+        {reason :: atom(),
+         direction :: in | out,
+         node_id :: binary() | undefined,
+         host :: inet:ip_address() | local,
+         port :: inet:port_number()}).
+
 %%%%%%%%%%% Network protocol messages %%%%%%%%%%%%%
 
 -define(PROTOCOL_VERSION, <<"0.0.1">>).
@@ -196,6 +203,7 @@
          lock :: binary(),
          target :: node_entry(),
          new_lock :: binary() | undefined}).
+-record(node_quitting, {reason :: atom()}).
 
 -type exchange_entry() :: #exchange_entry{}.
 

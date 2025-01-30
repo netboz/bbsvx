@@ -32,7 +32,7 @@
 -record(state, {namespace :: binary()}).
 -record(transaction_validate_stage_state,
         {namespace :: binary(),
-         previous_ts :: binary(),
+         previous_ts :: binary() | undefined,
          current_ts :: binary(),
          current_index :: integer(),
          local_index :: integer(),
@@ -46,7 +46,7 @@
 %%%=============================================================================
 
 -spec start_link(Namespace :: binary(), OntState :: ont_state(), Options :: map()) ->
-                    {ok, pid()} | {error, {already_started, pid()}} | {error, Reason :: any()}.
+                    gen_server:start_ret().
 start_link(Namespace, OntState, Options) ->
     gen_server:start_link({via, gproc, {n, l, {?MODULE, Namespace}}},
                           ?MODULE,
@@ -199,7 +199,7 @@ transaction_validate(#transaction{index = TxIndex,
     %% @TODO: veriy validation of transaction
     bbsvx_transaction:record_transaction(Transaction),
     {stop,
-     ValidationSt#transaction_validate_stage_state{local_index = TxIndex ,
+     ValidationSt#transaction_validate_stage_state{local_index = TxIndex,
                                                    current_address = CurrentTxAddress}};
 %% History Transaction is not ready to be processed, we store it for later
 transaction_validate(#transaction{status = processed} = Transaction,
@@ -211,8 +211,7 @@ transaction_validate(#transaction{status = processed} = Transaction,
                 "~p    Local index ~p",
                 [Transaction, CurrentIndex, LocalIndex]),
     NewPending = dict:store(Transaction#transaction.index, Transaction, Pending),
-    {stop,
-     ValidationState#transaction_validate_stage_state{pending = NewPending}};
+    {stop, ValidationState#transaction_validate_stage_state{pending = NewPending}};
 transaction_validate(#transaction{ts_created = TsCreated,
                                   index = TxIndex,
                                   status = accepted} =
@@ -251,8 +250,7 @@ transaction_validate(#transaction{} = Transaction,
     %% @TODO: Check if transaction is already in pending
     NewPending = dict:store(Transaction#transaction.index, Transaction, Pending),
     bbsvx_actor_ontology:request_segment(Namespace, LocalIndex + 1, CurrentIndex),
-    {stop,
-     ValidationState#transaction_validate_stage_state{pending = NewPending}}.
+    {stop, ValidationState#transaction_validate_stage_state{pending = NewPending}}.
 
 -spec process_transaction(transaction(), ont_state()) -> ont_state().
     %% Compute transcaton address
