@@ -19,7 +19,9 @@
 
 -define(SERVER, ?MODULE).
 -define(EXCHANGE_INTERVAL, 10000).
--define(EXCHANGE_OUT_TIMEOUT, 3000).
+-define(WAIT_EXCHANGE_OUT_TIMEOUT, ?EXCHANGE_INTERVAL div 5).
+-define(WAIT_EXCHANGE_ACCEPT_TIMEOUT, ?EXCHANGE_INTERVAL div 5).
+-define(EXCHANGE_END_TIMEOUT, ?EXCHANGE_INTERVAL div 1.1).
 
 %% External API
 -export([start_link/1, start_link/2, stop/0, broadcast/2, broadcast_unique/2,
@@ -28,13 +30,15 @@
 %% Gen State Machine Callbacks
 -export([init/1, code_change/4, callback_mode/0, terminate/3]).
 %% State transitions
--export([iddle/3]).
+-export([handle_event/4]).
+
+%-export([iddle/3]).
 
 -record(state,
         {%%in_view = [] :: [arc()],
          %%out_view = [] :: [arc()],
-         spray_timer :: reference(),
-         current_exchange_peer :: {in | out, arc()} | undefined,
+         spray_timer :: reference() | undefined,
+         current_exchange_peer :: arc() | undefined,
          proposed_sample :: [exchange_entry()],
          incoming_sample :: [exchange_entry()],
          contact_nodes = [] :: [node_entry()],
@@ -80,9 +84,8 @@ init([NameSpace, Options]) ->
 
     %% Register to events for this ontolgy namespace
     gproc:reg({p, l, {spray_exchange, NameSpace}}),
-    %%  Try to register to the ontology node mesh
+
     ContactNodes = maps:get(contact_nodes, Options, []),
-    register_namespace(NameSpace, MyNode, ContactNodes),
 
     %% TODO: Reove next
     Data =
@@ -103,19 +106,16 @@ init([NameSpace, Options]) ->
                   [],
                   []),
 
-    Me = self(),
-    SprayTimer = erlang:start_timer(?EXCHANGE_INTERVAL, Me, spray_time),
+    %Me = self(),
+    %SprayTimer = erlang:start_timer(?EXCHANGE_INTERVAL, Me, spray_time),
     {ok,
-     iddle,
+     disconnected,
      #state{namespace = NameSpace,
-            spray_timer = SprayTimer,
+            spray_timer = undefined,
             proposed_sample = [],
             incoming_sample = [],
             contact_nodes = ContactNodes,
-            my_node =
-                #node_entry{node_id = MyNodeId,
-                            host = Host,
-                            port = Port}}}.
+            my_node = MyNode}}.
 
 terminate(Reason,
           _CurrentState,
@@ -136,13 +136,13 @@ terminate(Reason,
     lists:foreach(fun(#arc{ulid = Ulid}) -> terminate_connection(Ulid, out, Reason) end,
                   OutArcs),
     ?'log-info'("2", []),
-    Inview = get_inview(NameSpace),
+    InView = get_inview(NameSpace),
     InArcs =
         lists:usort(fun(#arc{source = #node_entry{node_id = NodeId1}},
                         #arc{source = #node_entry{node_id = NodeId2}}) ->
                        NodeId1 < NodeId2
                     end,
-                    Inview),
+                    InView),
     ?'log-info'("3", []),
     lists:foreach(fun(#arc{ulid = Ulid}) -> terminate_connection(Ulid, in, Reason) end,
                   InArcs),
@@ -162,123 +162,228 @@ code_change(_Vsn, State, Data, _Extra) ->
     {ok, State, Data}.
 
 callback_mode() ->
-    state_functions.
+    [handle_event_function, state_enter].
 
-%%%=============================================================================
-%%% State transitions
-%%%=============================================================================
+%%%%%%%%%%%%%%%%%%%%%%% Disconnected state %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
--spec iddle(gen_statem:event_type() | enter, any(), state()) ->
-               gen_statem:state_function_result().
-iddle(info,
-      #incoming_event{origin_arc = _Ulid,
-                      event =
-                          #evt_arc_connected_in{source = Source,
-                                                lock = Lock,
-                                                spread = Spread}},
-      #state{namespace = NameSpace, my_node = MyNode} = State) ->
+handle_event(enter,
+             _,
+             disconnected,
+             #state{namespace = NameSpace,
+                    my_node = MyNode,
+                    contact_nodes = ContactNodes}) ->
+    ?'log-info'("spray Agent ~p : Entering disconnected state", [NameSpace]),
+    %% We connect to a contact node
+    %%  Try to register to the ontology node mesh
+    register_namespace(NameSpace, MyNode, ContactNodes),
+    keep_state_and_data;
+handle_event(info,
+             #incoming_event{origin_arc = _Ulid,
+                             event =
+                                 #evt_arc_connected_in{source = Source,
+                                                       lock = Lock,
+                                                       spread = Spread}},
+             disconnected,
+             #state{namespace = NameSpace, my_node = MyNode} = StateData) ->
     ?'log-info'("New incoming arc, but empty outview, requesting joing"),
-    case get_outview(NameSpace) of
-        [] ->
-            %% send a fowrard join request to the new node. If we would have an outview
-            %% we would have sent a forward join request to all nodes in the outview.
-            case Spread of
-                {true, Lock} ->
-                    open_connection(NameSpace, MyNode, Source, []),
-                    {keep_state, State};
-                _ ->
-                    {keep_state, State}
-            end;
-        OutView ->
-            %% Check if we need to spread ( send forward join ) to neighbors
-            case Spread of
-                {true, Lock} ->
-                    ?'log-info'("spray Agent ~p : Running state, New arc in, spreading to neighbors",
-                                [NameSpace]),
-                    %% Broadcast forward subscription to all nodes in the outview
-                    lists:foreach(fun(#arc{ulid = DestUlid}) ->
-                                     send(DestUlid,
-                                          out,
-                                          #open_forward_join{lock = Lock, subscriber_node = Source})
-                                  end,
-                                  OutView);
-                _ ->
-                    ?'log-info'("spray Agent ~p : Running state, New arc in, no spread",
-                                [NameSpace])
-            end,
-            {keep_state, State}
-    end;
-%% Register new arc out
-iddle(info,
-      #incoming_event{event =
-                          #evt_arc_connected_out{target = TargetNode,
-                                                 lock = Lock,
-                                                 ulid = IncomingUlid}},
-      #state{namespace = NameSpace, my_node = MyNode} = State) ->
-    ?'log-info'("spray Agent ~p : Arc connected out, adding to outview : ~p",
-                [NameSpace,
-                 #arc{source = MyNode,
-                      target = TargetNode,
-                      lock = Lock,
-                      ulid = IncomingUlid}]),
-
-    {keep_state, State};
-iddle(info,
-      #incoming_event{origin_arc = _Ulid,
-                      event = #open_forward_join{subscriber_node = SubscriberNode}},
-      #state{namespace = NameSpace, my_node = MyNode} = State) ->
-    %% Openning forwarded joinrequestfrom registration of SubscriberNode
-    open_connection(NameSpace, MyNode, SubscriberNode, []),
-    {keep_state, State};
-iddle(info,
-      #incoming_event{origin_arc = _Ulid,
-                      event = #evt_arc_disconnected{ulid = Ulid, direction = in}},
-      #state{namespace = NameSpace} = State) ->
-    case get_inview(NameSpace) of
-        [] ->
-            prometheus_counter:inc(<<"bbsvx_spray_inview_depleted">>, [NameSpace]);
+    case Spread of
+        {true, Lock} ->
+            open_connection(NameSpace, MyNode, Source, []);
         _ ->
             ok
     end,
+    {next_state, empty_outview, StateData};
+handle_event(info,
+             #incoming_event{origin_arc = _Ulid, event = #evt_arc_connected_out{}},
+             disconnected,
+             StateData) ->
+    %% TODO ask other side to connect to us
+    {next_state, empty_inview, StateData};
+%%%%%%%%%%%%%%%%%%%%%%% Empty outview state %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+handle_event(enter, _, empty_outview, #state{namespace = NameSpace}) ->
+    ?'log-info'("spray Agent ~p : Entering Empty outview state", [NameSpace]),
 
-    ?'log-info'("spray Agent ~p : Running state, arc disconnected in ~p",
-                [State#state.namespace, Ulid]),
-    {keep_state, State};
-iddle(info,
-      #incoming_event{origin_arc = _Ulid,
-                      event = #evt_arc_disconnected{ulid = Ulid, direction = out}},
-      #state{namespace = NameSpace, arcs_to_leave = ArcsToLeave} = State) ->
-    case get_outview(NameSpace) of
+    keep_state_and_data;
+handle_event(info,
+             #incoming_event{origin_arc = _Ulid, event = #evt_arc_connected_in{}},
+             empty_outview,
+             #state{}) ->
+    keep_state_and_data;
+handle_event(info,
+             #incoming_event{origin_arc = _Ulid, event = #evt_arc_connected_out{}},
+             empty_outview,
+             StateData) ->
+    {next_state, connected, StateData};
+handle_event(info,
+             #incoming_event{origin_arc = _Ulid,
+                             event = #evt_arc_disconnected{ulid = Ulid, direction = in}},
+             empty_outview,
+             #state{namespace = NameSpace} = State) ->
+    case lists:filter(fun(#arc{ulid = InUlid}) -> InUlid =/= Ulid end, get_inview(NameSpace))
+    of
         [] ->
-            prometheus_counter:inc(<<"bbsvx_spray_outview_depleted">>, [NameSpace]),
-            NewArcToLeave = lists:keydelete(Ulid, #exchange_entry.ulid, ArcsToLeave),
-
-            {keep_state, State#state{arcs_to_leave = NewArcToLeave}};
-        _OutView ->
-            ?'log-info'("spray Agent ~p : Running state, arc disconnected out ~p",
-                        [State#state.namespace, Ulid]),
-            %% Remove arc from node to leave
-            NewArcToLeave = lists:keydelete(Ulid, #exchange_entry.ulid, ArcsToLeave),
-
-            {keep_state, State#state{arcs_to_leave = NewArcToLeave}}
+            ?'log-warning'("spray Agent ~p : Arc In disconnected :~p, empty inview",
+                           [State#state.namespace, Ulid]),
+            prometheus_counter:inc(<<"bbsvx_spray_inview_depleted">>, [NameSpace]),
+            {next_state, disconnected, State};
+        _ ->
+            keep_state_and_data
     end;
-%% Reception of 'spray_time' event signaling it is time to start exchange
-iddle(info,
-      spray_time,
-      #state{namespace = NameSpace, current_exchange_peer = {_, Peer}} = State) ->
-    ?'log-info'("spray Agent ~p : Running state, spray time, but busy with peer ~p",
-                [State#state.namespace, Peer]),
-    Me = self(),
-    ?'log-info'("spray Agent ~p : Busy state, QUEUE ~p",
-                [NameSpace, erlang:process_info(Me, messages)]),
-    {keep_state, State};
-iddle(info,
-      {timeout, _, spray_time},
-      #state{namespace = NameSpace,
-             arcs_to_leave = ArcsToLeave,
-             my_node = MyNode = #node_entry{node_id = MyNodeId}} =
-          State) ->
-    case get_outview(NameSpace) of
+%%%%%%%%%%%%%%%%%%%%%%% Empty InView state %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+handle_event(enter, _, empty_inview, #state{namespace = NameSpace}) ->
+    ?'log-info'("spray Agent ~p : Entering Empty inview state", [NameSpace]),
+    prometheus_counter:inc(<<"bbsvx_spray_inview_depleted">>, [NameSpace]),
+    keep_state_and_data;
+handle_event(info,
+             #incoming_event{origin_arc = _Ulid, event = #evt_arc_connected_in{}},
+             empty_inview,
+             StateData) ->
+    {next_state, connected, StateData};
+handle_event(info,
+             #incoming_event{origin_arc = _Ulid, event = #evt_arc_connected_out{}},
+             empty_inview,
+             _) ->
+    keep_state_and_data;
+handle_event(info,
+             #incoming_event{origin_arc = _Ulid,
+                             event = #evt_arc_disconnected{ulid = Ulid, direction = out}},
+             empty_inview,
+             #state{namespace = NameSpace} = State) ->
+    case lists:filter(fun(#arc{ulid = OutUlid}) -> OutUlid =/= Ulid end,
+                      get_outview(NameSpace))
+    of
+        [] ->
+            ?'log-warning'("spray Agent ~p : Arc Out disconnected :~p, empty outview",
+                           [State#state.namespace, Ulid]),
+            prometheus_counter:inc(<<"bbsvx_spray_outview_depleted">>, [NameSpace]),
+            {next_state, disconnected, State};
+        _ ->
+            keep_state_and_data
+    end;
+%%%%%%%%%%%%%%%%%%%%%%% Connected state %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+handle_event(enter, _, connected, #state{namespace = NameSpace} = State) ->
+    ?'log-info'("spray Agent ~p : Entering connected state", [NameSpace]),
+    %% We connect to a contact node
+    %%  Try to register to the ontology node mesh
+    NewState =
+        case State#state.spray_timer of
+            undefined ->
+                Me = self(),
+                SprayTimer = erlang:start_timer(?EXCHANGE_INTERVAL, Me, spray_time),
+                State#state{spray_timer = SprayTimer};
+            _ ->
+                State
+        end,
+    {keep_state, NewState};
+handle_event(info,
+             #incoming_event{origin_arc = _Ulid,
+                             event =
+                                 #evt_arc_connected_in{source = Source,
+                                                       lock = Lock,
+                                                       spread = Spread}},
+             connected,
+             #state{namespace = NameSpace} = StateData) ->
+    ?'log-info'("spray Agent ~p : New incoming arc : ~p", [NameSpace, Source]),
+    OutView = get_outview(NameSpace),
+
+    %% Check if we need to spread ( send forward join ) to neighbors
+    case Spread of
+        {true, Lock} ->
+            ?'log-info'("spray Agent ~p : Running state, New arc in, spreading to neighbors",
+                        [NameSpace]),
+            %% Broadcast forward subscription to all nodes in the outview
+            lists:foreach(fun(#arc{ulid = DestUlid}) ->
+                             send(DestUlid,
+                                  out,
+                                  #open_forward_join{lock = Lock, subscriber_node = Source})
+                          end,
+                          OutView);
+        _ ->
+            ?'log-info'("spray Agent ~p : Running state, New arc in, no spread", [NameSpace])
+    end,
+    {next_state, connected, StateData};
+handle_event(info,
+             #incoming_event{origin_arc = _Ulid,
+                             event = #evt_arc_connected_out{target = TargetNode}},
+             connected,
+             #state{namespace = NameSpace} = StateData) ->
+    ?'log-info'("spray Agent ~p : Arc connected out : ~p", [NameSpace, TargetNode]),
+    {next_state, connected, StateData};
+handle_event(info,
+             #incoming_event{origin_arc = _Ulid,
+                             event = #evt_arc_disconnected{ulid = Ulid, direction = in}},
+             connected,
+             #state{namespace = NameSpace} = State) ->
+    case lists:filter(fun(#arc{ulid = InUlid}) -> InUlid =/= Ulid end, get_inview(NameSpace))
+    of
+        [] ->
+            ?'log-warning'("spray Agent ~p : Arc In disconnected :~p, empty inview",
+                           [State#state.namespace, Ulid]),
+            prometheus_counter:inc(<<"bbsvx_spray_inview_depleted">>, [NameSpace]),
+            {next_state, empty_inview, State};
+        _ ->
+            keep_state_and_data
+    end;
+handle_event(info,
+             #incoming_event{origin_arc = _Ulid,
+                             event = #evt_arc_disconnected{ulid = Ulid, direction = out}},
+             connected,
+             #state{namespace = NameSpace} = State) ->
+    case lists:filter(fun(#arc{ulid = OutUlid}) -> OutUlid =/= Ulid end,
+                      get_outview(NameSpace))
+    of
+        [] ->
+            ?'log-warning'("spray Agent ~p : Arc Out disconnected :~p, empty outview",
+                           [State#state.namespace, Ulid]),
+            prometheus_counter:inc(<<"bbsvx_spray_outview_depleted">>, [NameSpace]),
+            {next_state, empty_outview, State};
+        _ ->
+            keep_state_and_data
+    end;
+%% Manage forward join request
+handle_event(info,
+             #incoming_event{origin_arc = _Ulid,
+                             event = #open_forward_join{subscriber_node = SubscriberNode}},
+             connected,
+             #state{namespace = NameSpace, my_node = MyNode}) ->
+    %% Openning forwarded joinrequestfrom registration of SubscriberNode
+    open_connection(NameSpace, MyNode, SubscriberNode, []),
+    keep_state_and_data;
+%%Manage node quitted
+handle_event(info,
+             #incoming_event{origin_arc = _Ulid,
+                             event =
+                                 #evt_node_quitted{node_id = NodeId,
+                                                   reason = Reason,
+                                                   direction = Direction} =
+                                     Evt},
+             connected,
+             #state{arcs_to_leave = ArcsToLeave} = State) ->
+    ?'log-warning'("spray Agent ~p : Running state, node quitted ~p with reason "
+                   "~p  direction ~p",
+                   [State#state.namespace, NodeId, Reason, Direction]),
+
+    OutView = get_outview(State#state.namespace),
+    InView = get_inview(State#state.namespace),
+
+    OutViewWithoutLeavingNode = filter_arcs_to_leave(OutView, ArcsToLeave),
+    ?'log-info'("Start manage quitted node ~p", [OutViewWithoutLeavingNode]),
+    manage_quitted_node(OutViewWithoutLeavingNode, InView, Evt, State);
+handle_event(info,
+             {timeout, _, spray_time},
+             connected,
+             #state{namespace = NameSpace, my_node = MyNode} = State) ->
+    ?'log-info'("spray Agent ~p : Running state, spray time", [NameSpace]),
+
+    %% increase age of outview
+    OutViewPids = get_outview_pids(NameSpace),
+    lists:foreach(fun(Pid) -> Pid ! inc_age end, OutViewPids),
+
+    OutView = get_outview(NameSpace),
+    %% remove nodes to leave from outview
+    OutViewWithoutLeavingNode = filter_arcs_to_leave(OutView, State#state.arcs_to_leave),
+
+    case OutViewWithoutLeavingNode of
         [] ->
             ?'log-info'("spray Agent ~p : Running state, Outview empty, no exchange",
                         [State#state.namespace]),
@@ -286,161 +391,68 @@ iddle(info,
             SprayTimer = erlang:start_timer(?EXCHANGE_INTERVAL, Me, spray_time),
 
             {keep_state, State#state{spray_timer = SprayTimer}};
-        OutView ->
-            OutViewPids = get_outview_pids(NameSpace),
-            ?'log-info'("spray Agent ~p : Starting exchange, outview ~p", [NameSpace, OutView]),
-            %% increase age of outview
-            lists:foreach(fun(Pid) -> Pid ! inc_age end, OutViewPids),
-            case filter_arcs_to_leave(OutView, ArcsToLeave) of
-                [] ->
-                    ?'log-info'("spray Agent ~p : Running state, no exchange, no nodes left "
-                                "to connect",
-                                [State#state.namespace]),
-                    Me = self(),
-                    SprayTimer = erlang:start_timer(?EXCHANGE_INTERVAL, Me, spray_time),
-                    {keep_state, State#state{spray_timer = SprayTimer}};
-                FilteredPartialView ->
-                    ?'log-info'("spray Agent ~p : Node ~p starting spray loop",
-                                [NameSpace, MyNodeId]),
-                    ?'log-info'("spray Agent ~p : Outview :~p    Arcs to leave : ~p",
-                                [NameSpace, FilteredPartialView, ArcsToLeave]),
-
-                    %% Increment age of nodes in out view
-                    AgedPartialView =
-                        lists:map(fun(#arc{age = Age} = Arc) -> Arc#arc{age = Age + 1} end,
-                                  FilteredPartialView),
-
-                    %% Get oldest arc
-                    #arc{ulid = Ulid} = OldestArc = get_oldest_arc(AgedPartialView),
-
-                    ?'log-info'("Actor exchanger ~p : Doing exchange with node ~p  on arc ~p",
-                                [NameSpace, OldestArc#arc.target, OldestArc#arc.ulid]),
-
-                    %% Partialview without oldest Arc
-                    {_, _, PartialViewWithoutOldest} =
-                        lists:keytake(Ulid, #arc.ulid, FilteredPartialView),
-
-                    %% Get sample from out view without oldest
-                    {Sample, _KeptArcs} = get_random_sample(PartialViewWithoutOldest),
-
-                    %% reAdd oldest node
-                    SamplePlusOldest = [OldestArc | Sample],
-                    %% Replace all occurences of oldest node in samplePlusOldest
-                    %% by our node, to avoid target doing loops
-                    FinalSample =
-                        lists:map(fun (#arc{target = #node_entry{node_id = TargetNodeId}} = Arc)
-                                          when TargetNodeId
-                                               == OldestArc#arc.target#node_entry.node_id ->
-                                          Arc#arc{target = MyNode};
-                                      (Arc) ->
-                                          Arc
-                                  end,
-                                  SamplePlusOldest),
-                    ?'log-info'("Actor exchanger : unmodified sample sent ~p", [FinalSample]),
-
-                    %% Prepare Proposed sample as list of exchange_entry
-                    ProposedSample =
-                        [#exchange_entry{ulid = Arc#arc.ulid,
-                                         lock = Arc#arc.lock,
-                                         target = Arc#arc.target}
-                         || Arc <- FinalSample],
-
-                    %% Send exchange in proposition to oldest node
-                    send(OldestArc#arc.ulid, out, #exchange_in{proposed_sample = ProposedSample}),
-
-                    ?'log-info'("Actor exchanger ~p : Running state, Sent partial view exchange "
-                                "in to ~p   sample : ~p",
-                                [State#state.namespace, OldestArc#arc.target, ProposedSample]),
-                    %% program execution of next exchange
-                    Me = self(),
-                    SprayTimer = erlang:start_timer(?EXCHANGE_INTERVAL, Me, spray_time),
-                    {keep_state,
-                     State#state{current_exchange_peer = {out, OldestArc},
-                                 proposed_sample = ProposedSample,
-                                 spray_timer = SprayTimer}}
-            end
-    end;
-%% Manage reception of exchange out from oldest node
-iddle(info,
-      #incoming_event{event = #exchange_out{proposed_sample = IncomingSample},
-                      origin_arc = ArcUlid},
-      #state{namespace = NameSpace,
-             my_node = #node_entry{node_id = MyNodeId} = MyNode,
-             arcs_to_leave = ArcsToLeave,
-             proposed_sample = ProposedSample,
-             current_exchange_peer = {_, CurrentExchangePeer}} =
-          State) ->
-    %% Change every occurence of MyNode in the incoming sample by the target node
-    %% to avoid loops.
-    %% Other side is supposed to have done it, but who knows
-    IncomingSampleWithoutMyNode =
-        lists:map(fun (#exchange_entry{target = #node_entry{node_id = TargetNodeId}} = Entry)
-                          when TargetNodeId == MyNodeId ->
-                          Entry#exchange_entry{target = CurrentExchangePeer#arc.target};
-                      (Entry) ->
-                          Entry
-                  end,
-                  IncomingSample),
-    %% We can accept the exchange and start joining the proposed sample
-    ?'log-info'("Actor exchanger ~p : Got partial view exchange out from ~p~nProposed "
-                "sample ~p",
-                [NameSpace, CurrentExchangePeer, IncomingSample]),
-
-    case get_outview(NameSpace) of
-        [_] when IncomingSampleWithoutMyNode == [] ->
-            ?'log-info'("spray Agent ~p : Running state, empty outview, cancelling exchange",
-                        [NameSpace]),
-            send(ArcUlid,
-                 out,
-                 #exchange_cancelled{reason = exchange_out_cause_empty_outview,
-                                     namespace = NameSpace}),
-            {keep_state,
-             State#state{current_exchange_peer = undefined,
-                         proposed_sample = [],
-                         incoming_sample = []}};
         _ ->
+            ?'log-info'("spray Agent ~p : Starting exchange, Candidates ~p",
+                        [NameSpace, OutViewWithoutLeavingNode]),
+
+            %% Get oldest arc
+            #arc{ulid = Ulid} = OldestArc = get_oldest_arc(OutViewWithoutLeavingNode),
+
+            ?'log-info'("Actor exchanger ~p : Doing exchange with node ~p  on arc ~p",
+                        [NameSpace, OldestArc#arc.target, OldestArc#arc.ulid]),
+
+            %% Partialview without oldest Arc
+            {_, _, PartialViewWithoutOldest} =
+                lists:keytake(Ulid, #arc.ulid, OutViewWithoutLeavingNode),
+
+            %% Get sample from out view without oldest
+            {Sample, _KeptArcs} = get_random_sample(PartialViewWithoutOldest),
+
+            %% reAdd oldest node
+            SamplePlusOldest = [OldestArc | Sample],
+            %% Replace all occurences of oldest node in samplePlusOldest
+            %% by our node, to avoid target doing loops
+            FinalSample =
+                lists:map(fun (#arc{target = #node_entry{node_id = TargetNodeId}} = Arc)
+                                  when TargetNodeId == OldestArc#arc.target#node_entry.node_id ->
+                                  Arc#arc{target = MyNode};
+                              (Arc) ->
+                                  Arc
+                          end,
+                          SamplePlusOldest),
+            ?'log-info'("Actor exchanger : unmodified sample sent ~p", [FinalSample]),
+
+            %% Prepare Proposed sample as list of exchange_entry
+            ProposedSample =
+                [#exchange_entry{ulid = Arc#arc.ulid,
+                                 lock = Arc#arc.lock,
+                                 target = Arc#arc.target}
+                 || Arc <- FinalSample],
+
+            %% Send exchange in proposition to oldest node
+            send(OldestArc#arc.ulid, out, #exchange_in{proposed_sample = ProposedSample}),
+
+            ?'log-info'("Actor exchanger ~p : Running state, Sent partial view exchange "
+                        "in to ~p   sample : ~p",
+                        [State#state.namespace, OldestArc#arc.target, ProposedSample]),
+            %% program execution of next exchange
             Me = self(),
-            %% Program removal of arcs from nodes to leave after timeout
-            erlang:send_after(?CONNECTION_TIMEOUT,
-                              Me,
-                              #evt_end_exchange{exchanged_ulids =
-                                                    lists:map(fun(#exchange_entry{ulid = Ulid}) ->
-                                                                 Ulid
-                                                              end,
-                                                              ProposedSample)}),
-            %% Send exchange accept to oldest node
-            send(ArcUlid, out, #exchange_accept{}),
-            ?'log-info'("Connecting to incoming sample ~p", [IncomingSample]),
-
-            %% start conneting to the proposed sample
-            swap_connections(NameSpace,
-                             MyNode,
-                             CurrentExchangePeer#arc.target,
-                             IncomingSampleWithoutMyNode),
-            {keep_state,
-             State#state{current_exchange_peer = undefined,
-                         arcs_to_leave = ArcsToLeave ++ ProposedSample,
-                         proposed_sample = [],
-                         incoming_sample = []}}
+            SprayTimer = erlang:start_timer(?EXCHANGE_INTERVAL, Me, spray_time),
+            {next_state,
+             wait_exchange_out,
+             State#state{current_exchange_peer = OldestArc,
+                         proposed_sample = ProposedSample,
+                         spray_timer = SprayTimer},
+             ?WAIT_EXCHANGE_OUT_TIMEOUT}
     end;
-%% Manage reception of exchange in ( exchange initiated from other peer )
-iddle(info,
-      #incoming_event{origin_arc = ArcUlid, event = #exchange_in{}},
-      #state{current_exchange_peer = {_, Peer}} = State) ->
-    ?'log-info'("spray Agent ~p : Running state, exchange in received but busy "
-                "with ~p",
-                [State#state.namespace, Peer]),
-    %% Notify other side cancel the exchange
-    gproc:send({n, l, {arc, in, ArcUlid}}, {reject, exchange_busy}),
-
-    {keep_state, State};
-iddle(info,
-      #incoming_event{origin_arc = OriginUlid,
-                      event = #exchange_in{proposed_sample = IncomingSample}},
-      #state{namespace = NameSpace,
-             arcs_to_leave = ArcsToLeave,
-             my_node = MyNode} =
-          State) ->
+handle_event(info,
+             #incoming_event{origin_arc = OriginUlid,
+                             event = #exchange_in{proposed_sample = IncomingSample}},
+             connected,
+             #state{namespace = NameSpace,
+                    arcs_to_leave = ArcsToLeave,
+                    my_node = MyNode} =
+                 State) ->
     ?'log-info'("spray Agent ~p : Running state, exchange in received from ~p",
                 [State#state.namespace, OriginUlid]),
     case get_inview(NameSpace) of
@@ -494,11 +506,12 @@ iddle(info,
                     %% Send exchange out to origin node
                     send(OriginUlid, in, #exchange_out{proposed_sample = MySampleEntry}),
 
-                    {keep_state,
+                    {next_state,
+                     wait_exchange_accept,
                      State#state{proposed_sample = MySampleEntry,
                                  incoming_sample = IncomingSample,
-                                 current_exchange_peer = {in, ExchangeArc}},
-                     ?EXCHANGE_OUT_TIMEOUT};
+                                 current_exchange_peer = ExchangeArc},
+                     ?WAIT_EXCHANGE_ACCEPT_TIMEOUT};
                 _ ->
                     ?'log-warning'("spray Agent ~p : Running state, exchange in from unk node ~p",
                                    [State#state.namespace, OriginUlid]),
@@ -507,57 +520,10 @@ iddle(info,
                     {keep_state, State}
             end
     end;
-iddle(info,
-      #incoming_event{event = #exchange_cancelled{reason = Reason}},
-      #state{current_exchange_peer = {out, #arc{ulid = PeerUlid}}} = State) ->
-    ?'log-info'("spray Agent ~p : Running state, exchange cancelled out : ~p",
-                [State#state.namespace, Reason]),
-    %% Reset age of the node in outview
-    reset_age(PeerUlid),
-    {keep_state,
-     State#state{current_exchange_peer = undefined,
-                 proposed_sample = [],
-                 incoming_sample = []}};
-iddle(info, #incoming_event{event = #exchange_cancelled{reason = Reason}}, State) ->
-    ?'log-info'("spray Agent ~p : Running state, exchange cancelledin exchange "
-                ": ~p",
-                [State#state.namespace, Reason]),
-    {keep_state,
-     State#state{current_exchange_peer = undefined,
-                 proposed_sample = [],
-                 incoming_sample = []}};
-%% Session accept is received by responder, to indicate him that he can proceed to the exchange
-%% TODO: Check if the expeditor is the current exchange peer
-iddle(info,
-      #incoming_event{event = #exchange_accept{}},
-      #state{namespace = NameSpace,
-             my_node = MyNode,
-             current_exchange_peer = {_, CurrentExchangePeer},
-             incoming_sample = IncomingSample,
-             proposed_sample = ProposedSample,
-             arcs_to_leave = ArcsToLeave} =
-          State) ->
-    ?'log-info'("spray Agent ~p : Exchange accepted, nodes to leave : ~p    "
-                "~nNodes to join : ~p    exchange peer : ~p",
-                [NameSpace, ProposedSample, IncomingSample, CurrentExchangePeer]),
-
-    swap_connections(NameSpace, MyNode, CurrentExchangePeer#arc.source, IncomingSample),
-    Me = self(),
-    %% Program removal of arcs from nodes to leave after timeout
-    erlang:send_after(?CONNECTION_TIMEOUT,
-                      Me,
-                      #evt_end_exchange{exchanged_ulids =
-                                            lists:map(fun(#exchange_entry{ulid = Ulid}) -> Ulid end,
-                                                      ProposedSample)}),
-
-    {keep_state,
-     State#state{current_exchange_peer = undefined,
-                 proposed_sample = [],
-                 incoming_sample = [],
-                 arcs_to_leave = ArcsToLeave ++ ProposedSample}};
-iddle(info,
-      #evt_end_exchange{exchanged_ulids = EndedExchangeUlids},
-      #state{arcs_to_leave = ArcsToLeave} = State) ->
+handle_event(info,
+             #evt_end_exchange{exchanged_ulids = EndedExchangeUlids},
+             connected,
+             #state{arcs_to_leave = ArcsToLeave} = State) ->
     ?'log-info'("spray Agent ~p : Running state, end exchange, veryting arcs ~p",
                 [State#state.namespace, EndedExchangeUlids]),
     ?'log-info'("Arcs to leave ~p", [ArcsToLeave]),
@@ -584,49 +550,293 @@ iddle(info,
                         end
                      end,
                      ArcsToLeave),
-
     {keep_state, State#state{arcs_to_leave = NewAccArcToLeave}};
-%% API
-%% Return the requested view
-iddle({call, From}, get_inview, #state{} = State) ->
-    InView = get_inview(State#state.namespace),
-    gen_statem:reply(From, {ok, InView}),
-    {keep_state, State};
-iddle({call, From}, get_outview, #state{} = State) ->
-    OutView = get_outview(State#state.namespace),
-    gen_statem:reply(From, {ok, OutView}),
-    {keep_state, State};
-%% Error Management
-iddle(info,
-      #incoming_event{event = {connection_error, Reason, #arc{ulid = Ulid} = Arc},
-                      origin_arc = Ulid},
-      #state{} = State) ->
-    ?'log-warning'("spray Agent ~p : Running state, connection error ~p to ~p",
-                   [State#state.namespace, Reason, Arc]),
-    {keep_state, State};
-iddle(info,
-      #incoming_event{event =
-                          #evt_node_quitted{reason = Reason,
-                                            direction = Direction,
-                                            node_id = NodeId} =
-                              Evt},
-      #state{arcs_to_leave = ArcsToLeave} = State) ->
-    ?'log-warning'("spray Agent ~p : Running state, node quitted ~p with reason "
-                   "~p  direction ~p",
-                   [State#state.namespace, NodeId, Reason, Direction]),
+%%%%%%%%%%%%%%%%%%%%%%% Wait exchange out state %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+handle_event(enter, _, wait_exchange_out, #state{namespace = NameSpace}) ->
+    ?'log-info'("spray Agent ~p : Entering wait exchange out state", [NameSpace]),
+    keep_state_and_data;
+handle_event(info,
+             #incoming_event{event = #exchange_out{proposed_sample = IncomingSample},
+                             origin_arc = ArcUlid},
+             wait_exchange_out,
+             #state{namespace = NameSpace,
+                    my_node = #node_entry{node_id = MyNodeId} = MyNode,
+                    arcs_to_leave = ArcsToLeave,
+                    proposed_sample = ProposedSample,
+                    current_exchange_peer = CurrentExchangePeerArc} =
+                 State) ->
+    ?'log-info'("Actor exchanger ~p : Got partial view exchange out from ~p~nProposed "
+                "sample ~p",
+                [NameSpace, CurrentExchangePeerArc, IncomingSample]),
+    %% Change every occurence of MyNode in the incoming sample by the target node
+    %% to avoid loops.
+    %% Other side is supposed to have done it, but who knows
+    IncomingSampleWithoutMyNode =
+        lists:map(fun (#exchange_entry{target = #node_entry{node_id = TargetNodeId}} = Entry)
+                          when TargetNodeId == MyNodeId ->
+                          Entry#exchange_entry{target = CurrentExchangePeerArc#arc.target};
+                      (Entry) ->
+                          Entry
+                  end,
+                  IncomingSample),
 
-    OutView = get_outview(State#state.namespace),
-    InView = get_inview(State#state.namespace),
+    OutView = get_outview(NameSpace),
+    %% remove nodes to leave from outview
+    OutViewWithoutLeavingNodes = filter_arcs_to_leave(OutView, State#state.arcs_to_leave),
 
-    OutViewWithoutLeavingNode = filter_arcs_to_leave(OutView, ArcsToLeave),
-    ?'log-info'("Start manage quitted node ~p", [OutViewWithoutLeavingNode]),
-    manage_quitted_node(OutViewWithoutLeavingNode, InView, Evt, State);
-%% catch all
-iddle(Type, Msg, State) ->
-    ?'log-warning'("spray Agent ~p : Running state, unhandled message ~p ~p~n State "
-                   ": ~p",
-                   [State#state.namespace, Type, Msg, State]),
-    {keep_state, State}.
+    %% We can accept the exchange and start joining the proposed sample
+    case OutViewWithoutLeavingNodes of
+        [] ->
+            %% This could happen when :
+            %% - we are going to leave this node because of a previous exchange and
+            %% - The peer have a connection to us and
+            %% - The peer propse no arc in its exchange
+            %% We cancel the exchange as this would leave us with an empty outview
+            ?'log-info'("spray Agent ~p : connected state, depleted outview, cancelling "
+                        "exchange",
+                        [NameSpace]),
+            send(ArcUlid,
+                 out,
+                 #exchange_cancelled{reason = exchange_out_cause_empty_outview,
+                                     namespace = NameSpace}),
+            {next_state,
+             connected,
+             State#state{current_exchange_peer = undefined,
+                         proposed_sample = [],
+                         incoming_sample = []}};
+        [_] when IncomingSampleWithoutMyNode == [] ->
+            %% We only have one node in outview, and incoming sample is empty
+            %% We cancel the exchange as this would leave us with an empty outview
+            ?'log-info'("spray Agent ~p : connected state, exchange cause empty outview, "
+                        "cancelling exchange",
+                        [NameSpace]),
+            send(ArcUlid,
+                 out,
+                 #exchange_cancelled{reason = exchange_out_cause_empty_outview,
+                                     namespace = NameSpace}),
+            {next_state,
+             connected,
+             State#state{current_exchange_peer = undefined,
+                         proposed_sample = [],
+                         incoming_sample = []}};
+        _ ->
+            ?'log-info'("spray Agent ~p : connected state, proceeding to exchange", [NameSpace]),
+
+            Me = self(),
+            %% Program removal of arcs from nodes to leave after timeout
+            erlang:send_after(?EXCHANGE_END_TIMEOUT,
+                              Me,
+                              #evt_end_exchange{exchanged_ulids =
+                                                    lists:map(fun(#exchange_entry{ulid = Ulid}) ->
+                                                                 Ulid
+                                                              end,
+                                                              ProposedSample)}),
+            %% Send exchange accept to oldest node
+            send(ArcUlid, out, #exchange_accept{}),
+            ?'log-info'("Connecting to incoming sample ~p", [IncomingSample]),
+
+            %% start connecting to the proposed sample
+            swap_connections(NameSpace,
+                             MyNode,
+                             CurrentExchangePeerArc#arc.target,
+                             IncomingSampleWithoutMyNode),
+            {next_state,
+             connected,
+             State#state{current_exchange_peer = undefined,
+                         arcs_to_leave = ArcsToLeave ++ ProposedSample,
+                         proposed_sample = [],
+                         incoming_sample = []}}
+    end;
+handle_event(info,
+             #incoming_event{event = #exchange_cancelled{reason = Reason}},
+             wait_exchange_out,
+             #state{current_exchange_peer = #arc{ulid = PeerUlid}} = State) ->
+    ?'log-info'("spray Agent ~p : wait_exchange_out state, exchange cancelled "
+                "out : ~p",
+                [State#state.namespace, Reason]),
+    %% Reset age of the node in outview to put it last in exchange queue
+    reset_age(PeerUlid),
+    {next_state,
+     connected,
+     State#state{current_exchange_peer = undefined,
+                 proposed_sample = [],
+                 incoming_sample = []}};
+%%%%%%%%%%%%%%%%%%%%%%% Wait exchange accept state %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+handle_event(enter, _, wait_exchange_accept, #state{namespace = NameSpace}) ->
+    ?'log-info'("spray Agent ~p : Entering wait wait_exchange_accept state", [NameSpace]),
+    keep_state_and_data;
+handle_event(info,
+             #incoming_event{event = #exchange_accept{}},
+             wait_exchange_accept,
+             #state{namespace = NameSpace,
+                    my_node = MyNode,
+                    current_exchange_peer = CurrentExchangePeer,
+                    incoming_sample = IncomingSample,
+                    proposed_sample = ProposedSample,
+                    arcs_to_leave = ArcsToLeave} =
+                 State) ->
+    ?'log-info'("spray Agent ~p : Exchange accepted, nodes to leave : ~p    "
+                "~nNodes to join : ~p    exchange peer : ~p",
+                [NameSpace, ProposedSample, IncomingSample, CurrentExchangePeer]),
+
+    swap_connections(NameSpace, MyNode, CurrentExchangePeer#arc.source, IncomingSample),
+    Me = self(),
+    %% Program removal of arcs from nodes to leave after timeout
+    erlang:send_after(?EXCHANGE_END_TIMEOUT,
+                      Me,
+                      #evt_end_exchange{exchanged_ulids =
+                                            lists:map(fun(#exchange_entry{ulid = Ulid}) -> Ulid end,
+                                                      ProposedSample)}),
+
+    {next_state,
+     connected,
+     State#state{current_exchange_peer = undefined,
+                 proposed_sample = [],
+                 incoming_sample = [],
+                 arcs_to_leave = ArcsToLeave ++ ProposedSample}};
+handle_event(info,
+             #incoming_event{event = #exchange_cancelled{}} = _Evt,
+             wait_exchange_accept,
+             State) ->
+    ?'log-info'("spray Agent ~p : wait_exchange_accept state, exchange cancelled",
+                [State#state.namespace]),
+    {next_state,
+     connected,
+     State#state{current_exchange_peer = undefined,
+                 proposed_sample = [],
+                 incoming_sample = []}};
+%%%%%%%%%%%%%%%%%%%%% Generic handlers %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Reception of spray time event while we are already exchanging:
+%% we reset the spray timer
+handle_event(info,
+             {timeout, _, spray_time},
+             _,
+             #state{current_exchange_peer = PeerExchange} = State)
+    when PeerExchange =/= undefined ->
+    ?'log-info'("spray Agent ~p : Running state, spray time while exchanging, "
+                "cancelling exchange",
+                [State#state.namespace]),
+    %% Reset age of the node in outview to put it last in exchange queue
+    Me = self(),
+    SprayTimer = erlang:start_timer(?EXCHANGE_INTERVAL, Me, spray_time),
+    {keep_state, State#state{spray_timer = SprayTimer}};
+%% Reception of exchange in while we are already exchanging:
+%% we cancel the exchange with reason <<"busy">>
+handle_event(info,
+             #incoming_event{event = #exchange_in{}, origin_arc = OriginUlid},
+             _,
+             #state{current_exchange_peer = PeerExchange} = State)
+    when PeerExchange =/= undefined ->
+    ?'log-info'("spray Agent ~p : Running state, exchange in while exchanging, "
+                "cancelling exchange",
+                [State#state.namespace]),
+    gproc:send({n, l, {arc, in, OriginUlid}}, {reject, exchange_in_busy}),
+    keep_state_and_data;
+%% Catch all
+handle_event(Type, Msg, StateName, StateData) ->
+    ?'log-warning'("spray Agent ~p :State:~p Received unhandled message ~p ~p~n "
+                   "Statedata : ~p",
+                   [StateData#state.namespace, StateName, Type, Msg, StateData]),
+    keep_state_and_data.
+
+%%%=============================================================================
+%%% State transitions
+%%%=============================================================================
+
+% %% TODO: Check if the expeditor is the current exchange peer
+% iddle(info,
+%       #incoming_event{event = #exchange_accept{}},
+%       #state{namespace = NameSpace,
+%              my_node = MyNode,
+%              current_exchange_peer = {_, CurrentExchangePeer},
+%              incoming_sample = IncomingSample,
+%              proposed_sample = ProposedSample,
+%              arcs_to_leave = ArcsToLeave} =
+%           State) ->
+%     ?'log-info'("spray Agent ~p : Exchange accepted, nodes to leave : ~p    "
+%                 "~nNodes to join : ~p    exchange peer : ~p",
+%                 [NameSpace, ProposedSample, IncomingSample, CurrentExchangePeer]),
+
+%     swap_connections(NameSpace, MyNode, CurrentExchangePeer#arc.source, IncomingSample),
+%     Me = self(),
+%     %% Program removal of arcs from nodes to leave after timeout
+%     erlang:send_after(?CONNECTION_TIMEOUT,
+%                       Me,
+%                       #evt_end_exchange{exchanged_ulids =
+%                                             lists:map(fun(#exchange_entry{ulid = Ulid}) -> Ulid end,
+%                                                       ProposedSample)}),
+
+%     {keep_state,
+%      State#state{current_exchange_peer = undefined,
+%                  proposed_sample = [],
+%                  incoming_sample = [],
+%                  arcs_to_leave = ArcsToLeave ++ ProposedSample}};
+% iddle(info,
+%       #evt_end_exchange{exchanged_ulids = EndedExchangeUlids},
+%       #state{arcs_to_leave = ArcsToLeave} = State) ->
+%     ?'log-info'("spray Agent ~p : Running state, end exchange, veryting arcs ~p",
+%                 [State#state.namespace, EndedExchangeUlids]),
+%     ?'log-info'("Arcs to leave ~p", [ArcsToLeave]),
+
+%     %% For each node in EndedExchangeUlids, check if an exchange entry with same Ulid is present
+%     %% in ArcsToLeave, if so remove it from arcs to leave
+%     %% and send a message on the ulid to request changing the lock.
+%     %% If the node is not in ArcsToLeave, it means the exchange for it was done normally
+%     NewAccArcToLeave =
+%         lists:filter(fun(#exchange_entry{ulid = Ulid, lock = Lock}) ->
+%                         case lists:member(Ulid, EndedExchangeUlids) of
+%                             true ->
+%                                 %% Other side haven't connected to our arc, we remove it
+%                                 %% from arc to leave so it participate again in exchanges
+%                                 %% %% We change our lock and update the lock of client connection
+%                                 NewLock = bbsvx_client_connection:get_lock(?LOCK_SIZE),
+
+%                                 send(Ulid,
+%                                      out,
+%                                      #change_lock{current_lock = Lock, new_lock = NewLock}),
+
+%                                 false;
+%                             false -> true
+%                         end
+%                      end,
+%                      ArcsToLeave),
+
+%     {keep_state, State#state{arcs_to_leave = NewAccArcToLeave}};
+% %% API
+% %% Return the requested view
+% iddle({call, From}, get_inview, #state{} = State) ->
+%     InView = get_inview(State#state.namespace),
+%     gen_statem:reply(From, {ok, InView}),
+%     {keep_state, State};
+% iddle({call, From}, get_outview, #state{} = State) ->
+%     OutView = get_outview(State#state.namespace),
+%     gen_statem:reply(From, {ok, OutView}),
+%     {keep_state, State};
+% %% Error Management
+% iddle(info,
+%       #incoming_event{event = {connection_error, Reason, #arc{ulid = Ulid} = Arc},
+%                       origin_arc = Ulid},
+%       #state{} = State) ->
+%     ?'log-warning'("spray Agent ~p : Running state, connection error ~p to ~p",
+%                    [State#state.namespace, Reason, Arc]),
+%     {keep_state, State};
+% iddle(info,
+%       #incoming_event{event =
+%                           #evt_node_quitted{reason = Reason,
+%                                             direction = Direction,
+%                                             node_id = NodeId} =
+%                               Evt},
+%       #state{arcs_to_leave = ArcsToLeave} = State) ->
+%     ?'log-warning'("spray Agent ~p : Running state, node quitted ~p with reason "
+%                    "~p  direction ~p",
+%                    [State#state.namespace, NodeId, Reason, Direction]),
+
+%     OutView = get_outview(State#state.namespace),
+%     InView = get_inview(State#state.namespace),
+
+%     OutViewWithoutLeavingNode = filter_arcs_to_leave(OutView, ArcsToLeave),
+%     ?'log-info'("Start manage quitted node ~p", [OutViewWithoutLeavingNode]),
+%     manage_quitted_node(OutViewWithoutLeavingNode, InView, Evt, State);
 
 %%%=============================================================================
 %%% Internal functions
@@ -771,38 +981,19 @@ register_namespace(NameSpace, MyNode, ContactNodes) ->
 
 -spec manage_quitted_node([arc()], [arc()], term(), state()) ->
                              gen_statem:state_function_result().
-manage_quitted_node(FilteredOutview,
-                    Inview,
+manage_quitted_node(FilteredOutView,
+                    InView,
                     #evt_node_quitted{reason = Reason, node_id = TargetNodeId} = Evt,
-                    #state{namespace = NameSpace} = State) ->
+                    #state{namespace = NameSpace} = State)
+    when TargetNodeId =/= undefined ->
     ?'log-info'("spray Agent ~p : Running state, quitted node ~p with reason ~p",
                 [NameSpace, TargetNodeId, Reason]),
     %% Remove target_nde from outview and count number of time it appears
-    {FutureOutView, CountRemovedOut} =
-        lists:foldr(fun(#arc{target = #node_entry{node_id = NodeId}} = Arc,
-                        {NewOutView, Count}) ->
-                       case NodeId of
-                           TargetNodeId -> {NewOutView, Count + 1};
-                           _ -> {[Arc | NewOutView], Count}
-                       end
-                    end,
-                    {[], 0},
-                    FilteredOutview),
+    {CountRemovedOut, FutureOutView} = filter_and_count(TargetNodeId, FilteredOutView),
+
     ?'log-info'("11", []),
     %% Remove target_node from inview
-    {FutureInView, CountRemovedIn} =
-        lists:foldr(fun(#arc{source = #node_entry{node_id = NodeId}} = Arc, {NewInView, Count}) ->
-                       case NodeId of
-                           TargetNodeId -> {NewInView, Count + 1};
-                           _ -> {[Arc | NewInView], Count}
-                       end
-                    end,
-                    {[], 0},
-                    Inview),
-    ?'log-info'("12  FutureOutView:~p", [FutureOutView]),
-    ?'log-info'("12  CountRemovedOut:~p", [CountRemovedOut]),
-    ?'log-info'("12  FutureInView:~p", [FutureInView]),
-    ?'log-info'("12  CountRemovedIn:~p", [CountRemovedIn]),
+    {CountRemovedIn, FutureInView} = filter_and_count(TargetNodeId, InView),
 
     react_quitted_node(FutureOutView,
                        CountRemovedOut,
@@ -811,10 +1002,10 @@ manage_quitted_node(FilteredOutview,
                        Evt,
                        State);
 %% catch all
-manage_quitted_node(FilteredOutview, Inview, Evt, State) ->
+manage_quitted_node(FilteredOutView, InView, Evt, State) ->
     ?'log-warning'("spray Agent ~p : Running state, quitted node, unhandled case "
                    "Outview ~p  Inview ~p  Event ~p ~n State ~p",
-                   [State#state.namespace, FilteredOutview, Inview, Evt, State]),
+                   [State#state.namespace, FilteredOutView, InView, Evt, State]),
     {keep_state, State}.
 
 %% Will leave us without connectection, we neeed to reregister
@@ -851,7 +1042,7 @@ react_quitted_node([],
     ?'log-info'("Node ~p quitted with reason ~p, empty outview, joining node "
                 "in inview",
                 [QuittedNodeId, Reason]),
-    %% get random node from Inview
+    %% get random node from InView
     #arc{source = TargetNode} =
         lists:nth(
             rand:uniform(length(FilteredInView)), FilteredInView),
@@ -861,15 +1052,20 @@ react_quitted_node([],
     {keep_state, State};
 %% Manage empty inview
 react_quitted_node(FilteredOutView,
-                   CountRemovedOut,
+                   _,
                    [],
                    _,
                    #evt_node_quitted{node_id = QuittedNodeId, reason = Reason},
-                   #state{namespace = NameSpace, my_node = MyNode} = State) ->
+                   #state{my_node = MyNode} = State) ->
     ?'log-info'("Node ~p quitted with reason ~p, ack node in outview to foin me",
                 [QuittedNodeId, Reason]),
     %% get random node from Outview and ask it to connect to us
-    %% TODO
+    #arc{ulid = DestUlid} =
+        lists:nth(
+            rand:uniform(length(FilteredOutView)), FilteredOutView),
+    %%TODO: For now we do it as forward join but we should create a dedicated pro
+    %% to handle this case
+    send(DestUlid, out, #open_forward_join{lock = <<"Depleted">>, subscriber_node = MyNode}),
     {keep_state, State};
 %% Manage normal case
 react_quitted_node(FilteredOutView,
@@ -881,28 +1077,33 @@ react_quitted_node(FilteredOutView,
     ?'log-info'("Node ~p quitted with reason ~p, Recreating connections. FilteredOutV"
                 "iew ~p  count ~p",
                 [QuittedNodeId, Reason, FilteredOutView, CountRemovedOut]),
-    lists:foreach(fun(IndexL) ->
-                     Rand = rand:uniform(1),
-                     ?'log-info'("spray Agent : Rand is ~p   gap is ~p",
-                                 [Rand, 1 / (CountRemovedOut + IndexL)]),
+    case CountRemovedOut > 1 of
+        true ->
+            lists:foreach(fun(IndexL) ->
+                             Rand = rand:uniform(),
+                             ?'log-info'("spray Agent : Rand is ~p   gap is ~p",
+                                         [Rand, 1 / (CountRemovedOut + IndexL - 1)]),
 
-                     case Rand of
-                         X when X > 1 / (CountRemovedOut + IndexL) ->
-                             %% Select a random arc
-                             RandomArc =
-                                 lists:nth(
-                                     rand:uniform(length(FilteredOutView)), FilteredOutView),
-                             supervisor:start_child(bbsvx_sup_client_connections,
-                                                    [forward_join,
-                                                     NameSpace,
-                                                     MyNode,
-                                                     RandomArc#arc.target,
-                                                     []]);
-                         _ -> ok
-                     end
-                  end,
-                  lists:seq(0, CountRemovedOut)),
-    ?'log-info'("spray Agent ~p : Recreating connections done", [NameSpace]),
+                             case Rand of
+                                 X when X > 1 / (CountRemovedOut + IndexL - 1) ->
+                                     %% Select a random arc
+                                     RandomArc =
+                                         lists:nth(
+                                             rand:uniform(length(FilteredOutView)),
+                                             FilteredOutView),
+                                     supervisor:start_child(bbsvx_sup_client_connections,
+                                                            [forward_join,
+                                                             NameSpace,
+                                                             MyNode,
+                                                             RandomArc#arc.target,
+                                                             []]);
+                                 _ -> ok
+                             end
+                          end,
+                          lists:seq(1, CountRemovedOut - 1));
+        false ->
+            ok
+    end,
     {keep_state, State};
 %% catch all
 react_quitted_node(FilteredOutView,
@@ -912,7 +1113,7 @@ react_quitted_node(FilteredOutView,
                    Evt,
                    State) ->
     ?'log-info'("spray Agent ~p : Running state, quitted node, unhandled case "
-                "Outview ~p  RemovedOutCount : ~p Inview ~p RemovedInCount ~p "
+                "Outview ~p  RemovedOutCount : ~p InView ~p RemovedInCount ~p "
                 "~n Event ~p ~n State ~p",
                 [State#state.namespace,
                  FilteredOutView,
@@ -1130,9 +1331,24 @@ format_host(Host) when is_list(Host) ->
 format_host({A, B, C, D}) ->
     list_to_binary(io_lib:format("~p.~p.~p.~p", [A, B, C, D])).
 
--spec build_metric_view_name(NameSpace :: binary(), MetricName :: binary()) -> binary().
-build_metric_view_name(NameSpace, MetricName) ->
-    iolist_to_binary([MetricName, binary:replace(NameSpace, <<":">>, <<"_">>)]).
+%%%-----------------------------------------------------------------------------
+%%% @doc
+%%% filter_and_count/2
+%%% Filter out the target node from the sample and count the number of time it
+%%% was removed
+%%% @end
+%%% ----------------------------------------------------------------------------
+
+-spec filter_and_count(TargetNodeId :: binary(), [arc()]) -> {integer(), [arc()]}.
+filter_and_count(TargetNodeId, Sample) ->
+    lists:foldr(fun(#arc{target = #node_entry{node_id = NodeId}} = Arc, {Count, NewSample}) ->
+                   case NodeId of
+                       TargetNodeId -> {Count + 1, NewSample};
+                       _ -> {Count, [Arc | NewSample]}
+                   end
+                end,
+                {0, []},
+                Sample).
 
 %%%=============================================================================
 %%% Eunit Tests

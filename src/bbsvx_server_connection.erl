@@ -485,7 +485,15 @@ connected(info, {terminate, Reason}, State) ->
 
 parse_packet(<<>>, Action, State) ->
   {Action, State#state{buffer = <<>>}};
-parse_packet(Buffer, Action, #state{namespace = NameSpace, my_ulid = MyUlid} = State) ->
+parse_packet(Buffer,
+             Action,
+             #state{namespace = NameSpace,
+                    my_ulid = MyUlid,
+                    origin_node =
+                      #node_entry{host = Host,
+                                  port = Port,
+                                  node_id = NodeId}} =
+               State) ->
   Decoded =
     try binary_to_term(Buffer, [used]) of
       {DecodedEvent, NbBytesUsed} when is_number(NbBytesUsed) ->
@@ -537,6 +545,14 @@ parse_packet(Buffer, Action, #state{namespace = NameSpace, my_ulid = MyUlid} = S
       parse_packet(BinLeft, Action, State);
     {complete, #node_quitting{reason = Reason} = Event, _Index} ->
       ?'log-notice'("~p Event received ~p", [?MODULE, Event]),
+      arc_event(NameSpace,
+                MyUlid,
+                #evt_node_quitted{direction = in,
+                                  node_id = NodeId,
+                                  host = Host,
+                                  port = Port,
+                                  reason = Reason}),
+
       {stop, Reason, State};
     {complete, Event, Index} ->
       ?'log-warn'("~p Event received ~p", [?MODULE, Event]),

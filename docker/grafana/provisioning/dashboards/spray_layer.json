@@ -18,6 +18,7 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
+  "id": 7,
   "links": [],
   "liveNow": true,
   "panels": [
@@ -39,6 +40,7 @@
             "axisLabel": "",
             "axisPlacement": "auto",
             "barAlignment": 0,
+            "barWidthFactor": 0.6,
             "drawStyle": "line",
             "fillOpacity": 0,
             "gradientMode": "none",
@@ -101,6 +103,7 @@
           "sort": "none"
         }
       },
+      "pluginVersion": "11.4.0",
       "targets": [
         {
           "datasource": {
@@ -108,7 +111,7 @@
             "uid": "adqng4jfwlslcd"
           },
           "editorMode": "builder",
-          "expr": "spray_inview_size_bbsvx_root{container_name=~\"$container\"}",
+          "expr": "bbsvx_spray_outview_size{namespace=\"bbsvx:root\", container_name=\"$container\"}",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -119,7 +122,7 @@
             "uid": "adqng4jfwlslcd"
           },
           "editorMode": "builder",
-          "expr": "spray_outview_size_bbsvx_root{container_name=~\"$container\"}",
+          "expr": "bbsvx_spray_inview_size{namespace=\"bbsvx:root\", container_name=\"$container\"}",
           "hide": false,
           "legendFormat": "__auto",
           "range": true,
@@ -134,6 +137,7 @@
         "type": "victoriametrics-datasource",
         "uid": "adqng4jfwlslcd"
       },
+      "description": "Increase when inview size reach 0",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -146,6 +150,7 @@
             "axisLabel": "",
             "axisPlacement": "auto",
             "barAlignment": 0,
+            "barWidthFactor": 0.6,
             "drawStyle": "line",
             "fillOpacity": 0,
             "gradientMode": "none",
@@ -194,102 +199,6 @@
         "x": 0,
         "y": 8
       },
-      "id": 2,
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "maxHeight": 600,
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "victoriametrics-datasource",
-            "uid": "adqng4jfwlslcd"
-          },
-          "editorMode": "builder",
-          "expr": "spray_initiator_echange_timeout_bbsvx_root{container_name=~\"$container\"}",
-          "legendFormat": "__auto",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "Spray Exchange Timeout",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "victoriametrics-datasource",
-        "uid": "adqng4jfwlslcd"
-      },
-      "description": "Increase when inview size reach 0",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "auto",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 9,
-        "w": 24,
-        "x": 0,
-        "y": 17
-      },
       "id": 3,
       "options": {
         "legend": {
@@ -304,6 +213,7 @@
           "sort": "none"
         }
       },
+      "pluginVersion": "11.4.0",
       "targets": [
         {
           "datasource": {
@@ -337,102 +247,6 @@
         "type": "victoriametrics-datasource",
         "uid": "adqng4jfwlslcd"
       },
-      "description": "Increase when the node have answered and empty inview request",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "auto",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 26
-      },
-      "id": 4,
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "maxHeight": 600,
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "victoriametrics-datasource",
-            "uid": "adqng4jfwlslcd"
-          },
-          "editorMode": "builder",
-          "expr": "spray_empty_inview_answered_bbsvx_root{container_name=~\"$container\"}",
-          "legendFormat": "__auto",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "Spray Empty inview answered",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "victoriametrics-datasource",
-        "uid": "adqng4jfwlslcd"
-      },
       "description": "Sum of all nodes views and inviews",
       "fieldConfig": {
         "defaults": {
@@ -446,6 +260,7 @@
             "axisLabel": "",
             "axisPlacement": "auto",
             "barAlignment": 0,
+            "barWidthFactor": 0.6,
             "drawStyle": "line",
             "fillOpacity": 0,
             "gradientMode": "none",
@@ -492,7 +307,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 34
+        "y": 17
       },
       "id": 5,
       "options": {
@@ -508,14 +323,15 @@
           "sort": "none"
         }
       },
+      "pluginVersion": "11.4.0",
       "targets": [
         {
           "datasource": {
             "type": "victoriametrics-datasource",
             "uid": "adqng4jfwlslcd"
           },
-          "editorMode": "builder",
-          "expr": "sum by(container_name) (spray_outview_size_bbsvx_root{container_name=~\"$container\"})",
+          "editorMode": "code",
+          "expr": "sum(spray_outview_size_bbsvx_root)",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -525,8 +341,8 @@
             "type": "victoriametrics-datasource",
             "uid": "adqng4jfwlslcd"
           },
-          "editorMode": "builder",
-          "expr": "spray_inview_size_bbsvx_root{container_name=~\"$container\"}",
+          "editorMode": "code",
+          "expr": "sum(spray_inview_size_bbsvx_root)",
           "hide": false,
           "legendFormat": "__auto",
           "range": true,
@@ -535,15 +351,110 @@
       ],
       "title": "Sum views",
       "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "victoriametrics-datasource",
+        "uid": "adqng4jfwlslcd"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 25
+      },
+      "id": 2,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "maxHeight": 600,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "victoriametrics-datasource",
+            "uid": "adqng4jfwlslcd"
+          },
+          "editorMode": "builder",
+          "expr": "spray_initiator_echange_timeout_bbsvx_root{container_name=~\"$container\"}",
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Spray Exchange Timeout",
+      "type": "timeseries"
     }
   ],
-  "schemaVersion": 39,
+  "preload": false,
+  "refresh": "5s",
+  "schemaVersion": 40,
   "tags": [],
   "templating": {
     "list": [
       {
         "current": {
-          "selected": true,
           "text": [
             "All"
           ],
@@ -557,7 +468,6 @@
         },
         "definition": "label_values(container_name)",
         "description": "Monitored container",
-        "hide": 0,
         "includeAll": true,
         "label": "Container",
         "multi": true,
@@ -570,8 +480,6 @@
         },
         "refresh": 1,
         "regex": "",
-        "skipUrlSync": false,
-        "sort": 0,
         "type": "query"
       }
     ]
@@ -580,11 +488,10 @@
     "from": "now-5m",
     "to": "now"
   },
-  "timeRangeUpdatedDuringEditOrView": false,
   "timepicker": {},
   "timezone": "browser",
   "title": "Spray layer monitoring",
   "uid": "ddqnhlxepzjswd",
-  "version": 2,
+  "version": 5,
   "weekStart": ""
 }
