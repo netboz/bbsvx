@@ -21,7 +21,7 @@
 -define(EXCHANGE_INTERVAL, 10000).
 -define(WAIT_EXCHANGE_OUT_TIMEOUT, ?EXCHANGE_INTERVAL div 5).
 -define(WAIT_EXCHANGE_ACCEPT_TIMEOUT, ?EXCHANGE_INTERVAL div 5).
--define(EXCHANGE_END_TIMEOUT, ?EXCHANGE_INTERVAL div 1.1).
+-define(EXCHANGE_END_TIMEOUT, ?EXCHANGE_INTERVAL - round(?EXCHANGE_INTERVAL / 10)).
 
 %% External API
 -export([start_link/1, start_link/2, stop/0, broadcast/2, broadcast_unique/2,
@@ -202,7 +202,7 @@ handle_event(info,
 %%%%%%%%%%%%%%%%%%%%%%% Empty outview state %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 handle_event(enter, _, empty_outview, #state{namespace = NameSpace}) ->
     ?'log-info'("spray Agent ~p : Entering Empty outview state", [NameSpace]),
-
+    prometheus_gauge:inc(<<"bbsvx_spray_outview_depleted">>, [NameSpace]),
     keep_state_and_data;
 handle_event(info,
              #incoming_event{origin_arc = _Ulid, event = #evt_arc_connected_in{}},
@@ -212,7 +212,9 @@ handle_event(info,
 handle_event(info,
              #incoming_event{origin_arc = _Ulid, event = #evt_arc_connected_out{}},
              empty_outview,
-             StateData) ->
+             #state{namespace = NameSpace} = StateData) ->
+    prometheus_gauge:dec(<<"bbsvx_spray_outview_depleted">>, [NameSpace]),
+
     {next_state, connected, StateData};
 handle_event(info,
              #incoming_event{origin_arc = _Ulid,
@@ -224,7 +226,6 @@ handle_event(info,
         [] ->
             ?'log-warning'("spray Agent ~p : Arc In disconnected :~p, empty inview",
                            [State#state.namespace, Ulid]),
-            prometheus_counter:inc(<<"bbsvx_spray_inview_depleted">>, [NameSpace]),
             {next_state, disconnected, State};
         _ ->
             keep_state_and_data
@@ -232,12 +233,13 @@ handle_event(info,
 %%%%%%%%%%%%%%%%%%%%%%% Empty InView state %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 handle_event(enter, _, empty_inview, #state{namespace = NameSpace}) ->
     ?'log-info'("spray Agent ~p : Entering Empty inview state", [NameSpace]),
-    prometheus_counter:inc(<<"bbsvx_spray_inview_depleted">>, [NameSpace]),
+    prometheus_gauge:inc(<<"bbsvx_spray_inview_depleted">>, [NameSpace]),
     keep_state_and_data;
 handle_event(info,
              #incoming_event{origin_arc = _Ulid, event = #evt_arc_connected_in{}},
              empty_inview,
-             StateData) ->
+             #state{namespace = NameSpace} = StateData) ->
+    prometheus_gauge:dec(<<"bbsvx_spray_inview_depleted">>, [NameSpace]),
     {next_state, connected, StateData};
 handle_event(info,
              #incoming_event{origin_arc = _Ulid, event = #evt_arc_connected_out{}},
@@ -246,19 +248,25 @@ handle_event(info,
     keep_state_and_data;
 handle_event(info,
              #incoming_event{origin_arc = _Ulid,
-                             event = #evt_arc_disconnected{ulid = Ulid, direction = out}},
+                             event =
+                                 #evt_arc_disconnected{ulid = DisconnectedUlid, direction = out}},
              empty_inview,
-             #state{namespace = NameSpace} = State) ->
-    case lists:filter(fun(#arc{ulid = OutUlid}) -> OutUlid =/= Ulid end,
+             #state{namespace = NameSpace, arcs_to_leave = ArcsToLeave} = State) ->
+    %% Filter DisconnectedUlid from nodes to leave
+    NewArcsToLeave =
+        lists:filter(fun(#exchange_entry{ulid = Ulid}) -> Ulid =/= DisconnectedUlid end,
+                     ArcsToLeave),
+
+    case lists:filter(fun(#arc{ulid = OutUlid}) -> OutUlid =/= DisconnectedUlid end,
                       get_outview(NameSpace))
     of
         [] ->
             ?'log-warning'("spray Agent ~p : Arc Out disconnected :~p, empty outview",
-                           [State#state.namespace, Ulid]),
-            prometheus_counter:inc(<<"bbsvx_spray_outview_depleted">>, [NameSpace]),
-            {next_state, disconnected, State};
+                           [State#state.namespace, DisconnectedUlid]),
+            prometheus_gauge:inc(<<"bbsvx_spray_outview_depleted">>, [NameSpace]),
+            {next_state, empty_outview, State#state{arcs_to_leave = NewArcsToLeave}};
         _ ->
-            keep_state_and_data
+            {keep_state, State#state{arcs_to_leave = NewArcsToLeave}}
     end;
 %%%%%%%%%%%%%%%%%%%%%%% Connected state %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 handle_event(enter, _, connected, #state{namespace = NameSpace} = State) ->
@@ -319,26 +327,31 @@ handle_event(info,
         [] ->
             ?'log-warning'("spray Agent ~p : Arc In disconnected :~p, empty inview",
                            [State#state.namespace, Ulid]),
-            prometheus_counter:inc(<<"bbsvx_spray_inview_depleted">>, [NameSpace]),
             {next_state, empty_inview, State};
         _ ->
             keep_state_and_data
     end;
 handle_event(info,
              #incoming_event{origin_arc = _Ulid,
-                             event = #evt_arc_disconnected{ulid = Ulid, direction = out}},
+                             event =
+                                 #evt_arc_disconnected{ulid = DisconnectedUlid, direction = out}},
              connected,
-             #state{namespace = NameSpace} = State) ->
-    case lists:filter(fun(#arc{ulid = OutUlid}) -> OutUlid =/= Ulid end,
+             #state{namespace = NameSpace, arcs_to_leave = ArcsToLeave} = State) ->
+    %% Filter DisconnectedUlid from nodes to leave
+    NewArcsToLeave =
+        lists:filter(fun(#exchange_entry{ulid = Ulid}) -> Ulid =/= DisconnectedUlid end,
+                     ArcsToLeave),
+
+    case lists:filter(fun(#arc{ulid = OutUlid}) -> OutUlid =/= DisconnectedUlid end,
                       get_outview(NameSpace))
     of
         [] ->
             ?'log-warning'("spray Agent ~p : Arc Out disconnected :~p, empty outview",
-                           [State#state.namespace, Ulid]),
-            prometheus_counter:inc(<<"bbsvx_spray_outview_depleted">>, [NameSpace]),
-            {next_state, empty_outview, State};
+                           [State#state.namespace, DisconnectedUlid]),
+            prometheus_gauge:inc(<<"bbsvx_spray_outview_depleted">>, [NameSpace]),
+            {next_state, empty_outview, State#state{arcs_to_leave = NewArcsToLeave}};
         _ ->
-            keep_state_and_data
+            {keep_state, State#state{arcs_to_leave = NewArcsToLeave}}
     end;
 %% Manage forward join request
 handle_event(info,
@@ -533,9 +546,12 @@ handle_event(info,
     %% and send a message on the ulid to request changing the lock.
     %% If the node is not in ArcsToLeave, it means the exchange for it was done normally
     NewAccArcToLeave =
-        lists:filter(fun(#exchange_entry{ulid = Ulid, lock = Lock}) ->
+        lists:filter(fun(#exchange_entry{ulid = Ulid, lock = Lock} = E) ->
+                        ?'log-info'("processing exchange entry ~p", [E]),
                         case lists:member(Ulid, EndedExchangeUlids) of
                             true ->
+                                ?'log-info'("processing true", []),
+
                                 %% Other side haven't connected to our arc, we remove it
                                 %% from arc to leave so it participate again in exchanges
                                 %% %% We change our lock and update the lock of client connection
@@ -544,9 +560,13 @@ handle_event(info,
                                 send(Ulid,
                                      out,
                                      #change_lock{current_lock = Lock, new_lock = NewLock}),
+                                ?'log-info'("sent", []),
 
                                 false;
-                            false -> true
+                            false ->
+                                ?'log-info'("processing false", []),
+
+                                true
                         end
                      end,
                      ArcsToLeave),
@@ -732,6 +752,37 @@ handle_event(info,
                 [State#state.namespace]),
     gproc:send({n, l, {arc, in, OriginUlid}}, {reject, exchange_in_busy}),
     keep_state_and_data;
+%%%%%%%%%%%%%%%%%%%%% Generic handlers %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+handle_event(info,
+             #incoming_event{event = #evt_arc_disconnected{ulid = Ulid, direction = in}},
+             _,
+             #state{} = State) ->
+    ?'log-info'("spray Agent ~p : Running state, arc disconnected :~p, postponing",
+                [State#state.namespace, Ulid]),
+    {keep_state, State, [postpone]};
+handle_event(info,
+             #incoming_event{event =
+                                 #evt_arc_disconnected{ulid = DisconnectedUlid, direction = out}},
+             _,
+             #state{namespace = NameSpace, arcs_to_leave = ArcsToLeave} = State) ->
+    ?'log-info'("spray Agent ~p : Running state, arc disconnected :~p, postponing",
+                [State#state.namespace, DisconnectedUlid]),
+    %% Filter DisconnectedUlid from nodes to leave
+    NewArcsToLeave =
+        lists:filter(fun(#exchange_entry{ulid = Ulid}) -> Ulid =/= DisconnectedUlid end,
+                     ArcsToLeave),
+
+    case lists:filter(fun(#arc{ulid = OutUlid}) -> OutUlid =/= DisconnectedUlid end,
+                      get_outview(NameSpace))
+    of
+        [] ->
+            ?'log-warning'("spray Agent ~p : Arc Out disconnected :~p, empty outview",
+                           [State#state.namespace, DisconnectedUlid]),
+            prometheus_gauge:inc(<<"bbsvx_spray_outview_depleted">>, [NameSpace]),
+            {next_state, empty_outview, State#state{arcs_to_leave = NewArcsToLeave}};
+        _ ->
+            {keep_state, State#state{arcs_to_leave = NewArcsToLeave}}
+    end;
 %% Catch all
 handle_event(Type, Msg, StateName, StateData) ->
     ?'log-warning'("spray Agent ~p :State:~p Received unhandled message ~p ~p~n "
@@ -935,7 +986,10 @@ terminate_connection(Ulid, Direction, Reason) ->
 
 -spec send(Ulid :: binary(), Direction :: in | out, Payload :: term()) -> ok.
 send(Ulid, Direction, Payload) ->
-    gproc:send({n, l, {arc, Direction, Ulid}}, {send, Payload}).
+    ?'log-info'("spray Agent : Sending message ~p ~p ~p", [Ulid, Direction, Payload]),
+    gproc:send({n, l, {arc, Direction, Ulid}}, {send, Payload}),
+    ?'log-info'("spray Agent : Message sent ~p ~p ~p", [Ulid, Direction, Payload]),
+    ok.
 
 %%-----------------------------------------------------------------------------
 %% @doc

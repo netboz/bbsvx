@@ -77,11 +77,11 @@ init_metrics() ->
     prometheus_counter:declare([{name, <<"bbsvx_spray_exchange_cancelled">>},
                                 {labels, [<<"namespace">>]},
                                 {help, "Count of exchange cancelled"}]),
-    prometheus_counter:declare([{name, <<"bbsvx_spray_inview_depleted">>},
+    prometheus_gauge:declare([{name, <<"bbsvx_spray_inview_depleted">>},
                                 {labels, [<<"namespace">>]},
                                 {help, "Number of times inview size reach 0"}]),
 
-    prometheus_counter:declare([{name, <<"bbsvx_spray_outview_depleted">>},
+    prometheus_gauge:declare([{name, <<"bbsvx_spray_outview_depleted">>},
                                 {labels, [<<"namespace">>]},
                                 {help, "Number of times outview reach 0"}]),
 

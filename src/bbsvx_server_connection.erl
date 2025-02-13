@@ -521,7 +521,7 @@ parse_packet(Buffer,
       parse_packet(BinLeft, Action, State);
     {complete, #change_lock{} = Event, Index} ->
       <<_:Index/binary, BinLeft/binary>> = Buffer,
-      %% Update the lock at the connection level
+      %% TODO: Update the lock at the connection level
       parse_packet(BinLeft, Action, State#state{lock = Event#change_lock.new_lock});
     {complete, #exchange_cancelled{} = Event, Index} ->
       <<_:Index/binary, BinLeft/binary>> = Buffer,
