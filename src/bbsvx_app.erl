@@ -54,37 +54,37 @@ load_schema() ->
             ok = clique_config:load_schema([code:priv_dir(bbsvx)])
     end.
 
-
 init_ulid_generator() ->
     UlidGen = ulid:new(),
     persistent_term:put(ulid_gen, UlidGen).
 
-    -spec init_metrics() -> ok.
+-spec init_metrics() -> ok.
 init_metrics() ->
-    %% Create some metrics
     prometheus_gauge:declare([{name, <<"bbsvx_spray_outview_size">>},
                               {labels, [<<"namespace">>]},
                               {help, "Number of nodes in outview"}]),
-
     prometheus_gauge:declare([{name, <<"bbsvx_spray_inview_size">>},
                               {labels, [<<"namespace">>]},
                               {help, "Number of nodes in inview"}]),
-
     prometheus_counter:declare([{name, <<"bbsvx_spray_exchange_timeout">>},
                                 {labels, [<<"namespace">>]},
                                 {help, <<"Count of exchange timeout">>}]),
-
     prometheus_counter:declare([{name, <<"bbsvx_spray_exchange_cancelled">>},
-                                {labels, [<<"namespace">>]},
+                                {labels, [<<"namespace">>, <<"reason">>]},
                                 {help, "Count of exchange cancelled"}]),
     prometheus_gauge:declare([{name, <<"bbsvx_spray_inview_depleted">>},
-                                {labels, [<<"namespace">>]},
-                                {help, "Number of times inview size reach 0"}]),
-
+                              {labels, [<<"namespace">>]},
+                              {help, "Number of times inview size reach 0"}]),
     prometheus_gauge:declare([{name, <<"bbsvx_spray_outview_depleted">>},
+                              {labels, [<<"namespace">>]},
+                              {help, "Number of times outview reach 0"}]),
+    prometheus_counter:declare([{name, <<"spray_empty_inview_answered">>},
                                 {labels, [<<"namespace">>]},
-                                {help, "Number of times outview reach 0"}]),
-
-    prometheus_counter:declare([{name, <<"spray_empty_inview_answered_">>},
-                                {labels, [<<"namespace">>]},
-                                {help, "Number times this node answered a refuel inview request"}]).
+                                {help, "Number times this node answered a refuel inview request"}]),
+    prometheus_counter:declare([{name, <<"spray_exchange_rejected">>},
+                                {labels, [<<"namespace">>, <<"reason">>]},
+                                {help, "Number of times this node rejected an exchange request"}]),
+    prometheus_counter:declare([{name, <<"spray_exchange_cancelled">>},
+                                {labels, [<<"namespace">>, <<"reason">>]},
+                                {help,
+                                 <<"Number of time this node received a rejected exchange">>}]).

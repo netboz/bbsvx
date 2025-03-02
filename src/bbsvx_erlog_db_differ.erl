@@ -17,7 +17,7 @@
 -behaviour(bbsvx_erlog_db_behaviour).
 
 -include("bbsvx.hrl").
-
+-include_lib("logjam/include/logjam.hrl").
 %% new(InitArgs) -> Db.
 -callback new(InitArgs :: term()) -> term().
 %% add_built_in(Db, Functor) -> Db.
@@ -176,6 +176,7 @@ get_interpreted_functors(#db_differ{out_db = #db{mod = OutMod, ref = Ref}}) ->
 apply_diff(GoalDiff, #db{mod = Mod} = DbIn) ->
     %% @TODO : This can be avoided by making diff commutative
     %% Apply the diff to the database state
+    ?'log-info'("Applying diff ~p to db ~p", [GoalDiff, DbIn]),
     {ok,
      lists:foldr(fun ({asserta, Functor, Head, Body}, #db{ref = Ref} = Db) ->
                          {ok, NewRef} = Mod:asserta_clause(Ref, Functor, Head, Body),

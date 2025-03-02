@@ -16,7 +16,7 @@
          id :: binary(),
          timestamp :: integer(),
          namespace :: binary(),
-         leader :: binary(),
+         %%     leader :: binary(),
          source_id :: binary(),
          diff :: term(),
          payload :: term()}).
@@ -36,7 +36,7 @@
          list_tx :: [transaction()]}).
 -record(ontology_history_request,
         {namespace :: binary(),
-         requester :: node_entry(),
+         requester :: arc(),
          oldest_index :: integer(),
          younger_index :: integer()}).
 -record(db_differ, {out_db :: db(), op_fifo = [] :: [functor()]}).
@@ -54,10 +54,11 @@
          previous_ts :: integer(),
          current_ts :: integer(),
          prolog_state :: erlog_state(),
-         local_index = 0 :: integer(),
+         local_index = -1 :: integer(),
          current_index = 0 :: integer(),
          current_address :: binary(),
-         next_address :: binary()}).
+         next_address :: binary(),
+         contact_nodes :: [node_entry()]}).
 
 -type ont_state() :: #ont_state{}.
 
@@ -88,7 +89,6 @@
         {namespace :: binary(), contact_nodes = [] :: [node_entry()]}).
 
 -type transaction() :: #transaction{}.
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Network related records
 %%% @doc: These records are used to define the network messages exchanged
@@ -97,10 +97,11 @@
 %%% @private
 %%% @end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+-type inet_address() :: inet:hostname() | inet:ip_address().
 
 -record(node_entry,
         {node_id :: binary() | undefined,
-         host :: inet:ip_address() | local,
+         host :: inet_address() | binary() | local,
          port = 2304 :: inet:port_number()}).
 
 -type node_entry() :: #node_entry{}.
@@ -156,7 +157,7 @@
         {reason :: atom(),
          direction :: in | out,
          node_id :: binary() | undefined,
-         host :: inet:ip_address() | local,
+         host :: inet_address() | binary() | local,
          port :: inet:port_number()}).
 
 %%%%%%%%%%% Network protocol messages %%%%%%%%%%%%%
@@ -227,3 +228,20 @@
 -record(peer_connect_to_sample, {connected_arc_ulid :: binary()}).
 
 -type peer_connect_to_sample() :: #peer_connect_to_sample{}.
+
+%%%==============================================================================
+%%% Epto related records
+%%% @doc: These records are used to define the Epto protocol that is shared
+%%% between the nodes.
+%%% @author yan
+%%% @end
+%%%==============================================================================
+
+-record(epto_event,
+        {id :: binary(),
+         ts :: integer(),
+         last_index :: integer() | undefined,
+         ttl = 0 :: integer(),
+         source_id :: binary(),
+         namespace :: binary(),
+         payload :: term()}).

@@ -16,6 +16,7 @@
 -author("yan").
 
 -include("bbsvx.hrl").
+
 -include_lib("logjam/include/logjam.hrl").
 
 -export([init/2, allowed_methods/2, content_types_accepted/2, content_types_provided/2,
@@ -72,7 +73,7 @@ malformed_request(#{path := <<"/ontologies/", _Namespace/binary>>, method := <<"
         end
     catch
         A:B ->
-           ?'log-warning'("Malformed request ~p:~p", [A, B]),
+            ?'log-warning'("Malformed request ~p:~p", [A, B]),
             Req3 =
                 cowboy_req:set_resp_body(
                     jiffy:encode([#{error => <<"invalid_json">>}]), Req),
@@ -85,7 +86,7 @@ malformed_request(Req, State) ->
 resource_exists(#{path := <<"/ontologies/prove">>} = Req,
                 #{namespace := Namespace} = State) ->
     case bbsvx_ont_service:get_ontology(Namespace) of
-        {ok, #ontology{} = Onto} ->
+        {ok, #ontology{}} ->
             {true, Req, State};
         _ ->
             Req1 =
@@ -196,16 +197,13 @@ accept_onto(Req0, #{onto := PreviousOntState, body := Body} = State) ->
             {false, Req2, State}
     end.
 
-accept_goal(Req0, #{namespace := Namespace, goal := Goal} = State) ->
-   ?'log-info'("Cowboy Handler : New goal ~p", [Req0]),
+accept_goal(Req0,
+            #{namespace := Namespace, goal := Payload} =
+                State) ->
+    ?'log-info'("Cowboy Handler : New goal ~p", [Req0]),
 
-    NewGoal = #goal{namespace = Namespace, payload = Goal},
-    NewTransaction =
-        #transaction{namespace = Namespace,
-                     type = goal,
-                     payload = NewGoal},
-    try bbsvx_transaction_pipeline:accept_transaction(NewTransaction) of
-        ok ->
+    try bbsvx_ont_service:prove(Namespace, Payload) of
+        {ok, Id} ->
             Req1 =
                 cowboy_req:set_resp_body(
                     jiffy:encode([#{status => <<"accepted">>}]), Req0),
@@ -223,3 +221,16 @@ accept_goal(Req0, #{namespace := Namespace, goal := Goal} = State) ->
                     jiffy:encode([#{error => <<"network_internal_error">>}]), Req0),
             {true, Req3, State}
     end.
+
+%%-----------------------------------------------------------------------------
+%% @doc
+%% get_ulid/0
+%% Return an unique identifier
+%% @end
+%% ----------------------------------------------------------------------------
+-spec get_ulid() -> binary().
+get_ulid() ->
+    UlidGen = persistent_term:get(ulid_gen),
+    {NewGen, Ulid} = ulid:generate(UlidGen),
+    persistent_term:put(ulid_gen, NewGen),
+    Ulid.

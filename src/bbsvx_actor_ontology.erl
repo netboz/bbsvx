@@ -80,13 +80,15 @@ init([Namespace, Options]) ->
                          Options,
                          {bbsvx_erlog_db_ets, bbsvx_ont_service:binary_to_table_name(Namespace)}),
             {ok, #est{} = PrologState} = erlog_int:new(bbsvx_erlog_db_differ, {DbRef, DbMod}),
-            Boot = maps:get(boot, Options, root),
+            Boot = maps:get(boot, Options),
+            ContactNodes = maps:get(contact_nodes, Options, []),
             OntState =
                 #ont_state{namespace = Namespace,
                            current_ts = 0,
                            previous_ts = -1,
                            current_address = <<"0">>,
                            next_address = <<"0">>,
+                           contact_nodes = ContactNodes,
                            prolog_state = PrologState},
             ?'log-info'("Ontology Agent ~p starting with boot ~p", [Namespace, Boot]),
             gproc:send({p, l, {?MODULE, Namespace}}, {initialisation, Namespace}),
@@ -117,22 +119,24 @@ initialize_ontology(enter,
                     _,
                     #state{namespace = Namespace,
                            ont_state = OntState,
-                           boot = Boot} =
-                        State)
-    when Boot == root orelse Boot == {join, []} ->
+                           boot = root} =
+                        State) ->
     gproc:reg({p, l, {?MODULE, Namespace}}),
     ?'log-info'("Ontology Agent ~p booting  ontology as root", [Namespace]),
     %% For now we consider booting allowed to have history
     case load_history(OntState, State#state.repos_table) of
         #ont_state{} = NewOntState ->
-            ?'log-info'("Ontology Agent ~p loaded history ~p",
-                        [Namespace, NewOntState#ont_state.current_index]),
+            ?'log-info'("Ontology Agent ~p loaded history local index: ~p current index: ~p",
+                        [Namespace,
+                         NewOntState#ont_state.local_index,
+                         NewOntState#ont_state.current_index]),
 
             %% Register to events from pipeline
             gproc:reg({p, l, {bbsvx_transaction_pipeline, Namespace}}),
 
             gproc:send({p, l, {?MODULE, Namespace}}, {syncing, Namespace}),
-            {keep_state, State#state{ont_state = NewOntState, boot = root}};
+            {keep_state,
+             State#state{ont_state = NewOntState#ont_state{current_index = 0}, boot = root}};
         {error, Reason} ->
             ?'log-error'("Ontology Agent ~p failed to load history ~p", [Namespace, Reason]),
             {stop, {error, Reason}, State}
@@ -140,15 +144,17 @@ initialize_ontology(enter,
 initialize_ontology(enter,
                     _,
                     #state{namespace = Namespace,
-                           boot = {join, _ContactNodes},
+                           boot = join,
                            ont_state = #ont_state{} = OntState} =
                         State) ->
     gproc:reg({p, l, {?MODULE, Namespace}}),
     ?'log-info'("Ontology Agent ~p booting joined ontology", [Namespace]),
     case load_history(OntState, State#state.repos_table) of
         #ont_state{} = NewOntState ->
-            ?'log-info'("Ontology Agent ~p loaded history ~p",
-                        [Namespace, NewOntState#ont_state.current_index]),
+            ?'log-info'("Ontology Agent ~p loaded history local index: ~p current index: ~p",
+                        [Namespace,
+                         NewOntState#ont_state.local_index,
+                         NewOntState#ont_state.current_index]),
 
             %% Register to events from pipeline
             gproc:reg({p, l, {bbsvx_transaction_pipeline, Namespace}}),
@@ -185,10 +191,11 @@ initialize_ontology(info,
                                  type => worker,
                                  modules => [bbsvx_transaction_pipeline]}),
     {next_state, syncing, State};
-initialize_ontology(info, {wait_current_index, _}, #state{boot = {join, _}} = State) ->
+initialize_ontology(info, {wait_current_index, _}, #state{boot = join} = State) ->
     {next_state, wait_for_registration, State}.
 
 wait_for_registration(enter, _, State) ->
+    ?'log-info'("Ontology actor ~p waiting for registration", [State#state.namespace]),
     {keep_state, State};
 wait_for_registration(info,
                       {registered, CurrentIndex},
@@ -209,14 +216,23 @@ wait_for_registration(info,
                                  shutdown => 1000,
                                  type => worker,
                                  modules => [bbsvx_transaction_pipeline]}),
-    bbsvx_actor_ontology:request_segment(Namespace, LocalIndex + 1, CurrentIndex),
+    case {CurrentIndex, LocalIndex} of
+        {C, L} when C > L ->
+            bbsvx_actor_ontology:request_segment(Namespace, LocalIndex + 1, CurrentIndex);
+        {C, L} when C == L ->
+            ok;
+        _ ->
+            ?'log-error'("Current index ~p is lower than local index ~p",
+                         [CurrentIndex, LocalIndex])
+    end,
 
     {next_state,
      syncing,
      State#state{ont_state = OntState#ont_state{current_index = CurrentIndex}}}.
 
 %% @TODO : crypto: diff needs to be signed
-syncing(enter, _, #state{namespace = _Namespace} = State) ->
+syncing(enter, _, #state{namespace = Namespace} = State) ->
+    ?'log-info'("Ontology Agent ~p syncing", [Namespace]),
     {keep_state, State};
 syncing({call, From},
         get_current_index,
@@ -226,7 +242,8 @@ syncing({call, From},
 syncing(info,
         #ontology_history_request{namespace = Namespace,
                                   %% TODO : change node_entry to arc
-                                  requester = #node_entry{}, %%#node_entry{pid = RequesterPid},
+                                  requester =
+                                      ReqUlid, %%#node_entry{pid = RequesterPid},
                                   oldest_index = OldestIndex,
                                   younger_index = YoungerIndex},
         #state{} = State) ->
@@ -248,12 +265,14 @@ syncing(info,
             [O | _] ->
                 O#transaction.index
         end,
-%% TODO : change self to valid destination
-    bbsvx_server_connection:send_history(self(),
-                                         #ontology_history{namespace = Namespace,
-                                                           list_tx = History,
-                                                           oldest_index = OldestIndexRetrieved,
-                                                           younger_index = YoungerIndexRetrieved}),
+    %% TODO : change self to valid destination
+    gen_statem:cast({via, gproc, {n, l, {arc, in, ReqUlid}}},
+                    {send_history,
+                     #ontology_history{namespace = Namespace,
+                                       list_tx = History,
+                                       oldest_index = OldestIndexRetrieved,
+                                       younger_index = YoungerIndexRetrieved}}),
+
     {next_state, syncing, State};
 syncing(info, {transaction_validated, Index}, #state{ont_state = OntState} = State) ->
     {keep_state, State#state{ont_state = OntState#ont_state{current_index = Index}}};
@@ -263,11 +282,15 @@ syncing(info, #ontology_history{list_tx = ListTransactions}, #state{} = State) -
                      bbsvx_transaction_pipeline:receive_transaction(Transaction)
                   end,
                   ListTransactions),
-    {next_state, syncing, State}.
+    {next_state, syncing, State};
+%%catch all
+syncing(Type, Event, _State) ->
+    ?'log-warning'("Ontology Agent syncing received invalid call :~p", [{Type, Event}]),
+    keep_state_and_data.
 
 %% Catch all for ready state
 ready(Type, Event, _State) ->
-    ?'log-warning'("Ontology Agent received invalid call :~p", [{Type, Event}]),
+    ?'log-warning'("Ontology Agent ready received invalid call :~p", [{Type, Event}]),
     keep_state_and_data.
 
 %%%=============================================================================
@@ -278,20 +301,9 @@ ready(Type, Event, _State) ->
 request_segment(Namespace, OldestIndex, YoungerIndex) ->
     ?'log-info'("Requesting segment ~p ~p ~p", [Namespace, OldestIndex, YoungerIndex]),
     MyId = bbsvx_crypto_service:my_id(),
-    {ok, {Host, Port}} = bbsvx_network_service:my_host_port(),
     bbsvx_actor_spray:broadcast_unique_random_subset(Namespace,
                                                      #ontology_history_request{namespace =
                                                                                    Namespace,
-                                                                               requester =
-                                                                                   #node_entry{host
-                                                                                                   =
-                                                                                                   Host,
-                                                                                               port
-                                                                                                   =
-                                                                                                   Port,
-                                                                                               node_id
-                                                                                                   =
-                                                                                                   MyId},
                                                                                oldest_index =
                                                                                    OldestIndex,
                                                                                younger_index =

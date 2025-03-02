@@ -31,7 +31,9 @@ start_link(Namespace) ->
   start_link(Namespace, []).
 
 start_link(Namespace, Options) ->
-  supervisor:start_link({via, gproc, {n, l, {?MODULE, Namespace}}}, ?MODULE, [Namespace, Options]).
+  supervisor:start_link({via, gproc, {n, l, {?MODULE, Namespace}}},
+                        ?MODULE,
+                        [Namespace, Options]).
 
 %%%=============================================================================
 %%%  Callbacks
@@ -50,6 +52,12 @@ init([Namespace, Options]) ->
        shutdown => 1000,
        type => worker,
        modules => [bbsvx_actor_ontology]},
+     #{id => {bbsvx_epto_disord_component, Namespace},
+       start => {bbsvx_epto_disord_component, start_link, [Namespace, Options]},
+       restart => transient,
+       shutdown => 1000,
+       type => worker,
+       modules => [bbsvx_epto_disord_component]},
      #{id => {bbsvx_actor_spray, Namespace},
        start => {bbsvx_actor_spray, start_link, [Namespace, Options]},
        restart => transient,
@@ -61,13 +69,7 @@ init([Namespace, Options]) ->
        restart => transient,
        shutdown => 1000,
        type => worker,
-       modules => [bbsvx_actor_leader_manager]},
-     #{id => {bbsvx_epto_service, Namespace},
-       start => {bbsvx_epto_service, start_link, [Namespace, Options]},
-       restart => transient,
-       shutdown => 1000,
-       type => worker,
-       modules => [bbsvx_epto_service]}],
+       modules => [bbsvx_actor_leader_manager]}],
   {ok, {SupFlags, ChildSpecs}}.
 
 %%%=============================================================================

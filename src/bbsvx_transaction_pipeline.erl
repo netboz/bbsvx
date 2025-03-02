@@ -39,6 +39,7 @@
          current_address :: binary(),
          pending :: dict:dict()}).
 
+-type transaction_validate_stage_state() :: #transaction_validate_stage_state{}.
 -type state() :: #state{}.
 
 %%%=============================================================================
@@ -65,6 +66,7 @@ accept_transaction(#transaction{namespace = Namespace} = Transaction) ->
 
 -spec receive_transaction(transaction()) -> ok.
 receive_transaction(#transaction{namespace = Namespace} = Transaction) ->
+    ?'log-info'("Received Transaction entry point, validating ~p", [Transaction]),
     jobs:enqueue({stage_transaction_validate, Namespace}, Transaction).
 
 -spec accept_history_transaction(transaction()) -> ok.
@@ -88,7 +90,7 @@ init([Namespace,
       _Options]) ->
     ?'log-info'("Starting transaction pipeline for ~p current index:~p  local_index:~p",
                 [Namespace, CurrentIndex, LocalIndex]),
-    %% @TOOD: jobs offers many options, we mzy use them to simplify
+    %% @TOOD: jobs offers many options, we may use them to simplify
     ok = jobs:add_queue({stage_transaction_validate, Namespace}, [passive]),
 
     ok = jobs:add_queue({stage_transaction_process, Namespace}, [passive]),
@@ -146,15 +148,16 @@ transaction_accept_process(Namespace) ->
                                                          ts_created = erlang:system_time()}),
     transaction_accept_process(Namespace).
 
--spec transaction_validate_stage(binary(), ont_state()) -> no_return().
+-spec transaction_validate_stage(binary(), transaction_validate_stage_state()) ->
+                                    no_return().
 transaction_validate_stage(Namespace, ValidationState) ->
     ?'log-info'("Waiting for transaction ~p", [self()]),
     [{_, Transaction}] = jobs:dequeue({stage_transaction_validate, Namespace}, 1),
     ?'log-info'("Received Transaction, validating ~p", [Transaction]),
     case transaction_validate(Transaction, ValidationState) of
-        {stop, NewValidationState} ->
+        {stop, #transaction_validate_stage_state{} = NewValidationState} ->
             transaction_validate_stage(Namespace, NewValidationState);
-        {ValidatedTransaction, NewOntState} ->
+        {ValidatedTransaction, #transaction_validate_stage_state{} = NewOntState} ->
             jobs:enqueue({stage_transaction_process, Namespace}, ValidatedTransaction),
             case dict:take(NewOntState#transaction_validate_stage_state.current_index,
                            NewOntState#transaction_validate_stage_state.pending)
@@ -186,7 +189,9 @@ transaction_postprocess_stage(Namespace, OntState) ->
     transaction_postprocess_stage(Namespace, OntState).
 
 %% Procesing functions
--spec transaction_validate(transaction(), ont_state()) -> {transaction(), ont_state()}.
+-spec transaction_validate(transaction(), transaction_validate_stage_state()) ->
+                              {transaction(), transaction_validate_stage_state()} |
+                              {stop, transaction_validate_stage_state()}.
 transaction_validate(#transaction{index = TxIndex,
                                   current_address = CurrentTxAddress,
                                   status = processed} =
@@ -195,7 +200,7 @@ transaction_validate(#transaction{index = TxIndex,
     when TxIndex == LocalIndex + 1 ->
     %% This transaction comes from history and have been processed already by the leader
     %% we check it is valid and store it
-    ?'log-info'("Transaction ~p is already accepted, storing it", [Transaction]),
+    ?'log-info'("Accepting history transaction ~p, storing it", [Transaction]),
     %% @TODO: veriy validation of transaction
     bbsvx_transaction:record_transaction(Transaction),
     {stop,
@@ -214,7 +219,7 @@ transaction_validate(#transaction{status = processed} = Transaction,
     {stop, ValidationState#transaction_validate_stage_state{pending = NewPending}};
 transaction_validate(#transaction{ts_created = TsCreated,
                                   index = TxIndex,
-                                  status = accepted} =
+                                  status = created} =
                          Transaction,
                      #transaction_validate_stage_state{namespace = Namespace,
                                                        current_address = CurrentAddress,
@@ -224,7 +229,7 @@ transaction_validate(#transaction{ts_created = TsCreated,
                          ValidationState) ->
     NewIndex = CurrentIndex + 1,
     NewTransaction =
-        Transaction#transaction{status = accepted,
+        Transaction#transaction{status = created,
                                 index = NewIndex,
                                 prev_address = CurrentAddress},
     bbsvx_transaction:record_transaction(NewTransaction),
@@ -252,7 +257,7 @@ transaction_validate(#transaction{} = Transaction,
     bbsvx_actor_ontology:request_segment(Namespace, LocalIndex + 1, CurrentIndex),
     {stop, ValidationState#transaction_validate_stage_state{pending = NewPending}}.
 
--spec process_transaction(transaction(), ont_state()) -> ont_state().
+-spec process_transaction(transaction(), ont_state()) -> {transaction(), ont_state()}.
     %% Compute transcaton address
 
 process_transaction(#transaction{type = creation,
@@ -299,49 +304,46 @@ process_transaction(#transaction{type = goal,
 do_prove_goal(#goal{namespace = Namespace, payload = ReceivedPred} = Goal,
               #ont_state{namespace = Namespace, prolog_state = PrologState} = OntState,
               true) ->
+    ?'log-info'("Proving goal ~p as Leader", [ReceivedPred]),
     %% @TODO : Predicate validating should done in validation stage in a more robust way
-    case bbsvx_ont_service:string_to_eterm(ReceivedPred) of
-        {error, Reason} ->
-            logger:error("Error parsing goal ~p: ~p", [ReceivedPred, Reason]),
-            {error, Reason};
-        Pred ->
-            case erlog_int:prove_goal(Pred, PrologState) of
-                {succeed, #est{db = #db{ref = #db_differ{op_fifo = OpFifo}}} = NewPrologState} ->
-                    GoalResult =
-                        %% @TODO : Add signature
-                        #goal_result{namespace = Namespace,
-                                     result = succeed,
-                                     signature = <<>>,
-                                     address = Goal#goal.id,
-                                     diff = OpFifo},
-                    bbsvx_epto_service:broadcast(Namespace, GoalResult),
-                    {succeed, OntState#ont_state{prolog_state = NewPrologState}};
-                {fail, NewPrologState} ->
-                    %% @TODO : Add signature
-                    GoalResult =
-                        #goal_result{namespace = Namespace,
-                                     result = fail,
-                                     signature = <<>>,
-                                     address = Goal#goal.id,
-                                     diff = []},
-                    bbsvx_epto_service:broadcast(Namespace, GoalResult),
-                    {fail, OntState#ont_state{prolog_state = NewPrologState}};
-                Other ->
-                    logger:error("Unknown result from erlog_int:prove_goal ~p", [Other]),
-                    %% @TODO : Add signature
-                    GoalResult =
-                        #goal_result{namespace = Namespace,
-                                     result = error,
-                                     signature = <<>>,
-                                     address = Goal#goal.id,
-                                     diff = []},
-                    bbsvx_actor_spray:broadcast_unique(Namespace, GoalResult),
-                    {error, Other}
-            end
+    case erlog_int:prove_goal(ReceivedPred, PrologState) of
+        {succeed, #est{db = #db{ref = #db_differ{op_fifo = OpFifo}}} = NewPrologState} ->
+            GoalResult =
+                %% @TODO : Add signature
+                #goal_result{namespace = Namespace,
+                             result = succeed,
+                             signature = <<>>,
+                             address = Goal#goal.id,
+                             diff = OpFifo},
+            bbsvx_epto_service:broadcast(Namespace, GoalResult),
+            {succeed, OntState#ont_state{prolog_state = NewPrologState}};
+        {fail, NewPrologState} ->
+            %% @TODO : Add signature
+            GoalResult =
+                #goal_result{namespace = Namespace,
+                             result = fail,
+                             signature = <<>>,
+                             address = Goal#goal.id,
+                             diff = []},
+            bbsvx_epto_service:broadcast(Namespace, GoalResult),
+            {fail, OntState#ont_state{prolog_state = NewPrologState}};
+        Other ->
+            logger:error("Unknown result from erlog_int:prove_goal ~p", [Other]),
+            %% @TODO : Add signature
+            GoalResult =
+                #goal_result{namespace = Namespace,
+                             result = error,
+                             signature = <<>>,
+                             address = Goal#goal.id,
+                             diff = []},
+            bbsvx_actor_spray:broadcast_unique(Namespace, GoalResult),
+            {error, Other}
     end;
 do_prove_goal(_Goal, #ont_state{prolog_state = PrologState} = OntState, false) ->
+    ?'log-info'("Proving goal ~p as Follower", [_Goal]),
     [{_, GoalResult}] =
         jobs:dequeue({stage_transaction_results, OntState#ont_state.namespace}, 1),
+    ?'log-info'("Received goal result ~p", [GoalResult]),
     %% Get current leader
     case GoalResult of
         #goal_result{diff = GoalDiff, result = Result} ->
@@ -350,7 +352,7 @@ do_prove_goal(_Goal, #ont_state{prolog_state = PrologState} = OntState, false) -
             {Result, OntState#ont_state{prolog_state = PrologState#est{db = NewDb}}};
         Else ->
             logger:error("Unknown message ~p", [Else]),
-            OntState
+            {fail, OntState}
     end.
 
 %%%=============================================================================

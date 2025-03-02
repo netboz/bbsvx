@@ -10,6 +10,7 @@
 -author("yan").
 
 -behaviour(gen_server).
+
 -include_lib("logjam/include/logjam.hrl").
 
 %%%=============================================================================
@@ -26,7 +27,6 @@
 -record(state,
         {namespace :: binary(),
          broadcaster :: pid(),
-         orderer :: pid(),
          logical_clock :: pid(),
          fanout :: integer(),
          ttl :: integer()}).
@@ -37,8 +37,7 @@
 %%% API
 %%%=============================================================================
 
--spec start_link(Namespace :: binary(), Options :: map()) ->
-                    {ok, pid()} | {error, {already_started, pid()}} | {error, Reason :: any()}.
+-spec start_link(Namespace :: binary(), Options :: map()) -> gen_server:start_ret().
 start_link(Namespace, Options) ->
     gen_server:start_link({via, gproc, {n, l, {?MODULE, Namespace}}},
                           ?MODULE,
@@ -47,7 +46,7 @@ start_link(Namespace, Options) ->
 
 -spec broadcast(binary(), term()) -> ok.
 broadcast(Namespace, Msg) ->
-    gen_server:call({via, gproc, {n, l, {bbsvx_epto_dissemination_comp, Namespace}}},
+    gen_server:call({via, gproc, {n, l, {bbsvx_epto_disord_component, Namespace}}},
                     {epto_broadcast, Msg}).
 
 %%%=============================================================================
@@ -55,32 +54,31 @@ broadcast(Namespace, Msg) ->
 %%%=============================================================================
 
 init([Namespace, Options]) ->
-    Fanout = maps:get(fanout, Options, 15),
-    Ttl = maps:get(ttl, Options, 16),
+    Fanout = maps:get(fanout, Options, 4),
+    Ttl = maps:get(ttl, Options, 10),
     ?'log-info'("Starting EPTO service for namespace ~p with fanout ~p and ttl ~p",
                 [Namespace, Fanout, Ttl]),
-    %%TODO : Not sure next line is needed
     {ok, LogicalClock} = bbsvx_epto_logical_clock:start_link(Namespace, Ttl),
-    {ok, Orderer} = bbsvx_epto_ordering_component:start_link(Namespace, LogicalClock),
 
     {ok, Broadcaster} =
-        bbsvx_epto_dissemination_comp:start_link(Namespace, Fanout, Ttl, Orderer, LogicalClock),
+        bbsvx_epto_disord_component:start_link(Namespace, Fanout, Ttl, LogicalClock),
     {ok,
      #state{namespace = Namespace,
             broadcaster = Broadcaster,
             logical_clock = LogicalClock,
             fanout = Fanout,
-            ttl = Ttl,
-            orderer = Orderer}}.
+            ttl = Ttl}}.
 
 -spec handle_call(term(), gen_server:from(), state()) ->
                      {reply, term(), state()} |
                      {noreply, state()} |
                      {stop, term(), term(), state()}.
-handle_call({set_fanout_tll, Fanout, Ttl}, _From, State) ->
+handle_call({set_fanout_tll, Fanout, Ttl}, _From, State)
+    when is_integer(Fanout) andalso is_integer(Ttl) ->
     Reply = gen_server:call(State#state.broadcaster, {set_fanout_ttl, Fanout, Ttl}),
     {reply, Reply, State#state{fanout = Fanout, ttl = Ttl}};
-handle_call({get_fanout_tll, Fanout, Ttl}, _From, State) ->
+handle_call({get_fanout_tll, Fanout, Ttl}, _From, State)
+    when is_integer(Fanout) andalso is_integer(Ttl) ->
     Reply = {ok, State#state.fanout, State#state.ttl},
     {reply, Reply, State#state{fanout = Fanout, ttl = Ttl}};
 handle_call(Msg, From, State) ->

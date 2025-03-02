@@ -77,22 +77,6 @@ create_transaction_table(Namespace) ->
     of
         {atomic, ok} ->
             %% Table created, we insert genesis transaction
-            GenesisTransaction =
-                #transaction{type = creation,
-                             index = 0,
-                             current_address = <<"0">>,
-                             prev_address = <<"-1">>,
-                             prev_hash = <<"0">>,
-                             signature = <<"">>, %% @TODO: Should be signature of ont owner
-                             ts_created = erlang:system_time(),
-                             ts_processed = erlang:system_time(),
-                             source_ontology_id = <<"">>,
-                             leader = bbsvx_crypto_service:my_id(),
-                             status = confirmed,
-                             diff = [],
-                             namespace = Namespace,
-                             payload = []},
-            record_transaction(GenesisTransaction),
             ok;
         {aborted, {already_exists, _}} ->
             {error, table_already_exists}
@@ -103,7 +87,8 @@ record_transaction(Transaction) ->
     ?'log-info'("bbsvx_transaction:record_transaction ~p", [Transaction]),
     TableName = bbsvx_ont_service:binary_to_table_name(Transaction#transaction.namespace),
     F = fun() -> mnesia:write(TableName, Transaction, write) end,
-    mnesia:activity(transaction, F).
+    mnesia:activity(transaction, F),
+    ok.
 
 -spec read_transaction(Namespace :: binary() | atom(), TransactonAddress :: binary()) ->
                           transaction() | not_found.

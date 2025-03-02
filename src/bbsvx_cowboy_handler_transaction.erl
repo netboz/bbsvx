@@ -76,7 +76,7 @@ accept_transaction(Req0,
             ?'log-error'("Internal error ~p:~p", [A, B]),
             Req3 =
                 cowboy_req:set_resp_body(
-                    jiffy:encode([#{error => <<"network_internal_error">>}]),
+                    jiffy:encode([#{error => <<"transac_network_internal_error">>}]),
                     Req0),
             {true, Req3, State}
     end.

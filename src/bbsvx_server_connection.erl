@@ -509,11 +509,11 @@ parse_packet(Buffer,
       bbsvx_transaction_pipeline:receive_transaction(Transacion),
       parse_packet(BinLeft, Action, State);
     {complete,
-     #ontology_history_request{namespace = NameSpace, requester = Requester} = Event,
+     #ontology_history_request{namespace = NameSpace} = Event,
      Index} ->
       <<_:Index/binary, BinLeft/binary>> = Buffer,
       gproc:send({n, l, {bbsvx_actor_ontology, NameSpace}},
-                 Event#ontology_history_request{requester = Requester#node_entry{}}),
+                 Event#ontology_history_request{requester = MyUlid}),
       parse_packet(BinLeft, Action, State);
     {complete, #exchange_in{} = Msg, Index} ->
       <<_:Index/binary, BinLeft/binary>> = Buffer,
