@@ -72,14 +72,14 @@ can_create_shared_ontology(_Config) ->
                       []),
     timer:sleep(50),
     %% Check spray agent is running
-    Pid = gproc:where({n, l, {bbsvx_actor_spray_view, <<"ont_test1">>}}),
+    Pid = gproc:where({n, l, {bbsvx_actor_spray, <<"ont_test1">>}}),
     ?assertEqual(true, is_pid(Pid)),
     %% Check epto agent is running
     Pid1 = gproc:where({n, l, {leader_manager, <<"ont_test1">>}}),
     ct:pal("Pid1 ~p", [Pid1]),
     ?assertEqual(true, is_pid(Pid1)),
     %% Check leader manager is running
-    Pid2 = gproc:where({n, l, {bbsvx_epto_service, <<"ont_test1">>}}),
+    Pid2 = gproc:where({n, l, {bbsvx_epto_disord_component, <<"ont_test1">>}}),
     ?assertEqual(true, is_pid(Pid2)),
     
     ?assertEqual(201, ReturnCode).
@@ -122,11 +122,11 @@ updating_an_ont_from_local_to_shared(_Config) ->
                       []),
     ?assertEqual(204, ReturnCode2),
     timer:sleep(50),    %% check processes are running
-    Pid = gproc:where({n, l, {bbsvx_actor_spray_view, <<"ont_test3">>}}),
+    Pid = gproc:where({n, l, {bbsvx_actor_spray, <<"ont_test3">>}}),
     ?assertEqual(true, is_pid(Pid)),
     Pid1 = gproc:where({n, l, {leader_manager, <<"ont_test3">>}}),
     ?assertEqual(true, is_pid(Pid1)),
-    Pid2 = gproc:where({n, l, {bbsvx_epto_service, <<"ont_test3">>}}),
+    Pid2 = gproc:where({n, l, {bbsvx_epto_disord_component, <<"ont_test3">>}}),
     ?assertEqual(true, is_pid(Pid2)).
 updating_an_ont_from_shared_to_local(_Config) ->
     DBody = jiffy:encode(#{namespace => <<"ont_test4">>, type => <<"shared">>}),

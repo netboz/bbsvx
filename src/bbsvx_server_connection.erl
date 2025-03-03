@@ -442,7 +442,7 @@ connected({call, From}, {accept_join, #header_join_ack{} = Header}, State) ->
   {keep_state, State};
 connected({call, From},
           {close, Reason},
-          #state{namespace = NameSpace, my_ulid = MyUlid} = State) ->
+          #state{} = State) ->
   ?'log-info'("~p closing connection from  ~p to us. Reason : ~p",
               [?MODULE, State#state.origin_node, Reason]),
   gen_statem:reply(From, ok),
@@ -582,11 +582,6 @@ arc_event(NameSpace, MyUlid, Event) ->
              #incoming_event{event = Event,
                              direction = in,
                              origin_arc = MyUlid}).
-
--spec build_metric_view_name(NameSpace :: binary(), MetricName :: binary()) -> atom().
-build_metric_view_name(NameSpace, MetricName) ->
-  binary_to_atom(iolist_to_binary([MetricName,
-                                   binary:replace(NameSpace, <<":">>, <<"_">>)])).
 
 %%%=============================================================================
 %%% Eunit Tests

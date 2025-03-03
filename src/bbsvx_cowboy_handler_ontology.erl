@@ -155,11 +155,11 @@ accept_onto(Req0, #{onto := PreviousOntState, body := Body} = State) ->
         case maps:get(<<"type">>, Body, undefined) of
             undefined ->
                 local;
-            Value when Value == local orelse Value == shared ->
+            Value when Value == <<"local">> orelse Value == <<"shared">> ->
                 binary_to_existing_atom(Value)
         end,
     case Body of
-        #{<<"namespace">> := Namespace} ->
+        #{<<"namespace">> := Namespace}  when Type == local orelse Type == shared ->
             ProposedOnt =
                 #ontology{namespace = Namespace,
                           version = maps:get(<<"version">>, Body, <<"0.0.1">>),

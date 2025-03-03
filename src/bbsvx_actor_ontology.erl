@@ -78,7 +78,7 @@ init([Namespace, Options]) ->
                          Options,
                          {bbsvx_erlog_db_ets, bbsvx_ont_service:binary_to_table_name(Namespace)}),
             {ok, #est{} = PrologState} = erlog_int:new(bbsvx_erlog_db_differ, {DbRef, DbMod}),
-            Boot = maps:get(boot, Options),
+            Boot = maps:get(boot, Options, join),
             ContactNodes = maps:get(contact_nodes, Options, []),
             OntState =
                 #ont_state{namespace = Namespace,

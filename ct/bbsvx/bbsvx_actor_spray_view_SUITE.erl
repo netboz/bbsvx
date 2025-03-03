@@ -22,7 +22,6 @@
 
 -export([all/0, init_per_suite/1, init_per_testcase/2, end_per_testcase/2,
          end_per_suite/1]).
--export([example_test/1]).
 %-export([basic/1, args/1, named/1, restart_node/1, multi_node/1]).
 
 %%%=============================================================================
@@ -31,7 +30,7 @@
 
 
 all() ->
-    [example_test].
+    [].
 
 init_per_suite(Config) ->
     Node1 = 'node1',
@@ -58,31 +57,14 @@ end_per_suite(Config) ->
 %%% Tests
 %%%=============================================================================
 
-example_test(_Config) ->
-    CodePath = code:get_path(),
-    PathFlag =
-        "-pa "
-        ++ lists:concat(
-               lists:join(" ", CodePath)),
-    ct:pal("PathFlag ~p", [file:get_cwd()]),
-   % {ok, Peer, Node} = peer:start(#{name => six, connection => standard_io}),
-    %ct:pal("----> ~p", [peer:call(Peer, application, start, [bbsvx])]),
-    %ct:pal("----> ~p", [peer:call(Peer, code, get_path, [])]),
-
-    ?assertEqual(true, false, <<"Example Comment">>).
 
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
 start_node(NodeName, _Port, root) ->
     %% need to set the code path so the same modules are available in the slave
-    CodePath = code:get_path(),
-    PathFlag =
-        "-pa "
-        ++ lists:concat(
-               lists:join(" ", CodePath)),
-    %{ok, _} = ct_slave:start(NodeName, [{erl_flags, PathFlag}]),
-    {ok, Peer, Node} =?CT_PEER(#{name => NodeName, connection => standard_io,  args => ["-pa "|code:get_path()]}),
+    
+    {ok, Peer, _Node} =?CT_PEER(#{name => NodeName, connection => standard_io,  args => ["-pa "|code:get_path()]}),
     %% set the required environment for riak core
     DataDir = "./data/" ++ atom_to_list(NodeName),
     peer:call(Peer, application, load, [bbsvx]),
@@ -98,18 +80,10 @@ start_node(NodeName, _Port, root) ->
            [peer:call(Peer, application, ensure_all_started, [bbsvx])]),
 
     ok;
-start_node(NodeName, _Port, {join, [{RootHost, RootPort}]}) ->
-    %% need to set the code path so the same modules are available in the slave
-    CodePath = code:get_path(),
-    PathFlag =
-        "-pa "
-        ++ lists:concat(
-               lists:join(" ", CodePath)),
-    %{ok, _} = ct_slave:start(NodeName, [{erl_flags, PathFlag}]),
-    %{ok, Peer, Node} = peer:start(#{connection => standard_io, host => peer, args => ["-init_root", RootHost, integer_to_list(RootPort)]}),
+start_node(NodeName, _Port, {join, [{_RootHost, _RootPort}]}) ->
     Name = ?CT_PEER_NAME(),
    % ct:pal("---->pathflag ~p", [PathFlag]),
-    {ok, Peer, Node} = ?CT_PEER(#{name => Name,connection => standard_io,  args => ["-pa "|code:get_path()]}),
+    {ok, Peer, _Node} = ?CT_PEER(#{name => Name,connection => standard_io,  args => ["-pa "|code:get_path()]}),
 
     %% set the required environment for riak core
     DataDir = "./data/" ++ atom_to_list(NodeName),

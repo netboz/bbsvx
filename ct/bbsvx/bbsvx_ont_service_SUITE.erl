@@ -103,7 +103,7 @@ connecting_an_ontology_starts_necessary_processes(_Config) ->
                                                  type = local,
                                                  contact_nodes = []}),
     ok = bbsvx_ont_service:connect_ontology(OntNamespace),
-    P = gproc:where({n, l, {bbsvx_actor_spray_view, OntNamespace}}),
+    P = gproc:where({n, l, {bbsvx_actor_spray, OntNamespace}}),
     ct:pal("Spray view pid ~p", [P]),
     ?assertMatch(true, is_pid(P)).
 

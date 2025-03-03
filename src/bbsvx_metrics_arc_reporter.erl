@@ -31,8 +31,6 @@
 
 -record(state, {my_id :: binary()}).
 
--define(DELAY, 1000).
-
 %%%=============================================================================
 %%% API
 %%%=============================================================================
@@ -58,7 +56,7 @@ init([]) ->
     gproc:reg({p, l, {spray_exchange, <<"bbsvx:root">>}}),
     ?'log-info'("Starting graph visualizer arc reporter with id: ~p", [MyId]),
     %% Get my host port
-    {ok, {Host, Port}} = bbsvx_network_service:my_host_port(),
+    {ok, {Host, _Port}} = bbsvx_network_service:my_host_port(),
     inets:start(),
     R = inets:start(httpd,
                     [{port, 7080},
@@ -105,7 +103,7 @@ running(info,
     Json = jiffy:encode(Data),
     %%?'log-info'("add edge post data: ~p", [Data]),
     %% Post json data to http://graph-visualizer/api/edges
-    R = httpc:request(post,
+    httpc:request(post,
                       {"http://graph-visualizer:3400/edges/add", [], "application/json", Json},
                       [],
                       []),
@@ -129,11 +127,10 @@ running(info,
     %% Encode Data to json
     Json = jiffy:encode(Data),
     %% Post json data to http://graph-visualizer/api/edges
-    R = httpc:request(post,
+    httpc:request(post,
                       {"http://graph-visualizer:3400/edges/remove", [], "application/json", Json},
                       [],
                       []),
-    %?'log-info'("remove edge response: ~p", [R]),
     {next_state, running, State};
 %% manage node start
 running(info,
@@ -167,7 +164,7 @@ running(info,
     %% Encode Data to json
     Json = jiffy:encode(Data),
     %% Post json data to http://graph-visualizer/nodes
-    R = httpc:request(post,
+    httpc:request(post,
                       {"http://graph-visualizer:3400/nodes/add", [], "application/json", Json},
                       [],
                       []),
@@ -203,7 +200,7 @@ running(info,
     %% Encode Data to json
     Json = jiffy:encode(Data),
     %% Post json data to http://graph-visualizer/nodes
-    R = httpc:request(post,
+    httpc:request(post,
                       {"http://graph-visualizer:3400/nodes/add", [], "application/json", Json},
                       [],
                       []),
@@ -230,16 +227,13 @@ do(Req) ->
     end.
 
 % Handle PUT requests
-handle_put(Req) ->
+handle_put(_Req) ->
     % Process the PUT request body and respond
-    Body = proplists:get_value(content, Req, ""),
-    io:format("Received PUT request: ~s~n", [Body]),
     {200, cors_headers(), <<"PUT request received">>}.
 
 % Handle OPTIONS requests for preflight
 handle_cors_preflight(_Req) ->
     %% Console log
-    io:format("Received CORS preflight request~n"),
     {204, cors_headers(), <<>>}.
 
 % Utility function to determine the request method
