@@ -11,8 +11,6 @@
 
 -behaviour(gen_server).
 
--include_lib("logjam/include/logjam.hrl").
-
 %%%=============================================================================
 %%% Export and Defs
 %%%=============================================================================
@@ -24,14 +22,7 @@
          code_change/3]).
 
 %% Loop state
--record(state,
-        {namespace :: binary(),
-         broadcaster :: pid(),
-         logical_clock :: pid(),
-         fanout :: integer(),
-         ttl :: integer()}).
-
--type state() :: #state{}.
+-record(state, {namespace :: binary()}).
 
 %%%=============================================================================
 %%% API
@@ -53,34 +44,10 @@ broadcast(Namespace, Msg) ->
 %%% Gen Server Callbacks
 %%%=============================================================================
 
-init([Namespace, Options]) ->
-    Fanout = maps:get(fanout, Options, 4),
-    Ttl = maps:get(ttl, Options, 10),
-    ?'log-info'("Starting EPTO service for namespace ~p with fanout ~p and ttl ~p",
-                [Namespace, Fanout, Ttl]),
-    {ok, LogicalClock} = bbsvx_epto_logical_clock:start_link(Namespace, Ttl),
-
-    {ok, Broadcaster} =
-        bbsvx_epto_disord_component:start_link(Namespace, Fanout, Ttl, LogicalClock),
+init([Namespace, _Options]) ->
     {ok,
-     #state{namespace = Namespace,
-            broadcaster = Broadcaster,
-            logical_clock = LogicalClock,
-            fanout = Fanout,
-            ttl = Ttl}}.
+     #state{namespace = Namespace}}.
 
--spec handle_call(term(), gen_server:from(), state()) ->
-                     {reply, term(), state()} |
-                     {noreply, state()} |
-                     {stop, term(), term(), state()}.
-handle_call({set_fanout_tll, Fanout, Ttl}, _From, State)
-    when is_integer(Fanout) andalso is_integer(Ttl) ->
-    Reply = gen_server:call(State#state.broadcaster, {set_fanout_ttl, Fanout, Ttl}),
-    {reply, Reply, State#state{fanout = Fanout, ttl = Ttl}};
-handle_call({get_fanout_tll, Fanout, Ttl}, _From, State)
-    when is_integer(Fanout) andalso is_integer(Ttl) ->
-    Reply = {ok, State#state.fanout, State#state.ttl},
-    {reply, Reply, State#state{fanout = Fanout, ttl = Ttl}};
 handle_call(Msg, From, State) ->
     logger:warning("Node : ~p  Dissemination component got unmanaged call : ~p", [From, Msg]),
     {reply, ok, State}.

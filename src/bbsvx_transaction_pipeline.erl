@@ -26,21 +26,18 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
 
--define(SERVER, ?MODULE).
-
 %% Loop state
 -record(state, {namespace :: binary()}).
 -record(transaction_validate_stage_state,
         {namespace :: binary(),
-         previous_ts :: binary() | undefined,
-         current_ts :: binary(),
+         previous_ts :: number() | undefined,
+         current_ts :: number(),
          current_index :: integer(),
          local_index :: integer(),
          current_address :: binary(),
-         pending :: dict:dict()}).
+         pending = #{} :: map()}).
 
 -type transaction_validate_stage_state() :: #transaction_validate_stage_state{}.
--type state() :: #state{}.
 
 %%%=============================================================================
 %%% API
@@ -56,7 +53,7 @@ start_link(Namespace, OntState, Options) ->
 
 %%%=============================================================================
 %%% @doc This function is the entry point to start processing a transaction.
-%%% @spec accept_transaction(Transaction :: transaction()) -> ok.
+%%%
 %%% @end
 %%%=============================================================================
 
@@ -112,9 +109,7 @@ init([Namespace,
                                                                                local_index =
                                                                                    LocalIndex,
                                                                                current_ts =
-                                                                                   CurrentTs,
-                                                                               pending =
-                                                                                   dict:new()})
+                                                                                   CurrentTs})
                end),
     spawn_link(fun() -> transaction_process_stage(Namespace, OntState) end),
     spawn_link(fun() -> transaction_postprocess_stage(Namespace, OntState) end),
@@ -159,8 +154,8 @@ transaction_validate_stage(Namespace, ValidationState) ->
             transaction_validate_stage(Namespace, NewValidationState);
         {ValidatedTransaction, #transaction_validate_stage_state{} = NewOntState} ->
             jobs:enqueue({stage_transaction_process, Namespace}, ValidatedTransaction),
-            case dict:take(NewOntState#transaction_validate_stage_state.current_index,
-                           NewOntState#transaction_validate_stage_state.pending)
+            case maps:get(NewOntState#transaction_validate_stage_state.current_index,
+                          NewOntState#transaction_validate_stage_state.pending)
             of
                 {PendingTransaction, NewPending} ->
                     jobs:enqueue(stage_transaction_validate, PendingTransaction),
@@ -215,15 +210,13 @@ transaction_validate(#transaction{status = processed} = Transaction,
     ?'log-info'("Storing history transaction for later ~p   Current Index : "
                 "~p    Local index ~p",
                 [Transaction, CurrentIndex, LocalIndex]),
-    NewPending = dict:store(Transaction#transaction.index, Transaction, Pending),
+    NewPending = maps:put(Transaction#transaction.index, Transaction, Pending),
     {stop, ValidationState#transaction_validate_stage_state{pending = NewPending}};
 transaction_validate(#transaction{ts_created = TsCreated,
-                                  index = TxIndex,
                                   status = created} =
                          Transaction,
                      #transaction_validate_stage_state{namespace = Namespace,
                                                        current_address = CurrentAddress,
-                                                       local_index = LocalIndex,
                                                        current_index = CurrentIndex,
                                                        current_ts = CurrentTs} =
                          ValidationState) ->
@@ -253,7 +246,7 @@ transaction_validate(#transaction{} = Transaction,
                 "index ~p",
                 [Transaction, CurrentIndex, LocalIndex]),
     %% @TODO: Check if transaction is already in pending
-    NewPending = dict:store(Transaction#transaction.index, Transaction, Pending),
+    NewPending = maps:put(Transaction#transaction.index, Transaction, Pending),
     bbsvx_actor_ontology:request_segment(Namespace, LocalIndex + 1, CurrentIndex),
     {stop, ValidationState#transaction_validate_stage_state{pending = NewPending}}.
 
@@ -339,8 +332,8 @@ do_prove_goal(#goal{namespace = Namespace, payload = ReceivedPred} = Goal,
             bbsvx_actor_spray:broadcast_unique(Namespace, GoalResult),
             {error, Other}
     end;
-do_prove_goal(_Goal, #ont_state{prolog_state = PrologState} = OntState, false) ->
-    ?'log-info'("Proving goal ~p as Follower", [_Goal]),
+do_prove_goal(Goal, #ont_state{prolog_state = PrologState} = OntState, false) ->
+    ?'log-info'("Proving goal ~p as Follower", [Goal]),
     [{_, GoalResult}] =
         jobs:dequeue({stage_transaction_results, OntState#ont_state.namespace}, 1),
     ?'log-info'("Received goal result ~p", [GoalResult]),

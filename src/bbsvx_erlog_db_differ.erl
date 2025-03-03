@@ -17,7 +17,9 @@
 -behaviour(bbsvx_erlog_db_behaviour).
 
 -include("bbsvx.hrl").
+
 -include_lib("logjam/include/logjam.hrl").
+
 %% new(InitArgs) -> Db.
 -callback new(InitArgs :: term()) -> term().
 %% add_built_in(Db, Functor) -> Db.
@@ -26,8 +28,7 @@
 %% add_compiled_code(Db, Functor, Module, Function) -> {ok,Db} | error.
 %%  Add functor as a compiled procedure with code in M:F in the
 %%  database. Check that it is not a built-in, if so return error.
--callback add_compiled_proc(term(), functor(), atom(), atom()) ->
-                               {ok, term()} | error.
+-callback add_compiled_proc(term(), functor(), atom(), atom()) -> {ok, term()} | error.
 %% asserta_clause(Db, Functor, Head, Body) -> {ok,NewDb} | error.
 %% assertz_clause(Db, Functor, Head, Body) -> {ok,NewDb} | error.
 %% Insert a clause at the beginning or end of the database.
@@ -143,7 +144,8 @@ abolish_clauses(#db_differ{out_db = #db{mod = OutMod, ref = Ref} = Db, op_fifo =
                 Functor) ->
     %% Call outmod to do the real work
     {ok, NewRef} = OutMod:abolish_clauses(Ref, Functor),
-    {ok, DiffRef#db_differ{out_db = Db#db{ref = NewRef}, op_fifo = [{abolish, Functor} | OpFifo]}}.
+    {ok,
+     DiffRef#db_differ{out_db = Db#db{ref = NewRef}, op_fifo = [{abolish, Functor} | OpFifo]}}.
 
 %% get_procedure(Db, Functor) ->
 %%        built_in | {code,{Mod,Func}} | {clauses,[Clause]} | undefined.
@@ -172,7 +174,7 @@ get_interpreted_functors(#db_differ{out_db = #db{mod = OutMod, ref = Ref}}) ->
 %%% @returns {ok, NewDbState} if the diff was successfully applied, {error, Reason} otherwise
 %%% @end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
--spec apply_diff(list(), db()) -> {ok, db()}.
+-spec apply_diff([term()], db()) -> {ok, db()}.
 apply_diff(GoalDiff, #db{mod = Mod} = DbIn) ->
     %% @TODO : This can be avoided by making diff commutative
     %% Apply the diff to the database state

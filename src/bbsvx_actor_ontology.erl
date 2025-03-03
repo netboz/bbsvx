@@ -36,8 +36,6 @@
          db_ref :: term(),
          my_id :: binary() | undefined}).
 
--type state() :: #state{}.
-
 %%%=============================================================================
 %%% API
 %%%=============================================================================
@@ -126,7 +124,8 @@ initialize_ontology(enter,
     %% For now we consider booting allowed to have history
     case load_history(OntState, State#state.repos_table) of
         #ont_state{} = NewOntState ->
-            ?'log-info'("Ontology Agent ~p loaded history local index: ~p current index: ~p",
+            ?'log-info'("Ontology Agent ~p loaded history as root local index: ~p current "
+                        "index: ~p",
                         [Namespace,
                          NewOntState#ont_state.local_index,
                          NewOntState#ont_state.current_index]),
@@ -151,7 +150,8 @@ initialize_ontology(enter,
     ?'log-info'("Ontology Agent ~p booting joined ontology", [Namespace]),
     case load_history(OntState, State#state.repos_table) of
         #ont_state{} = NewOntState ->
-            ?'log-info'("Ontology Agent ~p loaded history local index: ~p current index: ~p",
+            ?'log-info'("Ontology Agent ~p loaded history as join, local index: ~p current "
+                        "index: ~p",
                         [Namespace,
                          NewOntState#ont_state.local_index,
                          NewOntState#ont_state.current_index]),
@@ -300,7 +300,6 @@ ready(Type, Event, _State) ->
 -spec request_segment(binary(), integer(), integer()) -> {ok, integer()}.
 request_segment(Namespace, OldestIndex, YoungerIndex) ->
     ?'log-info'("Requesting segment ~p ~p ~p", [Namespace, OldestIndex, YoungerIndex]),
-    MyId = bbsvx_crypto_service:my_id(),
     bbsvx_actor_spray:broadcast_unique_random_subset(Namespace,
                                                      #ontology_history_request{namespace =
                                                                                    Namespace,

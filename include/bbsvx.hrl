@@ -36,7 +36,7 @@
          list_tx :: [transaction()]}).
 -record(ontology_history_request,
         {namespace :: binary(),
-         requester :: arc(),
+         requester :: arc() | undefined,
          oldest_index :: integer(),
          younger_index :: integer()}).
 -record(db_differ, {out_db :: db(), op_fifo = [] :: [functor()]}).
@@ -81,9 +81,9 @@
          prev_hash :: binary(),
          current_address :: binary(),
          namespace :: binary(),
-         leader :: binary(),
+         leader :: binary() | undefined,
          payload :: term(),
-         diff :: [term()],
+         diff = [] :: [term()],
          status = created :: atom()}).
 -record(transaction_payload_init_ontology,
         {namespace :: binary(), contact_nodes = [] :: [node_entry()]}).

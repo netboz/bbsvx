@@ -21,14 +21,16 @@
 
 -spec root_exits() -> boolean().
 root_exits() ->
-    Tablelist = mnesia:system_info(tables),
-    lists:member(bbsvx_root, Tablelist).
+    case mnesia:table_info(bbsvx_root, size) of
+        {aborted, {no_exists, _}} -> false;
+        _ -> true
+    end.
 
 -spec new_root_ontology() -> ok | {error, Reason :: atom()}.
 new_root_ontology() ->
     create_transaction_table(<<"bbsvx:root">>).
 
--spec init_shared_ontology(Namespace :: binary(), Options :: map()) ->
+-spec init_shared_ontology(Namespace :: binary(), Options :: list()) ->
                               ok | {error, Reason :: atom()}.
 init_shared_ontology(Namespace, Options) ->
     case mnesia:dirty_read(?INDEX_TABLE, Namespace) of
@@ -46,6 +48,7 @@ init_shared_ontology(Namespace, Options) ->
                            mnesia:write(#transaction{type = creation,
                                                      current_address = <<"0">>,
                                                      prev_address = <<"-1">>,
+                                                     prev_hash = <<"-1">>,
                                                      index = 0,
                                                      signature = <<"">>,
                                                      ts_created = erlang:system_time(),
@@ -56,9 +59,10 @@ init_shared_ontology(Namespace, Options) ->
                                                      namespace = Namespace,
                                                      payload = []})
                         end,
-                    mnesia:activity(transaction, FunNew);
+                    mnesia:activity(transaction, FunNew),
+                    ok;
                 {error, table_already_exists} ->
-                    ok
+                    {error, table_already_exists}
             end;
         _ ->
             {error, ontology_already_exists}
@@ -90,7 +94,7 @@ record_transaction(Transaction) ->
     mnesia:activity(transaction, F),
     ok.
 
--spec read_transaction(Namespace :: binary() | atom(), TransactonAddress :: binary()) ->
+-spec read_transaction(Namespace :: binary() | atom(), TransactonAddress :: integer()) ->
                           transaction() | not_found.
 read_transaction(TableName, TransactonAddress) when is_atom(TableName) ->
     case  mnesia:dirty_read({TableName, TransactonAddress}) of

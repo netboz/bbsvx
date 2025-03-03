@@ -155,7 +155,7 @@ accept_onto(Req0, #{onto := PreviousOntState, body := Body} = State) ->
         case maps:get(<<"type">>, Body, undefined) of
             undefined ->
                 local;
-            Value ->
+            Value when Value == local orelse Value == shared ->
                 binary_to_existing_atom(Value)
         end,
     case Body of
@@ -197,16 +197,14 @@ accept_onto(Req0, #{onto := PreviousOntState, body := Body} = State) ->
             {false, Req2, State}
     end.
 
-accept_goal(Req0,
-            #{namespace := Namespace, goal := Payload} =
-                State) ->
+accept_goal(Req0, #{namespace := Namespace, goal := Payload} = State) ->
     ?'log-info'("Cowboy Handler : New goal ~p", [Req0]),
 
     try bbsvx_ont_service:prove(Namespace, Payload) of
         {ok, Id} ->
             Req1 =
                 cowboy_req:set_resp_body(
-                    jiffy:encode([#{status => <<"accepted">>}]), Req0),
+                    jiffy:encode([#{status => <<"accepted">>, <<"id">> => Id}]), Req0),
             {true, Req1, State};
         {error, Reason} ->
             Req2 =

@@ -118,8 +118,10 @@ prove(Namespace, Predicate) ->
 %%%=============================================================================
 
 init([]) ->
-    case have_index_table() of
-        true ->
+    case mnesia:create_table(?INDEX_TABLE,
+                             [{attributes, record_info(fields, ontology)}, {disc_copies, [node()]}])
+    of
+        {aborted, {already_exists, ?INDEX_TABLE}} ->
             ?'log-info'("Onto service : waiting for index table ~p", [?INDEX_TABLE]),
             case mnesia:wait_for_tables([?INDEX_TABLE], ?INDEX_LOAD_TIMEOUT) of
                 {timeout, _} ->
@@ -131,80 +133,70 @@ init([]) ->
                     boot_indexed_ontologies(),
                     {ok, #state{my_id = MyId}}
             end;
-        false ->
-            case mnesia:create_table(?INDEX_TABLE,
-                                     [{attributes, record_info(fields, ontology)},
-                                      {disc_copies, [node()]}])
-            of
-                {atomic, ok} ->
-                    MyId = bbsvx_crypto_service:my_id(),
-                    bbsvx_transaction:new_root_ontology(),
-                    case init:get_argument(init_root) of
-                        {ok, [["root"]]} ->
-                            ?'log-info'("Onto service : boot type : root"),
+        {atomic, ok} ->
+            MyId = bbsvx_crypto_service:my_id(),
+            bbsvx_transaction:new_root_ontology(),
+            case init:get_argument(init_root) of
+                {ok, [["root"]]} ->
+                    ?'log-info'("Onto service : boot type : root"),
 
-                            GenesisTransaction =
-                                #transaction{type = creation,
-                                             index = 0,
-                                             current_address = <<"0">>,
-                                             prev_address = <<"-1">>,
-                                             prev_hash = <<"0">>,
-                                             signature =
-                                                 <<"">>, %% @TODO: Should be signature of ont owner
-                                             ts_created = erlang:system_time(),
-                                             ts_processed = erlang:system_time(),
-                                             source_ontology_id = <<"">>,
-                                             leader = bbsvx_crypto_service:my_id(),
-                                             status = processed,
-                                             diff = [],
-                                             namespace = <<"bbsvx:root">>,
-                                             payload = []},
-                            bbsvx_transaction:record_transaction(GenesisTransaction),
+                    GenesisTransaction =
+                        #transaction{type = creation,
+                                     index = 0,
+                                     current_address = <<"0">>,
+                                     prev_address = <<"-1">>,
+                                     prev_hash = <<"0">>,
+                                     signature =
+                                         <<"">>, %% @TODO: Should be signature of ont owner
+                                     ts_created = erlang:system_time(),
+                                     ts_processed = erlang:system_time(),
+                                     source_ontology_id = <<"">>,
+                                     leader = bbsvx_crypto_service:my_id(),
+                                     status = processed,
+                                     diff = [],
+                                     namespace = <<"bbsvx:root">>,
+                                     payload = []},
+                    bbsvx_transaction:record_transaction(GenesisTransaction),
 
-                            {ok, {MyHost, MyPort}} = bbsvx_network_service:my_host_port(),
+                    {ok, {MyHost, MyPort}} = bbsvx_network_service:my_host_port(),
 
-                            %% Format contact nodes
-                            ContactNodes = [#node_entry{host = MyHost, port = MyPort}],
-                            logger:info("Onto service : contact nodes ~p", [ContactNodes]),
-                            OntEntry =
-                                #ontology{namespace = <<"bbsvx:root">>,
-                                          version = <<"0.0.1">>,
-                                          type = shared,
-                                          contact_nodes = ContactNodes},
-                            mnesia:activity(transaction, fun() -> mnesia:write(OntEntry) end),
-                            supervisor:start_child(bbsvx_sup_shared_ontologies,
-                                                   [<<"bbsvx:root">>,
-                                                    #{contact_nodes => ContactNodes,
-                                                      boot => root}]),
+                    %% Format contact nodes
+                    ContactNodes = [#node_entry{host = MyHost, port = MyPort}],
+                    logger:info("Onto service : contact nodes ~p", [ContactNodes]),
+                    OntEntry =
+                        #ontology{namespace = <<"bbsvx:root">>,
+                                  version = <<"0.0.1">>,
+                                  type = shared,
+                                  contact_nodes = ContactNodes},
+                    mnesia:activity(transaction, fun() -> mnesia:write(OntEntry) end),
+                    supervisor:start_child(bbsvx_sup_shared_ontologies,
+                                           [<<"bbsvx:root">>,
+                                            #{contact_nodes => ContactNodes, boot => root}]),
 
-                            {ok, #state{my_id = MyId}};
-                        {ok, [["join", Host, Port]]} ->
-                            ?'log-info'("Onto service : boot type : joining node ~p ~p",
-                                        [Host, Port]),
-                            ListOfContactNodes =
-                                [#node_entry{host = Host, port = list_to_integer(Port)}],
+                    {ok, #state{my_id = MyId}};
+                {ok, [["join", Host, Port]]} ->
+                    ?'log-info'("Onto service : boot type : joining node ~p ~p", [Host, Port]),
+                    ListOfContactNodes = [#node_entry{host = Host, port = list_to_integer(Port)}],
 
-                            logger:info("Onto service : contact nodes ~p", [ListOfContactNodes]),
-                            OntEntry =
-                                #ontology{namespace = <<"bbsvx:root">>,
-                                          version = <<"0.0.1">>,
-                                          type = shared,
-                                          contact_nodes = ListOfContactNodes},
-                            mnesia:activity(transaction, fun() -> mnesia:write(OntEntry) end),
-                            supervisor:start_child(bbsvx_sup_shared_ontologies,
-                                                   [<<"bbsvx:root">>,
-                                                    #{contact_nodes => ListOfContactNodes,
-                                                      boot => join}]),
+                    logger:info("Onto service : contact nodes ~p", [ListOfContactNodes]),
+                    OntEntry =
+                        #ontology{namespace = <<"bbsvx:root">>,
+                                  version = <<"0.0.1">>,
+                                  type = shared,
+                                  contact_nodes = ListOfContactNodes},
+                    mnesia:activity(transaction, fun() -> mnesia:write(OntEntry) end),
+                    supervisor:start_child(bbsvx_sup_shared_ontologies,
+                                           [<<"bbsvx:root">>,
+                                            #{contact_nodes => ListOfContactNodes, boot => join}]),
 
-                            {ok, #state{my_id = MyId}};
-                        Else ->
-                            ?'log-warning'("Onto service : unmanaged boot type ~p", [Else]),
-                            {stop, {error, invalid_boot_type}}
-                    end;
-                {aborted, {error, Reason}} ->
-                    logger:error("Onto service : failed to create index table ~p", [Reason]),
-                    {stop, cannot_create_index_table}
-            end
+                    {ok, #state{my_id = MyId}};
+                Else ->
+                    ?'log-warning'("Onto service : unmanaged boot type ~p", [Else]),
+                    {stop, {error, invalid_boot_type}}
+            end;
+        {aborted, {error, Reason}} ->
+            logger:error("Onto service : failed to create index table ~p", [Reason]),
+            {stop, Reason}
     end.
 
 % init([]) ->
@@ -364,9 +356,17 @@ handle_call({prove, Namespace, Predicate}, _From, State)
                       source_id = State#state.my_id,
                       timestamp = Timestamp,
                       payload = Eterm},
+            %% TODO: It is a goal that should be broadcasted not a transaction
             Transaction =
                 #transaction{namespace = Namespace,
                              payload = Goal,
+                             current_address = <<"-1">>,
+                             signature = <<"TODO">>,
+                             source_ontology_id = <<"TODO">>,
+                             ts_processed = 0,
+                             prev_address = <<"-1">>,
+                             prev_hash = <<"-1">>,
+                             leader = undefined,
                              type = goal,
                              ts_created = Timestamp},
             bbsvx_epto_service:broadcast(Namespace, Transaction),
@@ -510,14 +510,12 @@ do_boot_ontologies(Key) ->
 is_contact_node(NodeId, ContactNodes) ->
     lists:member(NodeId, [N#node_entry.node_id || N <- ContactNodes]).
 
-have_index_table() ->
-    TableName = ?INDEX_TABLE,
-    Tablelist = mnesia:system_info(tables),
-    lists:member(TableName, Tablelist).
-
 table_exists(Namespace) ->
     TableName = binary_to_table_name(Namespace),
     Tablelist = mnesia:system_info(tables),
+    check_is_in_table_list(TableName, Tablelist).
+
+check_is_in_table_list(TableName, Tablelist) when is_list(Tablelist) ->
     lists:member(TableName, Tablelist).
 
 binary_to_table_name(Namespace) ->

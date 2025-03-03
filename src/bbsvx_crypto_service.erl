@@ -12,7 +12,9 @@
 -behaviour(gen_server).
 
 -include("bbsvx.hrl").
+
 -include_lib("logjam/include/logjam.hrl").
+
 
 %%%=============================================================================
 %%% Export and Defs
@@ -26,14 +28,11 @@
 
 -record(state, {privkey :: binary(), pubkey :: binary(), node_id :: binary()}).
 
--type state() :: #state{}.
-
 %%%=============================================================================
 %%% API
 %%%=============================================================================
 
--spec start_link() ->
-                    {ok, pid()} | {error, {already_started, pid()}} | {error, Reason :: any()}.
+-spec start_link() -> gen_server:start_ret().
 start_link() ->
     gen_server:start_link({via, gproc, {n, l, ?MODULE}}, ?MODULE, [], []).
 
@@ -88,7 +87,6 @@ init([]) ->
             pubkey = PubKey,
             node_id = base64:encode(PubKey, #{padding => false, mode => urlsafe})}}.
 
--spec handle_call(any(), gen_server:from(), state()) -> {reply, any(), state()}.
 handle_call(my_id, _From, State) ->
     {reply, State#state.node_id, State};
 handle_call({sign, Data}, _From, #state{pubkey = PubKey, privkey = PrivKey} = State) ->
