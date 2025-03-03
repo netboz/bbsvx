@@ -1,16 +1,29 @@
 [
- {bbsvx, []},
- {prometheus, [{prometheus_http, [{path, "/metrics"}, {format, auto}, {port, 10300}]}]},
+{prometheus, [{prometheus_http, [{path, "/metrics"}, {format, auto}, {port, 10300}]}]},
 {opentelemetry, [{span_processor, batch}, {traces_exporter, otlp}]},
- {opentelemetry_exporter,
+{opentelemetry_exporter,
   [{otlp_protocol, grpc}, {otlp_endpoint, "http://tempo_collector:4317"}]},
- {kernel,
-  [{logger_level, info},
-   {logger,
-    [{handler,
-      default,
-      logger_std_h,
-      #{formatter =>  {jsonformat, #{format_funs => #{time => fun jsonformat:system_time_to_iso8601/1}, new_line => true}}}}]}]},
- {bbsvx, [{root_ontology_contact, [{host, <<"bbsvx_bbsvx_root_1">>}, {port, 1883}]}]}
+  {kernel, [
+    {logger_level, info},
+    {logger, [
+        {handler, default, logger_std_h,
+        #{level => debug,
+          formatter => {logjam,
+            #{colored => true,
+              time_designator => $\s,
+              time_offset => "",
+              time_unit => second,
+              strip_tz => true,
+              level_capitalize => true
+            }
+          }
+         }
+        }
+    ]}
+]},
+
+      {bbsvx, [
+        {boot, {join, [{"bbsvx-bbsvx_root-1", 2304}]}}]} %% or {join, ListOfContactNode}
+        
 ].
 

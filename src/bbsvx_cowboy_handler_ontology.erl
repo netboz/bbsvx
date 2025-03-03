@@ -15,10 +15,13 @@
 
 -author("yan").
 
--include("bbsvx_common_types.hrl").
+-include("bbsvx.hrl").
+
+-include_lib("logjam/include/logjam.hrl").
 
 -export([init/2, allowed_methods/2, content_types_accepted/2, content_types_provided/2,
-         delete_resource/2, delete_completed/2, resource_exists/2, last_modified/2, malformed_request/2]).
+         delete_resource/2, delete_completed/2, resource_exists/2, last_modified/2,
+         malformed_request/2]).
 -export([provide_onto/2, accept_onto/2, accept_goal/2]).
 
 %%%=============================================================================
@@ -31,8 +34,31 @@ init(Req0, State) ->
 allowed_methods(Req, State) ->
     {[<<"GET">>, <<"POST">>, <<"PUT">>, <<"DELETE">>, <<"HEAD">>, <<"OPTIONS">>], Req, State}.
 
-malformed_request(#{path := <<"/ontologies/", _Namespace/binary>>, method := <<"PUT">>} = Req, State) ->
-    logger:info("Checking boby ~p", [Req]),
+malformed_request(#{path := <<"/ontologies/prove">>, method := <<"PUT">>} = Req, State) ->
+    try
+        {ok, Body, Req1} = cowboy_req:read_body(Req),
+        DBody = jiffy:decode(Body, [return_maps]),
+
+        case DBody of
+            #{<<"namespace">> := Namespace, <<"goal">> := Goal} ->
+                {false, Req1, State#{namespace => Namespace, goal => Goal}};
+            _ ->
+                Req2 =
+                    cowboy_req:set_resp_body(
+                        jiffy:encode([#{error => <<"missing_namespace">>}]), Req1),
+                {true, Req2, State}
+        end
+    catch
+        A:B ->
+            ?'log-warning'("Malformed request ~p:~p", [A, B]),
+            Req3 =
+                cowboy_req:set_resp_body(
+                    jiffy:encode([#{error => <<"invalid_json">>}]), Req),
+            {true, Req3, State}
+    end;
+malformed_request(#{path := <<"/ontologies/", _Namespace/binary>>, method := <<"PUT">>} =
+                      Req,
+                  State) ->
     try
         {ok, Body, Req1} = cowboy_req:read_body(Req),
         DBody = jiffy:decode(Body, [return_maps]),
@@ -47,59 +73,62 @@ malformed_request(#{path := <<"/ontologies/", _Namespace/binary>>, method := <<"
         end
     catch
         A:B ->
-            logger:info("Malformed request ~p:~p", [A,B]),
+            ?'log-warning'("Malformed request ~p:~p", [A, B]),
             Req3 =
                 cowboy_req:set_resp_body(
                     jiffy:encode([#{error => <<"invalid_json">>}]), Req),
             {true, Req3, State}
     end;
 malformed_request(Req, State) ->
-    logger:info("Malformeda ll request ~p", [Req]),
+    ?'log-warning'("Malformed Request ~p", [Req]),
     {false, Req, State}.
 
+resource_exists(#{path := <<"/ontologies/prove">>} = Req,
+                #{namespace := Namespace} = State) ->
+    case bbsvx_ont_service:get_ontology(Namespace) of
+        {ok, #ontology{}} ->
+            {true, Req, State};
+        _ ->
+            Req1 =
+                cowboy_req:set_resp_body(
+                    jiffy:encode([#{error => <<"namespace_mismatch">>}]), Req),
+            {false, Req1, State}
+    end;
 resource_exists(#{path := <<"/ontologies/", Namespace/binary>>} = Req, State) ->
-    logger:info("Ontology ~p ressource exists", [Namespace]),
     case bbsvx_ont_service:get_ontology(Namespace) of
         {ok, #ontology{} = Onto} ->
-            logger:info("Ontology ~p exists ~p", [Namespace, Onto]),
             {true, Req, maps:put(onto, Onto, State)};
         _ ->
-            logger:info("Ontology ~p does not exist", [Namespace]),
             {false, Req, maps:put(onto, undefined, State)}
     end;
 resource_exists(Req, State) ->
-    logger:info("Ontology ~p ressource exists catch all", [Req]),
     {false, Req, State}.
 
 last_modified(Req, #{onto := #ontology{last_update = LastUpdate}} = State) ->
-    logger:info("Last update ~p", [LastUpdate]),
     {LastUpdate, Req, State}.
 
 delete_resource(#{path := <<"/ontologies/", Namespace/binary>>} = Req, State) ->
-    bbsvx_ont_service:delete_ontology(binary_to_atom(Namespace)),
+    bbsvx_ont_service:delete_ontology(Namespace),
     {true, Req, State}.
 
 delete_completed(#{path := <<"/ontologies/", Namespace/binary>>} = Req, State) ->
     Tablelist = mnesia:system_info(tables),
-    logger:info("Table list ~p", [Tablelist]),
-    logger:info("Ontology ~p", [binary_to_atom(Namespace)]),
     Result = lists:member(binary_to_atom(Namespace), Tablelist),
-    logger:info("Ontology ~p exists ~p", [Namespace, Result]),
     {not Result, Req, State}.
 
 content_types_provided(#{path := Path} = Req, State) ->
-    Explo = binary:split(Path, <<"/">>, [global, trim_all]),
+    Explo = explode_path(Path),
     do_content_types_provided(Explo, Req, State).
 
 do_content_types_provided([<<"ontologies">>, _Namespace], Req, State) ->
     {[{{<<"application">>, <<"json">>, []}, provide_onto}], Req, State}.
 
 content_types_accepted(#{path := Path} = Req, State) ->
-    Explo = binary:split(Path, <<"/">>, [global, trim_all]),
+    Explo = explode_path(Path),
     do_content_types_accepted(Explo, Req, State).
 
-do_content_types_accepted([<<"ontologies">>, _Namespace, <<"prove">>],
-                          #{method := <<"POST">>} = Req,
+do_content_types_accepted([<<"ontologies">>, <<"prove">>],
+                          #{method := <<"PUT">>} = Req,
                           State) ->
     {[{{<<"application">>, <<"json">>, []}, accept_goal}], Req, State};
 do_content_types_accepted([<<"ontologies">>, _Namespace],
@@ -110,29 +139,34 @@ do_content_types_accepted([<<"ontologies">>, _Namespace],
 %%=============================================================================
 %% Internal functions
 %% ============================================================================
+-spec explode_path(binary()) -> [binary()].
+explode_path(Path) ->
+    binary:split(Path, <<"/">>, [global, trim_all]).
 
 provide_onto(Req, State) ->
-    logger:info("Processing get goal request ~p", [Req]),
     GoalId = cowboy_req:binding(goal_id, Req),
     Goal = bbsvx_ont_service:get_goal(GoalId),
     {jiffy:encode(Goal), Req, State}.
 
 accept_onto(Req0, #{onto := PreviousOntState, body := Body} = State) ->
-    logger:info("Cowboy Handler : Accept Onto", []),
-
     Namespace = cowboy_req:binding(namespace, Req0),
 
-    Type = case maps:get(<<"type">>, Body, undefined) of
-               undefined -> local;
-               Value -> binary_to_existing_atom(Value)
-           end,
+    Type =
+        case maps:get(<<"type">>, Body, undefined) of
+            undefined ->
+                local;
+            Value when Value == <<"local">> orelse Value == <<"shared">> ->
+                binary_to_existing_atom(Value)
+        end,
     case Body of
-        #{<<"namespace">> := Namespace} ->
+        #{<<"namespace">> := Namespace}  when Type == local orelse Type == shared ->
             ProposedOnt =
                 #ontology{namespace = Namespace,
+                          version = maps:get(<<"version">>, Body, <<"0.0.1">>),
                           contact_nodes =
                               [#node_entry{host = Hst, port = Prt}
-                               || #{<<"host">> := Hst, <<"port">> := Prt} <- maps:get(<<"contact_nodes">>, Body, [])],
+                               || #{<<"host">> := Hst, <<"port">> := Prt}
+                                      <- maps:get(<<"contact_nodes">>, Body, [])],
                           type = Type},
             case {ProposedOnt, PreviousOntState} of
                 {#ontology{type = Type}, #ontology{type = Type}} ->
@@ -144,38 +178,57 @@ accept_onto(Req0, #{onto := PreviousOntState, body := Body} = State) ->
 
                     {true, Req2, State};
                 {#ontology{}, undefined} ->
-                    logger:info("Cowboy Handler : Creating New ontology ~p", [ProposedOnt]),
                     bbsvx_ont_service:new_ontology(ProposedOnt),
                     {true, Req0, State};
                 {#ontology{type = shared} = ProposedOnt,
                  #ontology{type = local} = PreviousOntState} ->
-                    logger:info("Cowboy Handler : connecting ~p", [ProposedOnt]),
                     bbsvx_ont_service:connect_ontology(Namespace),
                     {true, Req0, State};
                 {#ontology{type = local} = ProposedOnt,
                  #ontology{type = shared} = PreviousOntState} ->
-                    logger:info("Cowboy Handler : disconnecting ~p", [ProposedOnt]),
                     bbsvx_ont_service:disconnect_ontology(Namespace),
                     {true, Req0, State}
             end;
         _ ->
-            logger:error("Cowboy Handler : Missing namespace in body ~p", [Body]),
+            ?'log-error'("Cowboy Handler : Missing namespace in body ~p", [Body]),
             Req2 =
                 cowboy_req:set_resp_body(
                     jiffy:encode([#{error => <<"missing_namespace">>}]), Req0),
             {false, Req2, State}
     end.
 
-accept_goal(Req0, State) ->
-    logger:info("Cowboy Handler : New goal ~p", [Req0]),
+accept_goal(Req0, #{namespace := Namespace, goal := Payload} = State) ->
+    ?'log-info'("Cowboy Handler : New goal ~p", [Req0]),
 
-    Namespace = cowboy_req:binding(namespace, Req0),
+    try bbsvx_ont_service:prove(Namespace, Payload) of
+        {ok, Id} ->
+            Req1 =
+                cowboy_req:set_resp_body(
+                    jiffy:encode([#{status => <<"accepted">>, <<"id">> => Id}]), Req0),
+            {true, Req1, State};
+        {error, Reason} ->
+            Req2 =
+                cowboy_req:set_resp_body(
+                    jiffy:encode([#{error => atom_to_binary(Reason)}]), Req0),
+            {true, Req2, State}
+    catch
+        A:B ->
+            ?'log-error'("Internal error ~p:~p", [A, B]),
+            Req3 =
+                cowboy_req:set_resp_body(
+                    jiffy:encode([#{error => <<"network_internal_error">>}]), Req0),
+            {true, Req3, State}
+    end.
 
-    logger:info("Cowboy Handler : New goal for namespace ~p", [Namespace]),
-    {ok, Body, Req1} = cowboy_req:read_body(Req0),
-    #{<<"namespace">> := Namespace2, <<"payload">> := Payload} =
-        jiffy:decode(Body, [return_maps]),
-    Goal = #goal{namespace = Namespace, payload = Payload},
-    logger:info("new_ontology namespace frm body ~p", [Namespace2]),
-    bbsvx_ont_service:new_ontology(#ontology{namespace = Namespace}),
-    {true, Req1, State}.
+%%-----------------------------------------------------------------------------
+%% @doc
+%% get_ulid/0
+%% Return an unique identifier
+%% @end
+%% ----------------------------------------------------------------------------
+-spec get_ulid() -> binary().
+get_ulid() ->
+    UlidGen = persistent_term:get(ulid_gen),
+    {NewGen, Ulid} = ulid:generate(UlidGen),
+    persistent_term:put(ulid_gen, NewGen),
+    Ulid.

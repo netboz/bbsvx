@@ -12,10 +12,9 @@ RUN apk update && apk add --no-cache \
     expat-dev \
     zlib-dev \
     libexpat \
-    cmake \
+    bsd-compat-headers \
+    linux-headers \
     yaml-dev \
-    automake \
-    autoconf \
     erlang-dev
 WORKDIR /buildroot
 RUN mkdir src include config priv log
@@ -33,11 +32,11 @@ COPY src ./src
 COPY include ./include
 COPY config ./config
 COPY priv ./priv
-COPY ejabberd.yml ./_build/default/rel/bbsvx/ejabberd.yml
 COPY ./priv/scripts/run.sh ./run.sh
 
 # Build the release
 ENV BUILD_WITHOUT_QUIC=true
+
 RUN rebar3 compile && \
     rebar3 release
 ## Build the runtime image
@@ -64,8 +63,8 @@ COPY --from=builded /buildroot/priv /bbsvx/priv
 COPY --from=builded /buildroot/run.sh /bbsvx/run.sh
 
 # Expose relevant ports
-EXPOSE 10300
+EXPOSE 2304
 #EXPOSE 8443
 
 # Run the application
-CMD ["sh", "/bbsvx/run.sh", "foreground"]
+CMD ["sh", "-c", "/bbsvx/bin/bbsvx foreground -init_root ${BBSVX_INIT_ROOT}"]

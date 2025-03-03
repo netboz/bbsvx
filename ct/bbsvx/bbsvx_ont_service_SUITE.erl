@@ -9,10 +9,9 @@
 
 -author("yan").
 
--include_lib("common_test/include/ct.hrl").
 -include_lib("stdlib/include/assert.hrl").
 
--include("bbsvx_common_types.hrl").
+-include("bbsvx.hrl").
 
 %%%=============================================================================
 %%% Export and Defs
@@ -38,39 +37,16 @@ all() ->
      connecting_an_ontology_starts_necessary_processes].
 
 init_per_suite(Config) ->
+    application:ensure_all_started(bbsvx),
     Config.
 
 end_per_suite(_Config) ->
     ok.
 
 init_per_testcase(_TestCase, Config) ->
-    application:start(inets),
-    %% Setup ejabberd config file
-    {ok, Cwd} = file:get_cwd(),
-    ct:pal("CWS Base dir ~p", [file:get_cwd()]),
-    application:set_env(ejabberd, config, filename:join([Cwd, "ejabberd.yml"])),
-    file:copy("../../../../ejabberd.yml", Cwd ++ "/ejabberd.yml"),
-
-    %% Setup mnesia
-    %application:set_env(mnesia, dir, Cwd ++ "/mnesia"),
-    mnesia:create_schema([node()]),
-    T = mnesia:start(),
-    %P = mnesia:change_table_copy_type(schema, node(), disc_copies),
-   % ct:pal("changed schema ~p", [P]),
-
-    %ct:pal("Created schema ~p", [R]),
-    ct:pal("Started mnesia ~p", [T]),
-    A = application:ensure_all_started(bbsvx),
-    ct:pal("Started bbsvx ~p", [A]),
-
     Config.
 
 end_per_testcase(_TestCase, Config) ->
-    application:stop(bbsvx),
-    application:stop(mnesia),
-    mnesia:delete_schema(node()),
-
-    %% ct:pal("Deleted schema ~p", [R]),
     Config.
 
 %%%=============================================================================
@@ -121,15 +97,13 @@ disconnecting_local_ontology_does_nothing(_Config) ->
                  bbsvx_ont_service:get_ontology(OntNamespace)).
 
 connecting_an_ontology_starts_necessary_processes(_Config) ->
-    bbsvx_sup_spray_view_agents:start_link(),
-    application:start(gproc),
     OntNamespace = random_ont_name(),
     ok =
         bbsvx_ont_service:new_ontology(#ontology{namespace = OntNamespace,
                                                  type = local,
                                                  contact_nodes = []}),
     ok = bbsvx_ont_service:connect_ontology(OntNamespace),
-    P = gproc:where({n, l, {bbsvx_actor_spray_view, OntNamespace}}),
+    P = gproc:where({n, l, {bbsvx_actor_spray, OntNamespace}}),
     ct:pal("Spray view pid ~p", [P]),
     ?assertMatch(true, is_pid(P)).
 

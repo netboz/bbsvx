@@ -1,0 +1,55 @@
+%%-*- mode: erlang -*-
+
+%% User configuration %%
+
+{mapping, "boot", "bbsvx.boot", [
+  {default, root},
+  {datatype, atom}
+]}.
+
+{mapping, "kb_path", "bbsvx.kb_path", [
+  {default, "."},
+  {datatype, string}
+]}.
+
+{mapping, "path", "prometheus.prometheus_http.path", [
+  {default, "/metrics"},
+  {datatype, string}
+]}.
+
+{mapping, "format", "prometheus.prometheus_http.format", [
+  {default, auto},
+  {datatype, atom}
+]}.
+
+{mapping, "port", "prometheus.prometheus_http.port", [
+  {default, 10300},
+  {datatype, integer}
+]}.
+
+
+{mapping, "span_processor", "opentelemetry.span_processor", [
+  {default, batch},
+  {datatype, atom}
+]}.
+
+{mapping, "traces_exporter", "opentelemetry.traces_exporter", [
+  {default, otlp},
+  {datatype, atom}
+]}.
+
+{mapping, "otlp_protocol", "opentelemetry_exporter.otlp_protocol", [
+  {default, grpc},
+  {datatype, atom}
+]}.
+
+{mapping, "otlp_endpoint", "opentelemetry_exporter.otlp_endpoint", [
+  {default, "http://tempo_collector:4317"},
+  {datatype, string}
+]}.
+
+{mapping, "logger_level", "kernel.logger_level", [
+  {default, info},
+  {datatype, {enum, [debug, info, notice, warning, error, critical, alert, emergency]}}
+]}.
+
