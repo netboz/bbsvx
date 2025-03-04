@@ -87,4 +87,13 @@ init_metrics() ->
     prometheus_counter:declare([{name, <<"spray_exchange_cancelled">>},
                                 {labels, [<<"namespace">>, <<"reason">>]},
                                 {help,
-                                 <<"Number of time this node received a rejected exchange">>}]).
+                                 <<"Number of time this node received a rejected exchange">>}]),
+    prometheus_gauge:declare([{name, <<"bbsvx_transasction_delivering_time">>},
+                              {labels, [<<"namespace">>]},
+                              {help, "Time needed to deliver transaction"}]),
+    prometheus_gauge:declare([{name, <<"bbsvx_transction_processing_time">>},
+                              {labels, [<<"namespace">>]},
+                              {help, "Time needed to process transaction"}]),
+    prometheus_gauge:declare([{name, <<"bbsvx_transction_total_validation_time">>},
+                              {labels, [<<"namespace">>]},
+                              {help, "Time needed to validate transaction"}]).

@@ -155,7 +155,8 @@ transaction_validate_stage(Namespace, ValidationState) ->
         {ValidatedTransaction, #transaction_validate_stage_state{} = NewOntState} ->
             jobs:enqueue({stage_transaction_process, Namespace}, ValidatedTransaction),
             case maps:get(NewOntState#transaction_validate_stage_state.current_index,
-                          NewOntState#transaction_validate_stage_state.pending)
+                          NewOntState#transaction_validate_stage_state.pending,
+                          not_found)
             of
                 {PendingTransaction, NewPending} ->
                     jobs:enqueue(stage_transaction_validate, PendingTransaction),
@@ -163,7 +164,7 @@ transaction_validate_stage(Namespace, ValidationState) ->
                                                NewOntState#transaction_validate_stage_state{pending
                                                                                                 =
                                                                                                 NewPending});
-                error ->
+                _ ->
                     transaction_validate_stage(Namespace, NewOntState)
             end
     end.
@@ -181,6 +182,13 @@ transaction_postprocess_stage(Namespace, OntState) ->
     [{_, Transaction}] = jobs:dequeue({stage_transaction_postprocess, Namespace}, 1),
     ?'log-info'("Received Transaction, postprocessing ~p", [Transaction]),
     bbsvx_transaction:record_transaction(Transaction#transaction{status = processed}),
+    Time = erlang:system_time(microsecond),
+    prometheus_gauge:set(<<"bbsvx_transction_processing_time">>,
+                         [Transaction#transaction.namespace],
+                         Time - Transaction#transaction.ts_delivered),
+    prometheus_gauge:set(<<"bbsvx_transction_total_validation_time">>,
+                         [Transaction#transaction.namespace],
+                         Time - Transaction#transaction.ts_created),
     transaction_postprocess_stage(Namespace, OntState).
 
 %% Procesing functions
@@ -212,9 +220,7 @@ transaction_validate(#transaction{status = processed} = Transaction,
                 [Transaction, CurrentIndex, LocalIndex]),
     NewPending = maps:put(Transaction#transaction.index, Transaction, Pending),
     {stop, ValidationState#transaction_validate_stage_state{pending = NewPending}};
-transaction_validate(#transaction{ts_created = TsCreated,
-                                  status = created} =
-                         Transaction,
+transaction_validate(#transaction{ts_created = TsCreated, status = created} = Transaction,
                      #transaction_validate_stage_state{namespace = Namespace,
                                                        current_address = CurrentAddress,
                                                        current_index = CurrentIndex,

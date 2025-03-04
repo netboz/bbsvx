@@ -386,7 +386,13 @@ is_above(_MinQueueTs, _EvtTs) ->
 
 deliver(Index, #epto_event{payload = #transaction{} = Transaction}) ->
     ?'log-info'("~p delivering transaction ~p ~nindex ~p", [?MODULE, Transaction, Index]),
-    bbsvx_transaction_pipeline:receive_transaction(Transaction#transaction{index = Index}),
+    Timestamp = erlang:system_time(microsecond),
+    prometheus_gauge:set(<<"bbsvx_transasction_delivering_time">>,
+                         [Transaction#transaction.namespace],
+                         Timestamp - Transaction#transaction.ts_created),
+    bbsvx_transaction_pipeline:receive_transaction(Transaction#transaction{index = Index,
+                                                                           ts_delivered =
+                                                                               Timestamp}),
     Index + 1;
 deliver(Index, #epto_event{payload = #goal_result{} = GoalResult}) ->
     ?'log-info'("Received goal result ~p", [GoalResult]),
