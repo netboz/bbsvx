@@ -69,12 +69,16 @@ resource_exists(Req, #{namespace := Namespace} = State) ->
     ?'log-info'("Resource Exists: ~p", [Req]),
     case bbsvx_ont_service:get_ontology(Namespace) of
         {ok, #ontology{} = Onto} ->
-            {true, Req, State#{onto => Onto}};
+            %% Add CORS header even on success, if you'd like
+            Req1 = cowboy_req:set_resp_header(<<"Access-Control-Allow-Origin">>, <<"*">>, Req),
+            {true, Req1, State#{onto => Onto}};
         _ ->
-            Req1 =
+            %% Also add on error
+            Req1 = cowboy_req:set_resp_header(<<"Access-Control-Allow-Origin">>, <<"*">>, Req),
+            Req2 =
                 cowboy_req:set_resp_body(
-                    jiffy:encode([#{error => <<"ontology_not_found">>}]), Req),
-            {false, Req1, State}
+                    jiffy:encode([#{error => <<"ontology_not_found">>}]), Req1),
+            {false, Req2, State}
     end.
 
 content_types_accepted(Req, State) ->
@@ -99,10 +103,11 @@ stop_spray_agent(Req, #{namespace := Namespace} = State) ->
         Pid ->
             ?'log-info'("Sending delete_node event to spray agent ~p", [Pid]),
             %% Send a delete_node event to the spray agent
-
             gen_statem:stop(Pid),
             ?'log-info'("Spray agent ~p stopped", [Pid]),
-            Req2 = cowboy_req:set_resp_body(jiffy:encode([#{result => <<"ok">>}]), Req1),
+            Req2 =
+                cowboy_req:set_resp_body(
+                    jiffy:encode([#{result => <<"ok">>}]), Req1),
             {true, Req2, State}
     end.
 

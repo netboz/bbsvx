@@ -18,7 +18,7 @@
 %%%=============================================================================
 
 -define(SERVER, ?MODULE).
--define(EXCHANGE_INTERVAL, 10000).
+-define(EXCHANGE_INTERVAL, 4000).
 -define(WAIT_EXCHANGE_OUT_TIMEOUT, ?EXCHANGE_INTERVAL div 5).
 -define(WAIT_EXCHANGE_ACCEPT_TIMEOUT, ?EXCHANGE_INTERVAL div 5).
 -define(EXCHANGE_END_TIMEOUT, ?EXCHANGE_INTERVAL - round(?EXCHANGE_INTERVAL / 10)).

@@ -14,224 +14,67 @@ services:
       environment:
         - TZ="Europe/Paris"
         - DOCKER_COMPOSE=true
-        - ERLANG_NODE_ARG=bbsvx@bbsvx_root
-        - ERLANG_COOKIE=bbsvx
-        - BBSVX_INIT_ROOT=root
+        - BBSVX_NODE_NAME=bbsvx@bbsvx_root
+        - BBSVX_COOKIE=bbsvx
+        - BBSVX_BOOT=root
+        - BBSVX_P2P_PORT=2304
+        - BBSVX_HTTP_PORT=8085
       networks:
         - bbsvx-net
-      logging:
-        driver: loki
-        options:
-          loki-url: "http://127.0.0.1:3100/loki/api/v1/push"
-          mode: non-blocking
-          max-buffer-size: 4m
-          loki-retries: "3"
       volumes:
-        - ./docker/logs:/logs
-      labels:
-        - "logging=grafana"
-        - "monitoring=enabled"
-      depends_on:
-        - graph-visualizer
+        - bbsvx_root_data:/bbsvx/data
+        - bbsvx_root_logs:/bbsvx/logs
+      command: >
+        sh -c "
+        mkdir -p /bbsvx/data /bbsvx/logs;
+        /bbsvx/docker-start.sh
+        "
+      healthcheck:
+        test: ["CMD", "/bbsvx/bin/bbsvx", "ping"]
+        interval: 30s
+        timeout: 10s
+        retries: 3
+        start_period: 40s
 
   bbsvx_client:
-    image: bbsvx:latest
-    ports:
-      - 2304
-      - 10300
-      - 8085
-      - 9090
-    environment:
-      - TZ="Europe/Paris"
-      - DOCKER_COMPOSE=true
-      - ERLANG_NODE_ARG=bbsvx@bbsvx_root
-      - ERLANG_COOKIE=bbsvx
-      - BBSVX_INIT_ROOT=join bbsvx-bbsvx_root-1 2304
-    networks:
-      - bbsvx-net
-    logging:
-        driver: loki
-        options:
-          loki-url: "http://127.0.0.1:3100/loki/api/v1/push"
-          mode: non-blocking
-          max-buffer-size: 4m
-          loki-retries: "3"
-    volumes:
-      - ./docker/logs:/logs
-    depends_on:
-      - bbsvx_root
-    labels:
-      - "logging=grafana"
-      - "monitoring=enabled"
-
-
-  dozzle:
-    container_name: dozzle
-    image: amir20/dozzle:latest
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    ports:
-      - 9999:8080
-    environment:
-      - TZ="Europe/Paris"
-
-  vmagent:
-    image: victoriametrics/vmagent
-    container_name: vmagent
-    ports:
-      - 8429:8429
-    depends_on:
-      - "victoria_metrics"
-    volumes:
-      - vmagent_data:/vmagent-data
-      - ./docker/prometheus/etc/:/etc/prometheus
-      - /var/run/docker.sock:/var/run/docker.sock
-    command:
-      - "--promscrape.suppressDuplicateScrapeTargetErrors"
-      - "--promscrape.config=/etc/prometheus/prometheus.yml"
-      - "--remoteWrite.url=http://victoria_metrics:8428/api/v1/write"
-    networks:
-      - bbsvx-net
-    environment:
-      - TZ="Europe/Paris"
-    restart: always
-  victoria_metrics:
-    image: victoriametrics/victoria-metrics
-    container_name: victoria_metrics
-    ports:
-      - 8428:8428
-      - 8481:8481
-      - 9090:9090
-    volumes:
-      - victoria_data:/victoria-metrics-data
-    networks:
-      - bbsvx-net
-    environment:
-      - TZ="Europe/Paris"
-    restart: always
-  grafana:
-    image: grafana/grafana
-    user: '0'
-    depends_on:
-      - vmagent
-    environment:
-      - GF_LOG_LEVEL=info
-      - TZ="Europe/Paris"
-      - GF_INSTALL_PLUGINS=https://github.com/VictoriaMetrics/victoriametrics-datasource/releases/download/v0.10.1/victoriametrics-datasource-v0.10.1.zip;victoriametrics-datasource
-      - GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=victoriametrics-datasource
-    ports:
-      - 3000:3000
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./docker/grafana/provisioning:/etc/grafana/provisioning/
-    env_file:
-      - ./docker/grafana/config.monitoring
-    networks:
-      - bbsvx-net
-    restart: always
-  graph-visualizer:
-    image: graph-visualizer:latest
-    hostname: graph-visualizer
-    ports:
-      - "3400:3400"
-    networks:
-      - bbsvx-net
-    environment:
-      - NODE_ENV=production
-  # prometheus:
-  #   image: prom/prometheus
-  #   hostname: prometheus
-  #   volumes:
-  #     - ./docker/prometheus/etc/:/etc/prometheus/
-  #     - prometheus_data:/prometheus
-  #     - /var/run/docker.sock:/var/run/docker.sock
-  #   environment:
-  #     - TZ="Europe/Paris"
-  #   user: root
-  #   command:
-  #     - '--config.file=/etc/prometheus/prometheus.yml'
-  #     - '--storage.tsdb.path=/prometheus'
-  #     - '--web.enable-remote-write-receiver'
-  #     - '--enable-feature=exemplar-storage'
-  #     - '--web.console.libraries=/usr/share/prometheus/console_libraries'
-  #     - '--web.console.templates=/usr/share/prometheus/consoles'
-  #     - '--log.level=info'
-  #   ports:
-  #     - 9090:9090
-  #   networks:
-  #     - bbsvx-net
-  #   restart: always
-
-
-#   alertmanager:
-#     image: prom/alertmanager
-#     hostname: alertmanager
-#     ports:
-#       - 9093:9093
-#     volumes:
-#       - ./docker/alertmanager/:/etc/alertmanager/
-#     networks:
-#       - bbsvx-net
-#     restart: always
-#     environment:
-#       - TZ="Europe/Paris"
-#     command:
-#       - '--config.file=/etc/alertmanager/config.yml'
-#       - '--storage.path=/alertmanager'
-# #    deploy:
-# #      placement:
-# #        constraints:
-# #          - node.hostname == ${HOSTNAME}
-  loki:
-    image: grafana/loki:latest
-    hostname: loki_collector
-    ports:
-      - "3100:3100"
-    command: 
-      - '-config.file=/etc/loki/local-config.yaml'
-    volumes:
-      - ./docker/loki/conf:/etc/loki
-    networks:
-      - bbsvx-net
-    environment:
-      - TZ="Europe/Paris"
-  
-#   tempo:
-#     image: grafana/tempo:latest
-#     command: [ "-config.file=/etc/tempo.yaml" ]
-#     hostname: tempo_collector
-#     volumes:
-#       - ./docker/tempo/conf/tempo.yaml:/etc/tempo.yaml
-#       - tempo_data:/tmp
-#     networks:
-#       - bbsvx-net
-#     environment:
-#       - TZ="Europe/Paris"
-#     ports:
-#       - "14268:14268"  # jaeger ingest
-#       - "3200:3200"   # tempo
-#       - "9095:9095" # tempo grpc
-#       - "4317:4317"  # otlp grpc
-#       - "4318:4318"  # otlp http
-#       - "9411:9411"   # zipkin
-#   # otel:
-#   #   image: otel/opentelemetry-collector:latest
-#   #   command: ["--config=/conf/otel-collector-config.yaml"]
-#   #   hostname: otel_collector
-#   #   privileged: true
-#   #   networks:
-#   #     - bbsvx-net
-#   #   ports:
-#   #     - 4317
-#   #     - 4318
-#   #     - 55679
-#   #   volumes:
-#   #     - ./docker/otel/otel-collector-config.yaml:/conf/otel-collector-config.yaml
+      hostname: bbsvx_client
+      image: bbsvx:latest
+      ports:
+        - 2304
+        - 10300
+        - 8085
+        - 9090
+      environment:
+        - TZ="Europe/Paris"
+        - DOCKER_COMPOSE=true
+        - BBSVX_NODE_NAME=bbsvx@bbsvx_client
+        - BBSVX_COOKIE=bbsvx
+        - BBSVX_BOOT=join bbsvx_root 2304
+        - BBSVX_P2P_PORT=2304
+        - BBSVX_HTTP_PORT=8085
+        - BBSVX_CONTACT_NODES=bbsvx@bbsvx_root
+      networks:
+        - bbsvx-net
+      volumes:
+        - bbsvx_client_data:/bbsvx/data
+        - bbsvx_client_logs:/bbsvx/logs
+      command: >
+        sh -c "
+        mkdir -p /bbsvx/data /bbsvx/logs;
+        /bbsvx/docker-start.sh
+        "
+      healthcheck:
+        test: ["CMD", "/bbsvx/bin/bbsvx", "ping"]
+        interval: 30s
+        timeout: 10s
+        retries: 3
+        start_period: 40s
+      depends_on:
+        bbsvx_root:
+          condition: service_healthy
 
 volumes:
-  tempo_data: {}
-  victoria_data: {}
-  grafana_data: {}
-  vmagent_data: {}
-  prometheus_data: {}
-  promtail_data: {}
+  bbsvx_root_data:
+  bbsvx_root_logs:
+  bbsvx_client_data:
+  bbsvx_client_logs:

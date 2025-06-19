@@ -122,6 +122,7 @@ init([]) ->
                              [{attributes, record_info(fields, ontology)}, {disc_copies, [node()]}])
     of
         {aborted, {already_exists, ?INDEX_TABLE}} ->
+            %% Index table already exists, so this is not the first time we start
             ?'log-info'("Onto service : waiting for index table ~p", [?INDEX_TABLE]),
             case mnesia:wait_for_tables([?INDEX_TABLE], ?INDEX_LOAD_TIMEOUT) of
                 {timeout, _} ->
@@ -351,7 +352,7 @@ handle_call({prove, Namespace, Predicate}, _From, State)
         Eterm ->
             Timestamp = erlang:system_time(microsecond),
             Goal =
-                #goal{id = uuid:uuid4(),
+                #goal{id = uuid:to_string(uuid:uuid4()),
                       namespace = Namespace,
                       source_id = State#state.my_id,
                       timestamp = Timestamp,

@@ -182,6 +182,7 @@ transaction_postprocess_stage(Namespace, OntState) ->
     [{_, Transaction}] = jobs:dequeue({stage_transaction_postprocess, Namespace}, 1),
     ?'log-info'("Received Transaction, postprocessing ~p", [Transaction]),
     bbsvx_transaction:record_transaction(Transaction#transaction{status = processed}),
+    gproc:send({p, l, {diff, Namespace}}, {transaction_processed, Transaction}),
     Time = erlang:system_time(microsecond),
     prometheus_gauge:set(<<"bbsvx_transction_processing_time">>,
                          [Transaction#transaction.namespace],

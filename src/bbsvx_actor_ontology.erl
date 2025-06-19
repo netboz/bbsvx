@@ -72,12 +72,14 @@ init([Namespace, Options]) ->
             {error, {no_table, Namespace}};
         true ->
             MyId = bbsvx_crypto_service:my_id(),
+            %% Creating prolog state
             DbRepos = bbsvx_ont_service:binary_to_table_name(Namespace),
             {DbMod, DbRef} =
                 maps:get(db_mod,
                          Options,
                          {bbsvx_erlog_db_ets, bbsvx_ont_service:binary_to_table_name(Namespace)}),
-            {ok, #est{} = PrologState} = erlog_int:new(bbsvx_erlog_db_differ, {DbRef, DbMod}),
+            {ok, #est{db = #db{ref = #db_differ{out_db = #db{ref = NewRef}}}} = PrologState} =
+                erlog_int:new(bbsvx_erlog_db_differ, {DbRef, DbMod}),
             Boot = maps:get(boot, Options, join),
             ContactNodes = maps:get(contact_nodes, Options, []),
             OntState =
@@ -96,7 +98,7 @@ init([Namespace, Options]) ->
                     repos_table = DbRepos,
                     boot = Boot,
                     db_mod = DbMod,
-                    db_ref = DbRef,
+                    db_ref = NewRef,
                     ont_state = OntState,
                     my_id = MyId}}
     end.
@@ -196,6 +198,13 @@ initialize_ontology(info, {wait_current_index, _}, #state{boot = join} = State) 
 
 wait_for_registration(enter, _, State) ->
     ?'log-info'("Ontology actor ~p waiting for registration", [State#state.namespace]),
+    %% TODO remove this when ontalogy startup is fixed
+    case State#state.boot of
+        root ->
+            self() ! {registered, 0};
+        join ->
+            ok
+    end,
     {keep_state, State};
 wait_for_registration(info,
                       {registered, CurrentIndex},
@@ -238,6 +247,9 @@ syncing({call, From},
         get_current_index,
         #state{ont_state = #ont_state{current_index = Index}} = State) ->
     gen_statem:reply(From, {ok, Index}),
+    {keep_state, State};
+syncing({call, From}, get_db_ref, #state{db_ref = Ref} = State) ->
+    gen_statem:reply(From, {ok, Ref}),
     {keep_state, State};
 syncing(info,
         #ontology_history_request{namespace = Namespace,

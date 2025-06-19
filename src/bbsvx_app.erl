@@ -33,6 +33,7 @@ start(_StartType, _StartArgs) ->
                                  {"/subs/:namespace", bbsvx_cowboy_handler_node_service, []},
                                  {"/subsm/:namespace", bbsvx_cowboy_handler_node_service, []},
                                  {"/epto/post/:namespace", bbsvx_cowboy_handler_node_service, []},
+                                 {"/websocket", bbsvx_cowboy_websocket_handler, []},
                                  {"/console/[...]",
                                   cowboy_static,
                                   {priv_dir, bbsvx, "web_console/theme"}}]}]),
