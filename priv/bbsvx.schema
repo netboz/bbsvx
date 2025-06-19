@@ -2,14 +2,68 @@
 
 %% User configuration %%
 
+%% Application Boot Configuration
 {mapping, "boot", "bbsvx.boot", [
   {default, root},
-  {datatype, atom}
+  {datatype, atom},
+  {comment, "Boot mode for the application"}
 ]}.
 
+%% Network Configuration - Node Identity  
+{mapping, "nodename", "vm_args.-name", [
+  {default, "bbsvx@127.0.0.1"},
+  {datatype, string},
+  {comment, "Node name for distributed Erlang"}
+]}.
+
+{mapping, "distributed_cookie", "vm_args.-setcookie", [
+  {default, "bbsvx"},
+  {datatype, string},
+  {comment, "Erlang cookie for node communication"}
+]}.
+
+{mapping, "network.p2p_port", "bbsvx.p2p_port", [
+  {default, 2304},
+  {datatype, integer},
+  {comment, "Port for P2P network communication"}
+]}.
+
+{mapping, "network.http_port", "bbsvx.http_port", [
+  {default, 8085},
+  {datatype, integer},
+  {comment, "Port for HTTP API server"}
+]}.
+
+{mapping, "network.contact_nodes", "bbsvx.contact_nodes", [
+  {default, "none"},
+  {datatype, string},
+  {comment, "Comma-separated list of contact nodes for P2P network bootstrap"}
+]}.
+
+%% File System Configuration
+{mapping, "paths.kb_path", "bbsvx.kb_path", [
+  {default, "."},
+  {datatype, string},
+  {comment, "Path to knowledge base files"}
+]}.
+
+{mapping, "paths.data_dir", "bbsvx.data_dir", [
+  {default, "./data"},
+  {datatype, string},
+  {comment, "Directory for application data storage"}
+]}.
+
+{mapping, "paths.log_dir", "bbsvx.log_dir", [
+  {default, "./logs"},
+  {datatype, string},
+  {comment, "Directory for log files"}
+]}.
+
+%% Legacy compatibility
 {mapping, "kb_path", "bbsvx.kb_path", [
   {default, "."},
-  {datatype, string}
+  {datatype, string},
+  {comment, "Legacy: use paths.kb_path instead"}
 ]}.
 
 {mapping, "path", "prometheus.prometheus_http.path", [
