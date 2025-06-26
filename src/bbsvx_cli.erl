@@ -32,14 +32,12 @@ register_cli() ->
     %% Load schema first
     load_cuttlefish_schema(),
     
-    %% Register admin commands (primary interface)
-    register_admin_commands(),
-    
-    %% Register legacy bbsvx commands for backward compatibility
-    register_command_test(),
+    %% Register unified bbsvx commands
+    register_config_commands(),
     register_command_status(),
     register_command_ontology(),
     register_command_config(),
+    register_command_test(),
     
     %% Register configuration callbacks  
     register_config_boot(),
@@ -59,10 +57,39 @@ register_command_test() ->
         end,
     clique:register_command(Cmd, KeySpecs, Flagspecs, Callback).
 
-%% Register admin commands (bbsvx-admin prefix)
-register_admin_commands() ->
-    %% bbsvx-admin status
-    StatusCmd = ["bbsvx-admin", "status"],
+
+%% Config file management commands
+register_config_commands() ->
+    %% bbsvx config init - create user config file
+    InitCmd = ["bbsvx", "config", "init"],
+    InitFlagspecs = [
+        {path, [{shortname, "p"}, {longname, "path"}, {typecast, fun(P) -> {path, P} end}]},
+        {force, [{shortname, "f"}, {longname, "force"}]}
+    ],
+    InitCallback = fun(_, _, Flags) ->
+        ConfigPath = case proplists:get_value(path, Flags) of
+            undefined -> find_user_config_path();
+            {path, P} -> P
+        end,
+        IsForce = lists:keymember(force, 1, Flags),
+        Result = init_user_config(ConfigPath, IsForce),
+        [clique_status:text(Result)]
+    end,
+    clique:register_command(InitCmd, [], InitFlagspecs, InitCallback),
+
+    %% bbsvx config locate - show config file location  
+    LocateCmd = ["bbsvx", "config", "locate"],
+    LocateCallback = fun(_, _, _) ->
+        ConfigPath = find_config_file(),
+        Result = io_lib:format("Config file: ~s", [ConfigPath]),
+        [clique_status:text(Result)]
+    end,
+    clique:register_command(LocateCmd, [], [], LocateCallback).
+
+%% Command registrations
+register_command_status() ->
+    %% bbsvx status
+    StatusCmd = ["bbsvx", "status"],
     StatusFlagspecs = [
         {verbose, [{shortname, "v"}, {longname, "verbose"}]},
         {json, [{shortname, "j"}, {longname, "json"}]}
@@ -73,64 +100,7 @@ register_admin_commands() ->
         Status = get_system_status(IsVerbose, IsJson),
         [clique_status:text(Status)]
     end,
-    clique:register_command(StatusCmd, [], StatusFlagspecs, StatusCallback),
-    
-    %% bbsvx-admin show [key]
-    ShowCmd = ["bbsvx-admin", "show"],
-    ShowKeySpecs = [{key, [{typecast, fun(K) -> {key, K} end}]}],
-    ShowCallback = fun(_, Keys, _) ->
-        case Keys of
-            [] -> show_all_config();
-            [{key, Key}] -> show_config_key(Key)
-        end
-    end,
-    clique:register_command(ShowCmd, ShowKeySpecs, [], ShowCallback),
-    
-    %% bbsvx-admin set key=value
-    SetCmd = ["bbsvx-admin", "set"],
-    SetKeySpecs = [{assignment, [{typecast, fun parse_assignment/1}]}],
-    SetCallback = fun(_, [{assignment, {Key, Value}}], _) ->
-        Result = set_config_value(Key, Value),
-        [clique_status:text(Result)]
-    end,
-    clique:register_command(SetCmd, SetKeySpecs, [], SetCallback),
-    
-    %% bbsvx-admin ontology list
-    OntListCmd = ["bbsvx-admin", "ontology", "list"],
-    OntListCallback = fun(_, _, _) ->
-        Ontologies = get_ontology_list(),
-        [clique_status:text(Ontologies)]
-    end,
-    clique:register_command(OntListCmd, [], [], OntListCallback),
-    
-    %% bbsvx-admin ontology create <name>
-    OntCreateCmd = ["bbsvx-admin", "ontology", "create"],
-    OntCreateKeySpecs = [{namespace, [{typecast, fun(N) -> {namespace, N} end}]}],
-    OntCreateFlagspecs = [
-        {type, [{shortname, "t"}, {longname, "type"}, {typecast, fun safe_to_atom/1}]}
-    ],
-    OntCreateCallback = fun(_, [{namespace, Namespace}], Flags) ->
-        Type = proplists:get_value(type, Flags, local),
-        Result = create_ontology(Namespace, Type),
-        [clique_status:text(Result)]
-    end,
-    clique:register_command(OntCreateCmd, OntCreateKeySpecs, OntCreateFlagspecs, OntCreateCallback).
-
-%% Command registrations
-register_command_status() ->
-    Cmd = ["bbsvx", "status"],
-    KeySpecs = [],
-    Flagspecs = [
-        {verbose, [{shortname, "v"}, {longname, "verbose"}]},
-        {json, [{shortname, "j"}, {longname, "json"}]}
-    ],
-    Callback = fun(_, _, Flags) ->
-        IsVerbose = lists:keymember(verbose, 1, Flags),
-        IsJson = lists:keymember(json, 1, Flags),
-        Status = get_system_status(IsVerbose, IsJson),
-        [clique_status:text(Status)]
-    end,
-    clique:register_command(Cmd, KeySpecs, Flagspecs, Callback).
+    clique:register_command(StatusCmd, [], StatusFlagspecs, StatusCallback).
 
 register_command_ontology() ->
     %% bbsvx ontology list
@@ -157,8 +127,8 @@ register_command_ontology() ->
     clique:register_command(CreateCmd, CreateKeySpecs, CreateFlagspecs, CreateCallback).
 
 register_command_config() ->
-    %% bbsvx config show [key]
-    ShowCmd = ["bbsvx", "config", "show"],
+    %% bbsvx show [key] - show configuration
+    ShowCmd = ["bbsvx", "show"],
     ShowKeySpecs = [
         {key, [{typecast, fun(K) -> {key, K} end}]}
     ],
@@ -170,8 +140,8 @@ register_command_config() ->
     end,
     clique:register_command(ShowCmd, ShowKeySpecs, [], ShowCallback),
     
-    %% bbsvx config set key=value
-    SetCmd = ["bbsvx", "config", "set"],
+    %% bbsvx set key=value - set configuration
+    SetCmd = ["bbsvx", "set"],
     SetKeySpecs = [
         {assignment, [{typecast, fun parse_assignment/1}]}
     ],
@@ -471,3 +441,79 @@ convert_config_value("network.contact_nodes", Value) ->
     {contact_nodes, [string:trim(N) || N <- Nodes]};
 convert_config_value(Key, Value) ->
     {safe_to_atom(Key), Value}.
+
+%% Config file location helper functions
+find_config_file() ->
+    %% Search order for config files
+    ConfigPaths = [
+        os:getenv("BBSVX_CONFIG_FILE"),  % Environment variable
+        find_user_config_path(),         % ~/.bbsvx/bbsvx.conf
+        "./bbsvx.conf",                  % Current directory
+        "etc/bbsvx.conf"                 % Release default
+    ],
+    find_first_existing_file(ConfigPaths).
+
+find_user_config_path() ->
+    HomeDir = case os:getenv("HOME") of
+        false -> ".";  % Fallback for Windows without HOME
+        Home -> Home
+    end,
+    filename:join([HomeDir, ".bbsvx", "bbsvx.conf"]).
+
+find_first_existing_file([false | Rest]) ->
+    find_first_existing_file(Rest);
+find_first_existing_file([Path | Rest]) when is_list(Path) ->
+    case filelib:is_file(Path) of
+        true -> Path;
+        false -> find_first_existing_file(Rest)
+    end;
+find_first_existing_file([]) ->
+    "etc/bbsvx.conf".  % Default fallback
+
+init_user_config(ConfigPath, IsForce) ->
+    try
+        case filelib:is_file(ConfigPath) of
+            true when not IsForce ->
+                io_lib:format("Config file already exists: ~s~nUse --force to overwrite", [ConfigPath]);
+            _ ->
+                %% Ensure directory exists
+                ConfigDir = filename:dirname(ConfigPath),
+                case filelib:ensure_dir(filename:join(ConfigDir, "dummy")) of
+                    ok ->
+                        %% Create basic config file
+                        DefaultConfig = create_default_config(),
+                        case file:write_file(ConfigPath, DefaultConfig) of
+                            ok ->
+                                io_lib:format("Created config file: ~s", [ConfigPath]);
+                            {error, Reason} ->
+                                io_lib:format("Failed to create config file: ~p", [Reason])
+                        end;
+                    {error, Reason} ->
+                        io_lib:format("Failed to create config directory: ~p", [Reason])
+                end
+        end
+    catch
+        _:Error ->
+            io_lib:format("Error creating config file: ~p", [Error])
+    end.
+
+create_default_config() ->
+    "## BBSvx Configuration\n"
+    "## This file is automatically created for user convenience\n"
+    "\n"
+    "## Boot mode: 'root' (new cluster), 'join host port' (join existing), 'auto' (restarts only)\n"
+    "boot = root\n"
+    "\n"
+    "## Network configuration\n"
+    "network.p2p_port = 2304\n"
+    "network.http_port = 8085\n"
+    "# network.contact_nodes = host1:port1,host2:port2\n"
+    "\n"
+    "## Paths (relative to working directory)\n"
+    "paths.data_dir = ./data\n"
+    "paths.log_dir = ./logs\n"
+    "paths.kb_path = .\n"
+    "\n"
+    "## Node identity\n"
+    "# nodename = bbsvx@localhost\n"
+    "# distributed_cookie = bbsvx\n".

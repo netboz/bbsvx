@@ -97,4 +97,13 @@ init_metrics() ->
                               {help, "Time needed to process transaction"}]),
     prometheus_gauge:declare([{name, <<"bbsvx_transction_total_validation_time">>},
                               {labels, [<<"namespace">>]},
-                              {help, "Time needed to validate transaction"}]).
+                              {help, "Time needed to validate transaction"}]),
+    prometheus_gauge:declare([{name, <<"bbsvx_spray_edge_active">>},
+                              {labels, [<<"source_node">>, <<"target_node">>, <<"namespace">>, <<"direction">>]},
+                              {help, "Active connections between nodes in spray network"}]),
+    prometheus_gauge:declare([{name, <<"bbsvx_spray_node_active">>},
+                              {labels, [<<"node_id">>, <<"namespace">>, <<"short_id">>, <<"host">>, <<"port">>]},
+                              {help, "Active nodes in spray network"}]),
+    prometheus_gauge:declare([{name, <<"bbsvx_spray_edge_info">>},
+                              {labels, [<<"id">>, <<"source">>, <<"target">>, <<"namespace">>]},
+                              {help, "Edge information for Node Graph visualization"}]).

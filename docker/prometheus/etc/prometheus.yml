@@ -1,11 +1,12 @@
 global:
-  scrape_interval: 5s  # Default scrape interval
+  scrape_interval: 1s  # Default scrape interval
   external_labels:
       monitor: 'bbsvx'
 
 scrape_configs:
   # Existing job: bbsvx_scrape
   - job_name: bbsvx_scrape
+    scrape_interval: 1s  # Scrape every second for real-time updates
     docker_sd_configs:
       - host: unix:///var/run/docker.sock
         filters:

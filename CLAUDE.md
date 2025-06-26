@@ -10,12 +10,58 @@ export BUILD_WITHOUT_QUIC=true
 rebar3 compile
 ```
 
+### Configuration Management
+BBSvx supports intelligent configuration with automatic file location detection:
+- `BBSVX_CONFIG_FILE=/path/to/config` - Environment variable override
+- `~/.bbsvx/bbsvx.conf` - User space config (recommended for development)
+- `./bbsvx.conf` - Current directory config
+- `etc/bbsvx.conf` - Release default (production)
+
+#### Smart Boot Modes
+BBSvx provides intelligent boot mode detection to prevent data conflicts:
+
+- **`boot = auto`** - Automatic detection (restarts only)
+  - Detects existing data and restarts appropriately
+  - Prevents accidental data loss on existing nodes
+  - First-time starts require explicit intent (`root` or `join`)
+
+- **`boot = root`** - Start new cluster (fresh data only)
+  - Creates new cluster as root node
+  - Prevents accidental overwrites of existing data
+  - Validates no existing data directory
+
+- **`boot = join <host> <port>`** - Join existing cluster
+  - Connects to existing cluster at specified host/port
+  - Default port is 2304 if not specified
+
+Initialize user config: `./bin/bbsvx config init`
+
 ### Enhanced Command Line Interface
 
 BBSvx now provides **native clique integration** following the Riak pattern, eliminating the need for custom startup scripts. Configuration is managed through **cuttlefish** schemas and **clique** commands directly integrated with the release system.
 
-#### Native Clique Integration (No Scripts Required!)
+#### Simple Command Interface
+BBSvx uses standard OTP release commands with environment variable configuration:
+
 ```bash
+# Simple Environment Variable Startup
+BBSVX_BOOT=root ./bin/bbsvx start                    # Start new cluster
+BBSVX_BOOT="join 192.168.1.100 2304" ./bin/bbsvx start  # Join existing cluster
+BBSVX_BOOT=auto ./bin/bbsvx start                    # Auto-detect mode
+
+# Standard Node Operations
+./bin/bbsvx start                    # Start with config file
+./bin/bbsvx stop                     # Stop node
+./bin/bbsvx console                  # Start with interactive console
+./bin/bbsvx foreground               # Start in foreground mode
+./bin/bbsvx ping                     # Check if node is responding
+
+# Administration via bbsvx-admin
+./bin/bbsvx-admin status             # Show system status
+./bin/bbsvx-admin ping               # Ping the node
+./bin/bbsvx-admin show               # Show configuration
+./bin/bbsvx-admin show boot          # Show specific config key
+
 # Build the release first
 export BUILD_WITHOUT_QUIC=true
 rebar3 release
@@ -23,61 +69,80 @@ rebar3 release
 # Start the node
 _build/default/rel/bbsvx/bin/bbsvx start
 
-# Use bbsvx-admin for all configuration and management (like riak-admin)
-_build/default/rel/bbsvx/bin/bbsvx-admin --help
-
 # Configuration management (on running node)
-_build/default/rel/bbsvx/bin/bbsvx-admin show
-_build/default/rel/bbsvx/bin/bbsvx-admin show network.p2p_port  
-_build/default/rel/bbsvx/bin/bbsvx-admin set network.p2p_port=3000
-_build/default/rel/bbsvx/bin/bbsvx-admin set network.contact_nodes=node1@host1,node2@host2
+_build/default/rel/bbsvx/bin/bbsvx rpc bbsvx_cli show
+_build/default/rel/bbsvx/bin/bbsvx rpc bbsvx_cli show network.p2p_port  
+_build/default/rel/bbsvx/bin/bbsvx rpc bbsvx_cli set network.p2p_port 3000
+_build/default/rel/bbsvx/bin/bbsvx rpc bbsvx_cli set network.contact_nodes node1@host1,node2@host2
 
 # System status and management
-_build/default/rel/bbsvx/bin/bbsvx-admin status
-_build/default/rel/bbsvx/bin/bbsvx-admin status -v -j  # verbose + JSON
+_build/default/rel/bbsvx/bin/bbsvx rpc bbsvx_cli status
+_build/default/rel/bbsvx/bin/bbsvx rpc bbsvx_cli status verbose
 
 # Ontology management  
-_build/default/rel/bbsvx/bin/bbsvx-admin ontology list
-_build/default/rel/bbsvx/bin/bbsvx-admin ontology create my_namespace --type local
+_build/default/rel/bbsvx/bin/bbsvx rpc bbsvx_cli ontology list
+_build/default/rel/bbsvx/bin/bbsvx rpc bbsvx_cli ontology create my_namespace
 ```
 
 #### Startup Configuration
 ```bash
-# Edit the configuration file directly
-vim _build/default/rel/bbsvx/etc/bbsvx.conf
+# Smart boot mode examples
 
-# Or use environment variables in deployment
+# First time - start new cluster
+echo "boot = root" >> _build/default/rel/bbsvx/etc/bbsvx.conf
+_build/default/rel/bbsvx/bin/bbsvx start
+
+# First time - join existing cluster  
+echo "boot = join existing.node.com 2304" >> _build/default/rel/bbsvx/etc/bbsvx.conf
+_build/default/rel/bbsvx/bin/bbsvx start
+
+# Restart existing node - auto-detect
+echo "boot = auto" >> _build/default/rel/bbsvx/etc/bbsvx.conf
+_build/default/rel/bbsvx/bin/bbsvx start
+
+# Environment variables for deployment
 export BBSVX_NODE_NAME="production@10.0.1.100"
 export BBSVX_P2P_PORT=2305
+export BBSVX_BOOT="join cluster.internal 2304"
 _build/default/rel/bbsvx/bin/bbsvx start
 ```
 
 #### Deployment Example  
 ```bash
-# Production deployment with custom configuration
+# Production deployment with smart boot detection
 cat > production.conf << EOF
-node.name = prod@10.0.1.100
+# Smart boot mode - auto-detect on restart, explicit join for first start
+boot = join node1@10.0.1.101 2304
+
+# Node configuration
+nodename = prod@10.0.1.100
 node.cookie = production_secret
+
+# Network settings
 network.p2p_port = 2305
 network.http_port = 8086
+network.contact_nodes = node1@10.0.1.101,node2@10.0.1.102
+
+# Storage paths
 paths.data_dir = /var/lib/bbsvx
 paths.log_dir = /var/log/bbsvx
-network.contact_nodes = node1@10.0.1.101,node2@10.0.1.102
 EOF
 
 cp production.conf _build/default/rel/bbsvx/etc/bbsvx.conf
 _build/default/rel/bbsvx/bin/bbsvx start
 
 # Runtime configuration changes
-_build/default/rel/bbsvx/bin/bbsvx-admin set network.contact_nodes=node1@10.0.1.101,node2@10.0.1.102,node3@10.0.1.103
+_build/default/rel/bbsvx/bin/bbsvx rpc bbsvx_cli set network.contact_nodes node1@10.0.1.101,node2@10.0.1.102,node3@10.0.1.103
 ```
 
 #### Key Features
-- **No Custom Scripts**: Direct integration with release system like Riak
-- **Runtime Configuration**: Change settings without restart using clique  
-- **Cuttlefish Integration**: Type-safe configuration with automatic validation
-- **Standard OTP Release**: Follows Erlang/OTP best practices
+- **Unified Command Interface**: Single `bbsvx` command for all operations via RPC
+- **Smart Boot Detection**: Prevents data conflicts with intelligent boot modes
+- **Runtime Configuration**: Live configuration changes without restart using clique
+- **Type-Safe Configuration**: Cuttlefish schema validation with helpful error messages
+- **Standard OTP Release**: Follows Erlang/OTP best practices like Riak
 - **Production Ready**: Environment variable support for containerized deployments
+- **Data Protection**: Prevents accidental data loss through boot mode validation
 
 ### Testing
 ```bash
