@@ -1,6 +1,42 @@
 %%%-----------------------------------------------------------------------------
 %%% @doc
-%%% Gen State Machine built from template.
+%%% Arc Events to Graph Visualizer Bridge
+%%%
+%%% This module serves as a bridge between BBSvx's internal network events and
+%%% the external graph visualizer service. It subscribes to spray protocol events
+%%% and translates them into HTTP API calls to update the real-time network
+%%% visualization.
+%%%
+%%% == Purpose ==
+%%% - Monitor network topology changes (connections/disconnections)
+%%% - Report node lifecycle events (start/stop)
+%%% - Provide real-time network visualization data
+%%% - Enable interactive network management through the graph visualizer
+%%%
+%%% == Event Flow ==
+%%% 1. Subscribes to spray_exchange events for "bbsvx:root" namespace
+%%% 2. Receives arc connection/disconnection events from SPRAY protocol
+%%% 3. Translates events to JSON payloads
+%%% 4. Sends HTTP requests to graph-visualizer service (port 3400)
+%%% 5. Graph visualizer updates live network visualization
+%%%
+%%% == Supported Events ==
+%%% - evt_arc_connected_out: Reports new outgoing connections as edges
+%%% - evt_arc_disconnected: Reports removed connections
+%%% - node_started: Reports new nodes joining the network
+%%% - node_stopped: Reports nodes leaving the network
+%%%
+%%% == API Endpoints Used ==
+%%% - POST /edges/add: Add network edges (connections)
+%%% - POST /edges/remove: Remove network edges
+%%% - POST /nodes: Add/remove nodes with metadata
+%%%
+%%% == Integration ==
+%%% This reporter works in conjunction with:
+%%% - bbsvx_metrics_graph_reporter: Prometheus metrics for Grafana
+%%% - bbsvx_actor_spray: SPRAY protocol overlay network management
+%%% - Graph visualizer service: External visualization (port 3400)
+%%%
 %%% @author yan
 %%% @end
 %%%-----------------------------------------------------------------------------
@@ -101,13 +137,12 @@ running(info,
           to => NodeId},
     %% Encode Data to json
     Json = jiffy:encode(Data),
-    %%?'log-info'("add edge post data: ~p", [Data]),
+    ?'log-info'("add edge post data: ~p", [Data]),
     %% Post json data to http://graph-visualizer/api/edges
     httpc:request(post,
                       {"http://graph-visualizer:3400/edges/add", [], "application/json", Json},
                       [],
                       []),
-    %%?'log-info'("add edge response: ~p", [R]),
     {next_state, running, State};
 running(info,
         #incoming_event{event = #evt_arc_disconnected{ulid = Ulid, direction = out}},
@@ -123,7 +158,7 @@ running(info,
         #{action => <<"remove">>,
           from => State#state.my_id,
           ulid => Ulid},
-    %?'log-info'("remove edge post data: ~p", [Data]),
+    ?'log-info'("remove edge post data: ~p", [Data]),
     %% Encode Data to json
     Json = jiffy:encode(Data),
     %% Post json data to http://graph-visualizer/api/edges
@@ -160,12 +195,12 @@ running(info,
                 port => Port,
                 namespace => Namespace,
                 node_id => NodeId}},
-    %?'log-info'("add node post data: ~p", [Data]),
+    ?'log-info'("add node post data: ~p", [Data]),
     %% Encode Data to json
     Json = jiffy:encode(Data),
     %% Post json data to http://graph-visualizer/nodes
     httpc:request(post,
-                      {"http://graph-visualizer:3400/nodes/add", [], "application/json", Json},
+                      {"http://graph-visualizer:3400/nodes", [], "application/json", Json},
                       [],
                       []),
     {next_state, running, State};
@@ -179,7 +214,7 @@ running(info,
         State) ->
     %% Prepare body as json :
     %% {
-    %   "action": "add",
+    %   "action": "remove",
     %   "node_id": "node12345",
     %   "metadata": {
     %     "host": Host,
@@ -189,19 +224,19 @@ running(info,
     %   }
     % }
     Data =
-        #{action => <<"add">>,
+        #{action => <<"remove">>,
           node_id => NodeId,
           metadata =>
               #{host => Host,
                 port => Port,
                 namespace => Namespace,
                 node_id => NodeId}},
-    %?'log-info'("add node post data: ~p", [Data]),
+    ?'log-info'("remove node post data: ~p", [Data]),
     %% Encode Data to json
     Json = jiffy:encode(Data),
     %% Post json data to http://graph-visualizer/nodes
     httpc:request(post,
-                      {"http://graph-visualizer:3400/nodes/add", [], "application/json", Json},
+                      {"http://graph-visualizer:3400/nodes", [], "application/json", Json},
                       [],
                       []),
     {next_state, running, State};
