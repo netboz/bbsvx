@@ -11,6 +11,10 @@ app.use(express.json());
 // In-memory data structure to store nodes and their edges
 let nodes = {}; // Each key is a node_id, value is an object with metadata and edges
 
+// Race condition protection for arc exchanges
+let recentlyAddedEdges = new Map(); // Track edges added recently
+const EDGE_PROTECTION_WINDOW_MS = 2000; // 2 second protection window
+
 // WebSocket server for real-time updates
 const wss = new WebSocket.Server({ noServer: true });
 
@@ -47,9 +51,18 @@ wss.on('connection', (ws) => {
       if (!nodes[data.from]) nodes[data.from] = { metadata: {}, edges: {} };
       nodes[data.from].edges[data.ulid] = { ulid: data.ulid, to: data.to };
 
+      // Mark this edge as recently added to protect against race conditions
+      markEdgeAsRecentlyAdded(data.ulid, data.from, data.to);
+
       // Broadcast the edge add to all clients
       broadcast({ action: 'add', ulid: data.ulid, from: data.from, to: data.to });
     } else if (data.action === 'remove') {
+      // Check if this edge was recently added (arc exchange race condition protection)
+      if (isEdgeRecentlyAdded(data.ulid, data.from)) {
+        console.log(`Ignoring remove for recently added edge: ${data.ulid} from ${data.from}`);
+        return; // Skip this remove event
+      }
+
       // Remove edge from the corresponding node's edge list
       if (nodes[data.from] && nodes[data.from].edges[data.ulid]) {
         delete nodes[data.from].edges[data.ulid];
@@ -68,6 +81,30 @@ function broadcast(message) {
       client.send(JSON.stringify(message));
     }
   });
+}
+
+// Helper functions for race condition protection
+function markEdgeAsRecentlyAdded(ulid, from, to) {
+  const key = `${ulid}-${from}-${to}`;
+  recentlyAddedEdges.set(key, Date.now());
+  console.log(`Protected edge: ${key} for ${EDGE_PROTECTION_WINDOW_MS}ms`);
+  
+  // Auto-cleanup after protection window
+  setTimeout(() => {
+    recentlyAddedEdges.delete(key);
+    console.log(`Protection expired for edge: ${key}`);
+  }, EDGE_PROTECTION_WINDOW_MS);
+}
+
+function isEdgeRecentlyAdded(ulid, from) {
+  const now = Date.now();
+  for (const [key, timestamp] of recentlyAddedEdges.entries()) {
+    if (key.startsWith(`${ulid}-${from}-`) && (now - timestamp) < EDGE_PROTECTION_WINDOW_MS) {
+      console.log(`Edge ${key} is protected (added ${now - timestamp}ms ago)`);
+      return true;
+    }
+  }
+  return false;
 }
 
 // Create a simple HTTP server to serve the frontend
@@ -127,6 +164,9 @@ app.post('/edges/add', (req, res) => {
     if (!nodes[from]) nodes[from] = { metadata: {}, edges: {} };
     nodes[from].edges[ulid] = { ulid, to };
 
+    // Mark this edge as recently added to protect against race conditions
+    markEdgeAsRecentlyAdded(ulid, from, to);
+
     // Broadcast edge addition to all WebSocket clients
     broadcast({ action: 'add', ulid, from, to });
     res.status(200).send({ message: 'Edge added' });
@@ -140,6 +180,13 @@ app.post('/edges/remove', (req, res) => {
   const { action, from, ulid } = req.body;
 
   if (action === 'remove') {
+    // Check if this edge was recently added (arc exchange race condition protection)
+    if (isEdgeRecentlyAdded(ulid, from)) {
+      console.log(`HTTP: Ignoring remove for recently added edge: ${ulid} from ${from}`);
+      res.status(200).send({ message: 'Edge remove ignored (recently added)' });
+      return;
+    }
+
     if (nodes[from] && nodes[from].edges[ulid]) {
       delete nodes[from].edges[ulid];
 
