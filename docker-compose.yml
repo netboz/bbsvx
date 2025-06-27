@@ -134,6 +134,9 @@ services:
       - bbsvx-net
     restart: always
   graph-visualizer:
+    build: 
+      context: ./priv/graph-visualizer
+      dockerfile: Dockerfile
     image: graph-visualizer:latest
     hostname: graph-visualizer
     ports:
@@ -142,6 +145,13 @@ services:
       - bbsvx-net
     environment:
       - NODE_ENV=production
+      - TZ="Europe/Paris"
+    volumes:
+      - ./priv/graph-visualizer:/app
+      - /app/node_modules  # Prevent host node_modules from overriding container's
+    restart: unless-stopped
+    labels:
+      - "monitoring=enabled"
   # prometheus:
   #   image: prom/prometheus
   #   hostname: prometheus
