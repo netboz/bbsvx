@@ -224,13 +224,17 @@
         const edgeId = `${message.ulid}`;
         data.edges.remove({ id: edgeId });
 
-        // Check if origin_node_id has any remaining edges
-        const fromNodeEdges = data.edges.get({ filter: (edge) => edge.from === message.origin_node_id });
-        const toNodeEdges = data.edges.get({ filter: (edge) => edge.to === message.origin_node_id });
+        // Check if from node has any remaining edges
+        // Note: bbsvx sends 'from' field, not 'origin_node_id'
+        const nodeId = message.from || message.origin_node_id;
+        if (nodeId) {
+          const fromNodeEdges = data.edges.get({ filter: (edge) => edge.from === nodeId });
+          const toNodeEdges = data.edges.get({ filter: (edge) => edge.to === nodeId });
 
-        // If no edges remain, remove the node
-        if (fromNodeEdges.length === 0 && toNodeEdges.length === 0) {
-          data.nodes.remove({ id: message.origin_node_id });
+          // If no edges remain, remove the node
+          if (fromNodeEdges.length === 0 && toNodeEdges.length === 0) {
+            data.nodes.remove({ id: nodeId });
+          }
         }
       }
     };
