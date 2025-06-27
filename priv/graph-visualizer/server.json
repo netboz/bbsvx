@@ -1,0 +1,21 @@
+const express = require('express');
+const app = express();
+app.use(express.json());
+
+let graphData = {
+  nodes: [],
+  edges: []
+};
+
+app.post('/graph-data', (req, res) => {
+  graphData.nodes.push(...req.body.nodes);
+  graphData.edges.push(...req.body.edges);
+  res.send('Data received');
+});
+
+app.get('/graph-data', (req, res) => {
+  res.json(graphData);
+});
+
+app.listen(3400, () => console.log('Server running on port 3000'));
+
