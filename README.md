@@ -2,6 +2,114 @@
 
 BBSvx is a blockchain-powered BBS (Bulletin Board System) built on Erlang/OTP with distributed consensus and knowledge management capabilities.
 
+## Introduction - Quick Start with Docker
+
+This tutorial will get you up and running with BBSvx in minutes using Docker Compose, demonstrating the distributed P2P network formation and monitoring capabilities.
+
+### Prerequisites
+
+- Docker and Docker Compose installed
+- Git (to clone the repository)
+
+### Step 1: Start the BBSvx Cluster
+
+```bash
+# Clone and enter the repository
+git clone <repository-url>
+cd bbsvx
+
+# Start BBSvx with 4 client nodes
+docker compose up --scale bbsvx_client=4
+```
+
+This command starts:
+- **1 BBSvx server node** (the root/seed node)
+- **4 BBSvx client nodes** (joining the cluster)
+- **Grafana** for monitoring dashboards
+- **Graph Visualizer** for network topology visualization
+
+### Step 2: Monitor Network Formation
+
+Once the containers are running, you can monitor the P2P network formation:
+
+#### Grafana Dashboard (SPRAY Protocol Monitoring)
+Open http://localhost:3000 in your browser to access Grafana dashboards:
+
+- **Username**: admin
+- **Password**: admin (default)
+- Navigate to the **BBSvx SPRAY Dashboard** to see:
+  - Total connection slopes across the cluster
+  - Arc exchange monitoring in real-time
+  - Inview/outview connections per node
+  - Network topology metrics
+
+#### Graph Visualizer (Real-time Network Topology)
+Open http://localhost:3400 in your browser to see:
+
+- **Interactive network graph** showing all nodes and connections
+- **Real-time updates** via WebSocket as nodes join/leave
+- **Right-click any node** to inspect its inview/outview connections
+- Visual representation of the SPRAY protocol overlay network
+
+### Step 3: Scale the Network
+
+Now let's scale up to 10 client nodes to observe how the SPRAY protocol adapts:
+
+```bash
+# Scale up to 10 client nodes (keep existing containers running)
+docker compose up --scale bbsvx_client=10 -d
+```
+
+Watch the monitoring dashboards as:
+1. **New nodes join** the network automatically
+2. **SPRAY protocol exchanges** redistribute connections
+3. **Network topology evolves** to maintain optimal connectivity
+4. **Connection slopes adjust** to accommodate the larger network
+
+### Step 4: Observe Network Behavior
+
+In the **Graph Visualizer** (http://localhost:3400):
+- Watch new nodes appear and connect to existing ones
+- Observe how connections redistribute as the network grows
+- Right-click nodes to see how inview/outview connections balance
+
+In the **Grafana Dashboard** (http://localhost:3000):
+- Monitor the "Total Connection Slopes" metric increasing
+- Watch "Arc Exchange" activity as nodes negotiate connections
+- Observe how the network maintains stability despite scaling
+
+### Step 5: API Interaction
+
+The HTTP API is available at http://localhost:8085:
+
+```bash
+# Check node status
+curl http://localhost:8085/status
+
+# Query ontology (if configured)
+curl http://localhost:8085/ontology/list
+```
+
+### Step 6: Cleanup
+
+```bash
+# Stop all containers
+docker compose down
+
+# Remove volumes (optional, clears all data)
+docker compose down -v
+```
+
+### What You Just Learned
+
+- **Distributed Bootstrap**: Nodes automatically discover and join the cluster
+- **SPRAY Protocol**: P2P overlay network formation with automatic load balancing
+- **Real-time Monitoring**: Visual feedback on network topology and performance
+- **Horizontal Scaling**: Adding nodes dynamically without service interruption
+- **Fault Tolerance**: Built-in resilience through distributed architecture
+
+This demonstrates BBSvx's core strength: **autonomous distributed networking** with built-in monitoring and visualization tools for understanding complex P2P behaviors.
+
 ## Features
 
 - **P2P Network**: SPRAY protocol implementation for overlay network formation
