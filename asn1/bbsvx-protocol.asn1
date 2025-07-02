@@ -1,0 +1,207 @@
+BBSVXProtocol DEFINITIONS AUTOMATIC TAGS ::= BEGIN
+
+-- Protocol version for compatibility
+ProtocolVersion ::= UTF8String (SIZE(5))
+
+-- Basic data types optimized for performance
+NodeId ::= OCTET STRING (SIZE(32..64))  -- Base64 encoded public key
+ULId ::= OCTET STRING (SIZE(26))        -- ULID fixed size
+Lock ::= OCTET STRING (SIZE(24))        -- Base64 encoded lock
+Namespace ::= UTF8String (SIZE(1..256))
+Timestamp ::= INTEGER (0..MAX)
+PortNumber ::= INTEGER (1..65535)
+
+-- Network address optimized for fast comparison
+HostAddress ::= CHOICE {
+    ipv4        [0] OCTET STRING (SIZE(4)),
+    ipv6        [1] OCTET STRING (SIZE(16)), 
+    hostname    [2] UTF8String (SIZE(1..255)),
+    local       [3] NULL
+}
+
+-- Node entry with context tags for speed
+NodeEntry ::= SEQUENCE {
+    nodeId      [0] NodeId OPTIONAL,
+    host        [1] HostAddress,
+    port        [2] PortNumber DEFAULT 2304
+}
+
+-- Exchange entry for SPRAY protocol
+ExchangeEntry ::= SEQUENCE {
+    ulid        [0] ULId,
+    lock        [1] Lock,
+    target      [2] NodeEntry,
+    newLock     [3] Lock OPTIONAL
+}
+
+-- Connection result codes for fast processing
+ConnectionResult ::= ENUMERATED {
+    ok                  (0),
+    connection-to-self  (1),
+    namespace-mismatch  (2),
+    protocol-error      (3),
+    timeout            (4),
+    resource-exhausted (5)
+}
+
+-- Registration result codes
+RegistrationResult ::= ENUMERATED {
+    ok                 (0),
+    namespace-full     (1),
+    duplicate-node     (2),
+    invalid-lock       (3),
+    leader-unavailable (4)
+}
+
+-- Reason codes for disconnection
+DisconnectReason ::= ENUMERATED {
+    normal          (0),
+    protocol-error  (1),
+    timeout         (2),
+    resource-limit  (3),
+    network-error   (4),
+    shutdown        (5)
+}
+
+-- Connection handshake messages
+HeaderConnect ::= SEQUENCE {
+    version         [0] ProtocolVersion DEFAULT "0.1.0",
+    connectionType  [1] UTF8String OPTIONAL,  -- For backward compatibility
+    nodeId          [2] NodeId,
+    namespace       [3] Namespace
+}
+
+HeaderConnectAck ::= SEQUENCE {
+    result          [0] ConnectionResult,
+    nodeId          [1] NodeId
+}
+
+-- Registration messages
+HeaderRegister ::= SEQUENCE {
+    namespace       [0] Namespace,
+    ulid            [1] ULId,
+    lock            [2] Lock
+}
+
+HeaderRegisterAck ::= SEQUENCE {
+    result          [0] RegistrationResult,
+    leader          [1] NodeId OPTIONAL,
+    currentIndex    [2] INTEGER OPTIONAL
+}
+
+-- Join operation messages  
+HeaderJoin ::= SEQUENCE {
+    namespace       [0] Namespace,
+    ulid            [1] ULId,
+    joinType        [2] UTF8String,  -- normal, mirror, etc.
+    currentLock     [3] Lock,
+    newLock         [4] Lock,
+    options         [5] OCTET STRING OPTIONAL  -- Serialized options for flexibility
+}
+
+HeaderJoinAck ::= SEQUENCE {
+    result          [0] RegistrationResult,
+    joinType        [1] UTF8String,
+    options         [2] OCTET STRING OPTIONAL
+}
+
+-- Forward join messages
+HeaderForwardJoin ::= SEQUENCE {
+    namespace       [0] Namespace,
+    ulid            [1] ULId,
+    joinType        [2] UTF8String,
+    lock            [3] Lock,
+    options         [4] OCTET STRING OPTIONAL
+}
+
+HeaderForwardJoinAck ::= SEQUENCE {
+    result          [0] RegistrationResult,
+    joinType        [1] UTF8String
+}
+
+-- SPRAY protocol messages for fast exchange
+ExchangeIn ::= SEQUENCE {
+    proposedSample  [0] SEQUENCE OF ExchangeEntry
+}
+
+ExchangeOut ::= SEQUENCE {
+    proposedSample  [0] SEQUENCE OF ExchangeEntry
+}
+
+ExchangeAccept ::= SEQUENCE {
+    -- Empty for now, can add fields later
+}
+
+ExchangeCancelled ::= SEQUENCE {
+    namespace       [0] Namespace,
+    reason          [1] DisconnectReason
+}
+
+-- Node management
+NodeQuitting ::= SEQUENCE {
+    reason          [0] DisconnectReason
+}
+
+-- Lock change operation
+ChangeLock ::= SEQUENCE {
+    newLock         [0] Lock,
+    currentLock     [1] Lock
+}
+
+-- Complex payloads kept as binary for performance
+OntologyHistory ::= SEQUENCE {
+    namespace       [0] Namespace,
+    oldestIndex     [1] INTEGER,
+    youngerIndex    [2] INTEGER,
+    transactions    [3] OCTET STRING  -- Serialized transaction list
+}
+
+EptoMessage ::= SEQUENCE {
+    payload         [0] OCTET STRING  -- Keep flexible for EPTO protocol
+}
+
+-- Forward subscription messages
+SendForwardSubscription ::= SEQUENCE {
+    subscriberNode  [0] NodeEntry,
+    lock            [1] Lock
+}
+
+OpenForwardJoin ::= SEQUENCE {
+    subscriberNode  [0] NodeEntry,
+    lock            [1] Lock
+}
+
+-- Main message wrapper with context-specific tags for fastest dispatch
+BBSVXMessage ::= CHOICE {
+    -- Connection handshake (tags 0-9)
+    headerConnect           [0] HeaderConnect,
+    headerConnectAck        [1] HeaderConnectAck,
+    
+    -- Registration (tags 10-19)  
+    headerRegister          [10] HeaderRegister,
+    headerRegisterAck       [11] HeaderRegisterAck,
+    
+    -- Join operations (tags 20-29)
+    headerJoin              [20] HeaderJoin,
+    headerJoinAck           [21] HeaderJoinAck,
+    headerForwardJoin       [22] HeaderForwardJoin,
+    headerForwardJoinAck    [23] HeaderForwardJoinAck,
+    
+    -- SPRAY protocol (tags 30-39)
+    exchangeIn              [30] ExchangeIn,
+    exchangeOut             [31] ExchangeOut,
+    exchangeAccept          [32] ExchangeAccept,
+    exchangeCancelled       [33] ExchangeCancelled,
+    changeLock              [34] ChangeLock,
+    
+    -- Node management (tags 40-49)
+    nodeQuitting            [40] NodeQuitting,
+    sendForwardSubscription [41] SendForwardSubscription,
+    openForwardJoin         [42] OpenForwardJoin,
+    
+    -- Protocol data (tags 50-59)
+    ontologyHistory         [50] OntologyHistory,
+    eptoMessage             [51] EptoMessage
+}
+
+END

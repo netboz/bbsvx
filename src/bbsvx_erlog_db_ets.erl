@@ -25,6 +25,8 @@
 
 -module(bbsvx_erlog_db_ets).
 
+-include_lib("logjam/include/logjam.hrl").
+
 -export([new/1]).
 -export([add_built_in/2, add_compiled_proc/4, asserta_clause/4, assertz_clause/4]).
 -export([retract_clause/3, abolish_clauses/2]).
@@ -34,6 +36,7 @@
 %% new(InitArgs) -> Db.
 
 new(Name) ->
+    ?'log-info'("Creating new ETS database ~p", [Name]),
     ets:new(Name, [set, public, {keypos, 1}]).
 
 %% add_built_in(Db, Functor) -> NewDb.

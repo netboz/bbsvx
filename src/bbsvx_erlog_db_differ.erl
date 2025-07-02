@@ -106,6 +106,7 @@ asserta_clause(#db_differ{out_db = #db{mod = OutMod, ref = Ref} = Db, op_fifo = 
                Head,
                Body) ->
     %% Call outmod to do the real work
+    ?'log-info'("asserta_clause to ~p", [Ref]),
     {ok, NewRef} = OutMod:asserta_clause(Ref, Functor, Head, Body),
     {ok,
      DiffRef#db_differ{out_db = Db#db{ref = NewRef},
@@ -117,6 +118,8 @@ assertz_clause(#db_differ{out_db = #db{mod = OutMod, ref = Ref} = Db, op_fifo = 
                Head,
                Body) ->
     %% Call outmod to do the real work
+    ?'log-info'("asserta_clause to ~p", [Ref]),
+
     {ok, NewRef} = OutMod:assertz_clause(Ref, Functor, Head, Body),
     {ok,
      DiffRef#db_differ{out_db = Db#db{ref = NewRef},
@@ -178,7 +181,6 @@ get_interpreted_functors(#db_differ{out_db = #db{mod = OutMod, ref = Ref}}) ->
 apply_diff(GoalDiff, #db{mod = Mod} = DbIn) ->
     %% @TODO : This can be avoided by making diff commutative
     %% Apply the diff to the database state
-    ?'log-info'("Applying diff ~p to db ~p", [GoalDiff, DbIn]),
     {ok,
      lists:foldr(fun ({asserta, Functor, Head, Body}, #db{ref = Ref} = Db) ->
                          {ok, NewRef} = Mod:asserta_clause(Ref, Functor, Head, Body),
@@ -198,6 +200,31 @@ apply_diff(GoalDiff, #db{mod = Mod} = DbIn) ->
                  end,
                  DbIn,
                  GoalDiff)}.
+
+
+
+state_entry_to_map({{Functor, Arity}, built_in}) ->
+    #{functor => Functor,
+      arity => Arity,
+      type => built_in};
+state_entry_to_map({{Functor, Arity}, clauses, NumberOfClauses, ListOfClauses}) ->
+    #{functor => Functor,
+      arity => Arity,
+      type => clauses,
+      number_of_clauses => NumberOfClauses,
+      clauses => lists:map(fun clause_to_map/1, ListOfClauses)}.
+
+clause_to_map({ClauseNum, Head, {_Bodies, false}}) ->
+    [Functor | Params] = tuple_to_list(Head),
+    JsonableParams = lists:map(fun param_to_json/1, Params),
+    #{clause_num => ClauseNum,
+      functor => Functor,
+      arguments => JsonableParams}.
+param_to_json({VarNum}) ->
+    VarNumBin = integer_to_binary(VarNum),
+    <<"var_", VarNumBin/binary>>;
+param_to_json(Value) ->
+    Value.
 
 %%%=============================================================================
 %%% Eunit Tests

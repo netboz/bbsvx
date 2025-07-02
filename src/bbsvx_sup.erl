@@ -69,6 +69,13 @@ init([]) ->
        shutdown => brutal_kill,
        type => worker,
        modules => [bbsvx_metrics_arc_reporter]},
+     %% Start metrics graph reporter for Grafana Node Graph
+     #{id => bbsvx_metrics_graph_reporter,
+       start => {bbsvx_metrics_graph_reporter, start_link, []},
+       restart => permanent,
+       shutdown => brutal_kill,
+       type => worker,
+       modules => [bbsvx_metrics_graph_reporter]},
      #{id => bbsvx_ont_service,
        start => {bbsvx_ont_service, start_link, []},
        restart => permanent,

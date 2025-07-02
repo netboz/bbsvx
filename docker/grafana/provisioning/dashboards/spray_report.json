@@ -109,7 +109,7 @@
           },
           "editorMode": "builder",
           "expr": "bbsvx_spray_outview_size{namespace=\"bbsvx:root\", container_name=~\"$container\"}",
-          "legendFormat": "__auto",
+          "legendFormat": "Outview - {{container_name}}",
           "range": true,
           "refId": "A"
         },
@@ -119,14 +119,14 @@
             "uid": "adqng4jfwlslcd"
           },
           "editorMode": "builder",
-          "expr": "bbsvx_spray_outview_size{namespace=\"bbsvx:root\", container_name=~\"$container\"}",
+          "expr": "bbsvx_spray_inview_size{namespace=\"bbsvx:root\", container_name=~\"$container\"}",
           "hide": false,
-          "legendFormat": "__auto",
+          "legendFormat": "Inview - {{container_name}}",
           "range": true,
           "refId": "B"
         }
       ],
-      "title": "View Sizes",
+      "title": "Individual View Sizes",
       "type": "timeseries"
     },
     {
@@ -332,6 +332,145 @@
       ],
       "title": "Depleted Views",
       "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "victoriametrics-datasource",
+        "uid": "adqng4jfwlslcd"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Connections",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Total Incoming Connections"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Total Outgoing Connections"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 27
+      },
+      "id": 4,
+      "options": {
+        "legend": {
+          "calcs": ["lastNotNull", "max", "min"],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "11.4.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "victoriametrics-datasource",
+            "uid": "adqng4jfwlslcd"
+          },
+          "editorMode": "code",
+          "expr": "sum(bbsvx_spray_inview_size{namespace=\"bbsvx:root\", container_name=~\"$container\"})",
+          "legendFormat": "Total Incoming Connections",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "victoriametrics-datasource",
+            "uid": "adqng4jfwlslcd"
+          },
+          "editorMode": "code",
+          "expr": "sum(bbsvx_spray_outview_size{namespace=\"bbsvx:root\", container_name=~\"$container\"})",
+          "hide": false,
+          "legendFormat": "Total Outgoing Connections",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Total Connection Slopes (Sum In/Out)",
+      "type": "timeseries"
     }
   ],
   "preload": false,
@@ -378,6 +517,6 @@
   "timezone": "browser",
   "title": "Spay reports",
   "uid": "cebhqrysooz5sf",
-  "version": 8,
+  "version": 10,
   "weekStart": ""
 }

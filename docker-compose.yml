@@ -14,9 +14,11 @@ services:
       environment:
         - TZ="Europe/Paris"
         - DOCKER_COMPOSE=true
-        - ERLANG_NODE_ARG=bbsvx@bbsvx_root
-        - ERLANG_COOKIE=bbsvx
-        - BBSVX_INIT_ROOT=root
+        - BBSVX_NODE_NAME=bbsvx@bbsvx_root
+        - BBSVX_COOKIE=bbsvx
+        - BBSVX_BOOT=root
+        - BBSVX_P2P_PORT=2304
+        - BBSVX_HTTP_PORT=8085
       networks:
         - bbsvx-net
       logging:
@@ -44,9 +46,11 @@ services:
     environment:
       - TZ="Europe/Paris"
       - DOCKER_COMPOSE=true
-      - ERLANG_NODE_ARG=bbsvx@bbsvx_root
-      - ERLANG_COOKIE=bbsvx
-      - BBSVX_INIT_ROOT=join bbsvx-bbsvx_root-1 2304
+      - BBSVX_COOKIE=bbsvx
+      - BBSVX_BOOT=join bbsvx_root 2304
+      - BBSVX_CONTACT_NODES=bbsvx_root:2304
+      - BBSVX_P2P_PORT=2304
+      - BBSVX_HTTP_PORT=8085
     networks:
       - bbsvx-net
     logging:
@@ -130,6 +134,9 @@ services:
       - bbsvx-net
     restart: always
   graph-visualizer:
+    build: 
+      context: ./priv/graph-visualizer
+      dockerfile: Dockerfile
     image: graph-visualizer:latest
     hostname: graph-visualizer
     ports:
@@ -138,6 +145,13 @@ services:
       - bbsvx-net
     environment:
       - NODE_ENV=production
+      - TZ="Europe/Paris"
+    volumes:
+      - ./priv/graph-visualizer:/app
+      - /app/node_modules  # Prevent host node_modules from overriding container's
+    restart: unless-stopped
+    labels:
+      - "monitoring=enabled"
   # prometheus:
   #   image: prom/prometheus
   #   hostname: prometheus

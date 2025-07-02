@@ -122,6 +122,7 @@ init([]) ->
                              [{attributes, record_info(fields, ontology)}, {disc_copies, [node()]}])
     of
         {aborted, {already_exists, ?INDEX_TABLE}} ->
+            %% Index table already exists, so this is not the first time we start
             ?'log-info'("Onto service : waiting for index table ~p", [?INDEX_TABLE]),
             case mnesia:wait_for_tables([?INDEX_TABLE], ?INDEX_LOAD_TIMEOUT) of
                 {timeout, _} ->
@@ -136,8 +137,9 @@ init([]) ->
         {atomic, ok} ->
             MyId = bbsvx_crypto_service:my_id(),
             bbsvx_transaction:new_root_ontology(),
-            case init:get_argument(init_root) of
-                {ok, [["root"]]} ->
+            BootMode = application:get_env(bbsvx, boot, root),
+            case BootMode of
+                root ->
                     ?'log-info'("Onto service : boot type : root"),
 
                     GenesisTransaction =
@@ -174,9 +176,34 @@ init([]) ->
                                             #{contact_nodes => ContactNodes, boot => root}]),
 
                     {ok, #state{my_id = MyId}};
-                {ok, [["join", Host, Port]]} ->
+                {join, Host, Port} ->
                     ?'log-info'("Onto service : boot type : joining node ~p ~p", [Host, Port]),
-                    ListOfContactNodes = [#node_entry{host = Host, port = list_to_integer(Port)}],
+                    ListOfContactNodes = [#node_entry{host = list_to_binary(Host), port = Port}],
+
+                    logger:info("Onto service : contact nodes ~p", [ListOfContactNodes]),
+                    OntEntry =
+                        #ontology{namespace = <<"bbsvx:root">>,
+                                  version = <<"0.0.1">>,
+                                  type = shared,
+                                  contact_nodes = ListOfContactNodes},
+                    mnesia:activity(transaction, fun() -> mnesia:write(OntEntry) end),
+                    supervisor:start_child(bbsvx_sup_shared_ontologies,
+                                           [<<"bbsvx:root">>,
+                                            #{contact_nodes => ListOfContactNodes, boot => join}]),
+
+                    {ok, #state{my_id = MyId}};
+                join ->
+                    %% Join mode without specific contact node (restart case)
+                    ?'log-info'("Onto service : boot type : join (restart)"),
+                    ContactNodes = application:get_env(bbsvx, contact_nodes, "none"),
+                    ListOfContactNodes = 
+                        case ContactNodes of
+                            "none" ->
+                                [#node_entry{host = <<"localhost">>, port = 2304}];
+                            _ ->
+                                %% Parse contact nodes string
+                                parse_contact_nodes(ContactNodes)
+                        end,
 
                     logger:info("Onto service : contact nodes ~p", [ListOfContactNodes]),
                     OntEntry =
@@ -351,7 +378,7 @@ handle_call({prove, Namespace, Predicate}, _From, State)
         Eterm ->
             Timestamp = erlang:system_time(microsecond),
             Goal =
-                #goal{id = uuid:uuid4(),
+                #goal{id = uuid:to_string(uuid:uuid4()),
                       namespace = Namespace,
                       source_id = State#state.my_id,
                       timestamp = Timestamp,
@@ -517,6 +544,21 @@ table_exists(Namespace) ->
 
 check_is_in_table_list(TableName, Tablelist) when is_list(Tablelist) ->
     lists:member(TableName, Tablelist).
+
+parse_contact_nodes(ContactNodesStr) ->
+    Nodes = string:tokens(ContactNodesStr, ","),
+    lists:map(fun parse_single_node/1, Nodes).
+
+parse_single_node(NodeStr) ->
+    CleanNode = string:strip(NodeStr),
+    case string:tokens(CleanNode, ":") of
+        [Host, Port] -> 
+            #node_entry{host = list_to_binary(Host), port = list_to_integer(Port)};
+        [Host] -> 
+            #node_entry{host = list_to_binary(Host), port = 2304};
+        _ -> 
+            #node_entry{host = <<"localhost">>, port = 2304}
+    end.
 
 binary_to_table_name(Namespace) ->
     Replaced = binary:replace(Namespace, <<":">>, <<"_">>),

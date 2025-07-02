@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      background-color: #5156db;
+      /* Soft blue */
+      margin: 0;
+      padding: 0;
+    }
+
+    #graph {
+      height: 100vh;
+      width: 100%;
+    }
+  </style>
+  <style>
+    #paused-indicator {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      background-color: rgba(255, 0, 0, 0.8);
+      /* Red with some transparency */
+      color: white;
+      padding: 5px 10px;
+      font-size: 14px;
+      font-weight: bold;
+      border-radius: 5px;
+      display: none;
+      /* Hidden by default */
+      z-index: 1000;
+      /* Make sure it appears above everything */
+    }
+
+    div#metadataDiv pre {
+      background-color: #2c2f6b;
+      /* Slightly darker blue for metadata code */
+      padding: 10px;
+      border-radius: 5px;
+      color: #d4d4d4;
+      /* Light gray text for contrast */
+      overflow-x: auto;
+      font-family: 'Courier New', Courier, monospace;
+    }
+
+    button#close-metadata {
+      background-color: #5156db;
+      /* Matching main page background */
+      color: white;
+      border: none;
+      padding: 5px 10px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    button#close-metadata:hover {
+      background-color: #6a6ff1;
+      /* Lighter blue for hover effect */
+    }
+  </style>
+  <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/vis-network@9.1.0/dist/vis-network.min.js"></script>
+  <title>Real-Time Graph Visualization</title>
+</head>
+
+<body>
+  <div id="paused-indicator">Paused</div>
+
+  <div id="graph"></div>
+
+  <!-- Kill Node Button -->
+  <button id="kill-node" style="
+   background-color: #e23c3c; /* Matching edge color */
+   color: white;
+   border: none;
+   padding: 10px 15px;
+   border-radius: 5px;
+   cursor: pointer;
+   font-size: 14px;
+   font-weight: bold;
+   display: none; /* Hidden by default */
+   position: fixed;
+   bottom: 10px;
+   right: 10px;
+   z-index: 1000;
+ ">
+    Kill Node
+  </button>
+  <script>
+    // Setup the graph container
+    const container = document.getElementById('graph');
+    const data = {
+      nodes: new vis.DataSet(),
+      edges: new vis.DataSet()
+    };
+    const options = {
+      physics: {
+        enabled: true,
+        solver: 'forceAtlas2Based',
+        forceAtlas2Based: {
+          gravitationalConstant: -26,
+          centralGravity: 0.015,
+          springLength: 200,
+          springConstant: 0.08
+        }
+      },
+      edges: {
+        color: { color: '#e23c3c' }, // Edge color
+        arrows: {
+          to: { enabled: true, scaleFactor: 1.5 }
+        },
+        smooth: { enabled: true, type: 'dynamic' },
+        font: {
+          color: '#0', // Match the label color to the edge
+          strokeWidth: 0    // Remove border around the label
+        }
+      },
+      nodes: {
+        color: { background: '#ffe219', border: '#ffdac9' }, // Light yellow with subtle darker border
+        font: { color: 'black' }
+      }
+    };
+    const network = new vis.Network(container, data, options);
+
+    // WebSocket connection
+    const ws = new WebSocket('ws://localhost:3400');
+
+    const eventQueue = []; // Queue to store events while paused
+
+    let selectedNodeId = null; // Stores the currently selected node ID
+
+    // Process an individual event
+    function processEvent(message) {
+      console.log("Processing event", message);
+
+      if (message.action === 'init') {
+        console.log('Initializing graph with data:', message);
+
+        // Clear current data
+        data.nodes.clear();
+        data.edges.clear();
+
+        // Add nodes with metadata
+        message.nodes.forEach(node => {
+          data.nodes.add({
+            id: node.id,
+            label: node.id.slice(-5), // Use only the last 5 characters for the label
+            metadata: node.metadata || {} // Ensure metadata is included
+          });
+        });
+
+        // Add edges
+        message.edges.forEach(edge => {
+          data.edges.add({
+            id: edge.ulid,
+            from: edge.from,
+            to: edge.to,
+            arrows: 'to',
+            label: edge.ulid.slice(-5) // Use only the last 5 characters for the label
+          });
+        });
+      } else if (message.action === 'node_add') {
+        console.log("Adding node", message.node_id);
+
+        const existingNode = data.nodes.get(message.node_id);
+
+        if (!existingNode) {
+          // Add new node with metadata
+          data.nodes.add({
+            id: message.node_id,
+            label: message.node_id.slice(-5),
+            metadata: message.metadata || {}
+          });
+        } else {
+          // Update existing node with new metadata
+          data.nodes.update({
+            id: message.node_id,
+            metadata: {
+              ...existingNode.metadata, // Keep existing metadata
+              ...message.metadata // Overwrite with new metadata
+            }
+          });
+        }
+      } else if (message.action === 'node_remove') {
+        data.nodes.remove({ id: message.node_id });
+
+        // Remove associated edges
+        const edgesToRemove = data.edges.get({
+          filter: (edge) => edge.from === message.node_id || edge.to === message.node_id
+        });
+        data.edges.remove(edgesToRemove.map(edge => edge.id));
+      } else if (message.action === 'add') {
+        const edgeId = `${message.ulid}`;
+        if (!data.edges.get(edgeId)) {
+          data.edges.add({
+            id: edgeId,
+            from: message.from,
+            to: message.to,
+            arrows: 'to',
+            label: message.ulid.slice(-5)
+          });
+        }
+
+        // Ensure both nodes exist
+        if (!data.nodes.get(message.from)) {
+          data.nodes.add({
+            id: message.from,
+            label: message.from.slice(-5),
+            metadata: {} // Default empty metadata
+          });
+        }
+
+        if (!data.nodes.get(message.to)) {
+          data.nodes.add({
+            id: message.to,
+            label: message.to.slice(-5),
+            metadata: {} // Default empty metadata
+          });
+        }
+      } else if (message.action === 'remove') {
+        const edgeId = `${message.ulid}`;
+        data.edges.remove({ id: edgeId });
+
+        // Check if from node has any remaining edges
+        // Note: bbsvx sends 'from' field, not 'origin_node_id'
+        const nodeId = message.from || message.origin_node_id;
+        if (nodeId) {
+          const fromNodeEdges = data.edges.get({ filter: (edge) => edge.from === nodeId });
+          const toNodeEdges = data.edges.get({ filter: (edge) => edge.to === nodeId });
+
+          // If no edges remain, remove the node
+          if (fromNodeEdges.length === 0 && toNodeEdges.length === 0) {
+            data.nodes.remove({ id: nodeId });
+          }
+        }
+      }
+    };
+
+
+
+    // WebSocket message handler
+    ws.onmessage = function (event) {
+      const message = JSON.parse(event.data);
+
+      if (isPaused) {
+        // Queue the event if paused
+        eventQueue.push(message);
+      } else {
+        // Process the event immediately
+        processEvent(message);
+      }
+    };
+
+    // Play queued events
+    function processQueue() {
+      while (eventQueue.length > 0) {
+        const message = eventQueue.shift(); // Remove the first event in the queue
+        processEvent(message);
+      }
+    }
+
+    // Add reference to the paused indicator
+    let isPaused = false;
+    let queue = [];
+    const pausedIndicator = document.getElementById('paused-indicator');
+
+    document.addEventListener('keydown', (e) => {
+      if (e.code === 'Space' && !e.repeat) { // Prevent holding the spacebar from repeatedly toggling
+        isPaused = !isPaused; // Toggle the paused state
+        if (isPaused) {
+          pausedIndicator.style.display = 'block'; // Show the paused indicator
+          console.log('Paused event processing.');
+        } else {
+          pausedIndicator.style.display = 'none'; // Hide the paused indicator
+          console.log('Resuming event processing...');
+          processQueue(); // Process the queue when unpaused
+        }
+      }
+    });
+
+    // Function to process queued events
+    function processQueue() {
+      if (queue.length > 0) {
+        queue.forEach((event) => {
+          ws.onmessage(event); // Reapply the queued messages
+        });
+        queue = []; // Clear the queue
+      }
+    };
+    ws.onerror = (error) => {
+      console.log('WebSocket Error:', error);
+    };
+    // Create the metadata display div
+    const metadataDiv = document.createElement('div');
+    metadataDiv.style.position = 'absolute';
+    metadataDiv.style.backgroundColor = '#3a3f9f'; // Darker blue background
+    metadataDiv.style.color = 'white'; // White text for contrast
+    metadataDiv.style.border = '1px solid #ccc';
+    metadataDiv.style.borderRadius = '10px'; // Rounded corners
+    metadataDiv.style.padding = '15px';
+    metadataDiv.style.boxShadow = '0 8px 16px rgba(0, 0, 0, 0.3)'; // Stronger shadow effect
+    metadataDiv.style.zIndex = '1000';
+    metadataDiv.style.display = 'none';
+    metadataDiv.style.fontFamily = 'Arial, sans-serif';
+    metadataDiv.style.fontSize = '14px';
+    document.body.appendChild(metadataDiv);
+
+    const killButton = document.getElementById('kill-node');
+
+    // Handle Kill button click
+    killButton.addEventListener('click', async () => {
+      if (selectedNodeId) {
+        const nodeData = data.nodes.get(selectedNodeId);
+        const { host, port, node_id } = nodeData.metadata || {};
+
+        if (!host || !port || !node_id) {
+          alert('Incomplete metadata for the selected node.');
+          return;
+        }
+
+        const killUrl = `http://${host}:8085/spray/nodes`;
+        const payload = {
+          namespace: 'bbsvx:root',
+          action: 'kill_node',
+          node_id: node_id
+        };
+
+        try {
+          const response = await fetch(killUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+          })
+            .then(response => {
+              if (!response.ok) {
+                console.error(`Error: ${response.status} - ${response.statusText}`);
+              }
+              return response.json();
+            })
+            .catch(error => console.error('Fetch error:', error));
+          if (response.ok) {
+            console.log(`Node ${node_id} killed successfully.`);
+            alert(`Node ${node_id} killed successfully.`);
+          } else {
+            console.error(`Failed to kill node ${node_id}:`, response.statusText);
+            alert(`Failed to kill node ${node_id}: ${response.statusText}`);
+          }
+        } catch (error) {
+          console.error(`Error killing node ${node_id}:`, error);
+          alert(`Error killing node ${node_id}: ${error.message}`);
+        }
+      }
+    });
+
+    // Handle node selection
+    network.on('selectNode', function (params) {
+      const nodeId = params.nodes[0];
+      if (nodeId) {
+        selectedNodeId = nodeId;
+        killButton.style.display = 'block'; // Show the Kill button
+      }
+    });
+
+    // Handle node deselection
+    network.on('deselectNode', function () {
+      selectedNodeId = null;
+      killButton.style.display = 'none'; // Hide the Kill button
+    });
+
+    // Handle right-click on nodes
+    network.on('oncontext', async function (params) {
+      params.event.preventDefault(); // Prevent default context menu
+      const nodeId = network.getNodeAt(params.pointer.DOM);
+      if (nodeId) {
+        const nodeData = data.nodes.get(nodeId);
+        if (nodeData) {
+          const { host, port } = nodeData.metadata || {};
+
+          if (!host || !port) {
+            // Display a message if metadata is incomplete
+            metadataDiv.innerHTML = `
+              <div>
+                <strong>Node Metadata</strong>
+                <br><br>
+                <pre>${JSON.stringify(nodeData, null, 2)}</pre>
+                <p style="color: red;">Missing host or port information in metadata.</p>
+                <button id="close-metadata">Close</button>
+              </div>
+            `;
+            metadataDiv.style.left = `${params.pointer.DOM.x + 15}px`;
+            metadataDiv.style.top = `${params.pointer.DOM.y + 15}px`;
+            metadataDiv.style.display = 'block';
+
+            document.getElementById('close-metadata').onclick = () => {
+              metadataDiv.style.display = 'none';
+            };
+            return;
+          }
+
+          const outviewUrl = `http://${host}:8085/spray/outview`;
+          const inviewUrl = `http://${host}:8085/spray/inview`;
+
+          try {
+            // Fetch outgoing edges
+            const outviewResponse = await fetch(outviewUrl)
+            const outview = await outviewResponse.json();
+
+            // Fetch incoming edges
+            const inviewResponse = await fetch(inviewUrl)
+            const inview = await inviewResponse.json();
+
+            // Populate the metadata with additional data
+            metadataDiv.innerHTML = `
+              <div>
+                <strong>Node Metadata</strong>
+                <br><br>
+                <pre>${JSON.stringify(
+              {
+                ...nodeData,
+                outview,
+                inview
+              },
+              null,
+              2
+            )}</pre>
+                <button id="close-metadata">Close</button>
+              </div>
+            `;
+
+            // Position the metadata div
+            metadataDiv.style.left = `${params.pointer.DOM.x + 15}px`;
+            metadataDiv.style.top = `${params.pointer.DOM.y + 15}px`;
+            metadataDiv.style.display = 'block';
+
+            // Add close functionality
+            document.getElementById('close-metadata').onclick = () => {
+              metadataDiv.style.display = 'none';
+            };
+          } catch (error) {
+            console.error('Error fetching inview/outview data:', error);
+            metadataDiv.innerHTML = `
+              <div>
+                <strong>Node Metadata</strong>
+                <br><br>
+                <pre>${JSON.stringify(nodeData, null, 2)}</pre>
+                <p style="color: red;">Error fetching inview/outview data.</p>
+                <button id="close-metadata">Close</button>
+              </div>
+            `;
+
+            metadataDiv.style.left = `${params.pointer.DOM.x + 15}px`;
+            metadataDiv.style.top = `${params.pointer.DOM.y + 15}px`;
+            metadataDiv.style.display = 'block';
+
+            document.getElementById('close-metadata').onclick = () => {
+              metadataDiv.style.display = 'none';
+            };
+          }
+        }
+      }
+    });
+
+    // Optional: Hide metadataDiv when clicking outside
+    document.addEventListener('click', function (event) {
+      if (!metadataDiv.contains(event.target)) {
+        metadataDiv.style.display = 'none';
+      }
+    });
+  </script>
+</body>
+
+</html>
