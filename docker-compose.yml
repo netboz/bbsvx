@@ -137,7 +137,6 @@ services:
     build: 
       context: ./priv/graph-visualizer
       dockerfile: Dockerfile
-    image: graph-visualizer:latest
     hostname: graph-visualizer
     ports:
       - "3400:3400"
