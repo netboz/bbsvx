@@ -13,9 +13,9 @@ Integrating blockchain into Virtual Reality systems should permit to:
 - Keep consistency of ontologies in distributed environments as agents are interacting with them
 - Benefit from blockchain inherent characteristics: Enhanced security, transparency, traceability etc.
 
-This blockchain is supported by a P2P overlay network formed by nodes following SPRAY protocol. This permits to bring up a network where each peer only has a partial view of the whole network, named neighbors. Regularly, each node exchanges a part of its neighbors with one of them.
+This blockchain is supported by a P2P overlay network formed by nodes following [SPRAY protocol](https://hal.inria.fr/hal-01203363/document). This permits to bring up a network where each peer only has a partial view of the whole network, named neighbors. Regularly, each node exchanges a part of its neighbors with one of them.
 
-Nodes are exchanging messages following EPTO protocol. This permits to have a consistent ordering of events among the nodes.
+Nodes are exchanging messages following [EPTO protocol](https://asc.di.fct.unl.pt/~jleitao/pdf/srds07-leitao.pdf). This permits to have a consistent ordering of events among the nodes.
 
 To permit side effects to Prolog queries, a leader is elected among the nodes of an ontology.
 
