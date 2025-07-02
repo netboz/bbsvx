@@ -67,7 +67,7 @@ DisconnectReason ::= ENUMERATED {
 HeaderConnect ::= SEQUENCE {
     version         [0] ProtocolVersion DEFAULT "0.1.0",
     connectionType  [1] UTF8String OPTIONAL,  -- For backward compatibility
-    nodeId          [2] NodeId,
+    nodeId          [2] NodeId OPTIONAL,  -- May be undefined on first connection
     namespace       [3] Namespace
 }
 
@@ -156,8 +156,62 @@ OntologyHistory ::= SEQUENCE {
     transactions    [3] OCTET STRING  -- Serialized transaction list
 }
 
+OntologyHistoryRequest ::= SEQUENCE {
+    namespace       [0] Namespace,
+    requester       [1] OCTET STRING OPTIONAL,  -- Serialized arc or undefined
+    oldestIndex     [2] INTEGER,
+    youngerIndex    [3] INTEGER
+}
+
+-- Transaction type enumeration
+TransactionType ::= ENUMERATED {
+    creation    (0),
+    goal        (1)
+}
+
+-- Transaction status enumeration
+TransactionStatus ::= ENUMERATED {
+    created     (0),
+    posted      (1),
+    delivered   (2),
+    processed   (3)
+}
+
+-- Transaction record
+Transaction ::= SEQUENCE {
+    index               [0] INTEGER DEFAULT 0,
+    type                [1] TransactionType,
+    signature           [2] OCTET STRING,
+    tsCreated           [3] INTEGER DEFAULT 0,
+    tsPosted            [4] INTEGER DEFAULT 0,
+    tsDelivered         [5] INTEGER DEFAULT 0,
+    tsProcessed         [6] INTEGER OPTIONAL,
+    sourceOntologyId    [7] OCTET STRING,
+    prevAddress         [8] OCTET STRING,
+    prevHash            [9] OCTET STRING,
+    currentAddress      [10] OCTET STRING,
+    namespace           [11] Namespace,
+    leader              [12] OCTET STRING OPTIONAL,
+    payload             [13] OCTET STRING,  -- Serialized term
+    diff                [14] OCTET STRING,  -- Serialized list
+    status              [15] TransactionStatus DEFAULT created
+}
+
 EptoMessage ::= SEQUENCE {
     payload         [0] OCTET STRING  -- Keep flexible for EPTO protocol
+}
+
+-- Leader election messages
+Neighbor ::= SEQUENCE {
+    nodeId          [0] NodeId,
+    chosenLeader    [1] NodeId OPTIONAL,
+    publicKey       [2] OCTET STRING,
+    signedTs        [3] OCTET STRING,
+    ts              [4] INTEGER
+}
+
+LeaderElectionInfo ::= SEQUENCE {
+    payload         [0] Neighbor
 }
 
 -- Forward subscription messages
@@ -201,7 +255,9 @@ BBSVXMessage ::= CHOICE {
     
     -- Protocol data (tags 50-59)
     ontologyHistory         [50] OntologyHistory,
-    eptoMessage             [51] EptoMessage
+    ontologyHistoryRequest  [51] OntologyHistoryRequest,
+    eptoMessage             [52] EptoMessage,
+    leaderElectionInfo      [53] LeaderElectionInfo
 }
 
 END

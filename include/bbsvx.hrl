@@ -185,7 +185,6 @@
 %% Opens the connection to another node
 -record(header_connect, {
     version = ?PROTOCOL_VERSION :: binary(),
-    connection_type :: atom(),
     node_id :: binary(),
     namespace :: binary()
 }).

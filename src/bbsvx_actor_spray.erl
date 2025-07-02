@@ -18,6 +18,7 @@
 %%%=============================================================================
 
 -define(SERVER, ?MODULE).
+
 -define(EXCHANGE_INTERVAL, 4000).
 -define(WAIT_EXCHANGE_OUT_TIMEOUT, ?EXCHANGE_INTERVAL div 5).
 -define(WAIT_EXCHANGE_ACCEPT_TIMEOUT, ?EXCHANGE_INTERVAL div 5).
@@ -1166,8 +1167,8 @@ filter_arcs_to_leave(OutView, ArcsToLeave) ->
 -spec get_big_random_sample([arc()]) -> {[arc()], [arc()]}.
 get_big_random_sample([]) ->
     {[], []};
-get_big_random_sample([_] = View) ->
-    {[], View};
+get_big_random_sample([Arc] = _View) ->
+    {[Arc], []};
 get_big_random_sample(View) ->
     %% Shuffle the view
     Shuffled = [X || {_, X} <- lists:sort([{rand:uniform(), N} || N <- View])],

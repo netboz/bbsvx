@@ -35,6 +35,15 @@
 %% State transitions
 -export([authenticate/3, wait_for_subscription/3, connected/3]).
 
+%%%=============================================================================
+%%% Helper Functions  
+%%%=============================================================================
+
+%% @doc Helper to encode messages properly
+encode_message_helper(Message) ->
+    {ok, EncodedMessage} = bbsvx_asn1_codec:encode_message(Message),
+    EncodedMessage.
+
 -record(state,
         {ref :: any(),
          my_ulid :: binary() | undefined,
@@ -166,12 +175,11 @@ authenticate(info,
   when is_binary(BinData) andalso MyNodeId =/= undefined ->
   %% Perform authentication
   Decoded =
-    try binary_to_term(BinData, [safe, used]) of
+    case bbsvx_asn1_codec:decode_message_used(BinData) of
       {DecodedTerm, Index} when is_number(Index) ->
         <<_:Index/binary, Rest/binary>> = BinData,
-        {ok, DecodedTerm, Rest}
-    catch
-      _:_ ->
+        {ok, DecodedTerm, Rest};
+      error ->
         logger:error("Failed to decode binary data: ~p", [BinData]),
         {error, "Failed to decode binary data"}
     end,
@@ -180,14 +188,14 @@ authenticate(info,
       ?'log-warning'("~p Connection to self   ~p", [?MODULE, MyNodeId]),
       %% Connecting to self
       ranch_tcp:send(State#state.socket,
-                     term_to_binary(#header_connect_ack{node_id = MyNodeId,
-                                                        result = connection_to_self})),
+                     encode_message_helper(#header_connect_ack{node_id = MyNodeId,
+                                                                                        result = connection_to_self})),
       {stop, normal, State};
     {ok, #header_connect{node_id = IncomingNodeId} = Header, NewBuffer} ->
       ranch_tcp:send(State#state.socket,
-                     term_to_binary(#header_connect_ack{node_id =
-                                                          State#state.my_node#node_entry.node_id,
-                                                        result = ok})),
+                     encode_message_helper(#header_connect_ack{node_id =
+                                                                                        State#state.my_node#node_entry.node_id,
+                                                                                        result = ok})),
       ranch_tcp:setopts(State#state.socket, [{active, once}]),
       {next_state,
        wait_for_subscription,
@@ -222,12 +230,11 @@ wait_for_subscription(info,
                         State) ->
   ConcatBuffer = <<Buffer/binary, BinData/binary>>,
   Decoded =
-    try binary_to_term(ConcatBuffer, [safe, used]) of
+    case bbsvx_asn1_codec:decode_message_used(ConcatBuffer) of
       {DecodedTerm, Index} when is_integer(Index) ->
         <<_:Index/binary, Rest/binary>> = ConcatBuffer,
-        {ok, DecodedTerm, Rest}
-    catch
-      _:_ ->
+        {ok, DecodedTerm, Rest};
+      error ->
         logger:error("Failed to decode binary data: ~p", [BinData]),
         {error, "Failed to decode binary data"}
     end,
@@ -249,7 +256,7 @@ wait_for_subscription(info,
       %% TODO : Fix leader initialisation, it should be requested
       %% from the ontology
       Transport:send(Socket,
-                     term_to_binary(#header_register_ack{result = ok,
+                     encode_message_helper(#header_register_ack{result = ok,
                                                          leader = OriginNode#node_entry.node_id,
                                                          current_index = 0})),
       Transport:setopts(State#state.socket, [{active, true}]),
@@ -269,7 +276,7 @@ wait_for_subscription(info,
       %% Acknledge the registration and activate socket
       %% TODO: type seems unused
       Transport:send(Socket,
-                     term_to_binary(#header_forward_join_ack{result = ok, type = forward_join})),
+                     encode_message_helper(#header_forward_join_ack{result = ok, type = forward_join})),
       Transport:setopts(State#state.socket, [{active, true}]),
       {next_state,
        connected,
@@ -295,7 +302,7 @@ wait_for_subscription(info,
         {gproc_error, Error} ->
           ?'log-alert'("~p No arc found for ulid ~p", [?MODULE, Ulid]),
           Transport:send(Socket,
-                         term_to_binary(#header_join_ack{result = {error, Error},
+                         encode_message_helper(#header_join_ack{result = {error, Error},
                                                          type = Type,
                                                          options = Options})),
           {stop, normal, State};
@@ -314,7 +321,7 @@ wait_for_subscription(info,
                                           source = OriginNode}),
           %% Notify other side we accepted the connection
           Transport:send(Socket,
-                         term_to_binary(#header_join_ack{result = ok,
+                         encode_message_helper(#header_join_ack{result = ok,
                                                          type = Type,
                                                          options = Options})),
           Transport:setopts(Socket, [{active, true}]),
@@ -327,7 +334,7 @@ wait_for_subscription(info,
           ?'log-warning'("~p Locks don't match incoming arc lock ~p    stored lock : ~p",
                          [?MODULE, CurrentLock, Else]),
           Transport:send(Socket,
-                         term_to_binary(#header_join_ack{result = {error, lock_mismatch},
+                         encode_message_helper(#header_join_ack{result = {error, lock_mismatch},
                                                          type = Type,
                                                          options = Options})),
           {stop, normal, State}
@@ -353,7 +360,7 @@ wait_for_subscription(info,
         {gproc_error, Error} ->
           ?'log-alert'("~p No arc found for ulid ~p", [?MODULE, Ulid]),
           Transport:send(Socket,
-                         term_to_binary(#header_join_ack{result = {error, Error},
+                         encode_message_helper(#header_join_ack{result = {error, Error},
                                                          type = Type,
                                                          options = Options})),
           {stop, normal, State};
@@ -372,7 +379,7 @@ wait_for_subscription(info,
           gproc:reg({n, l, {arc, in, Ulid}}, NewLock),
           %% Notify other side we accepted the connection
           Transport:send(Socket,
-                         term_to_binary(#header_join_ack{result = ok,
+                         encode_message_helper(#header_join_ack{result = ok,
                                                          type = Type,
                                                          options = Options})),
 
@@ -394,7 +401,7 @@ wait_for_subscription(info,
           ?'log-warning'("~p Locks don't match ~p    incoming lock : ~p",
                          [?MODULE, CurrentLock, Else]),
           Transport:send(Socket,
-                         term_to_binary(#header_join_ack{result = {error, lock_mismatch},
+                         encode_message_helper(#header_join_ack{result = {error, lock_mismatch},
                                                          type = Type,
                                                          options = Options})),
           {stop, normal, State}
@@ -428,16 +435,16 @@ connected(info, {tcp, _Ref, BinData}, #state{buffer = Buffer} = State) ->
 connected(info, #incoming_event{event = #peer_connect_to_sample{} = Msg}, State) ->
   ?'log-info'("~p sending peer connect to sample to  ~p",
               [?MODULE, State#state.origin_node]),
-  ranch_tcp:send(State#state.socket, term_to_binary(Msg)),
+  ranch_tcp:send(State#state.socket, encode_message_helper(Msg)),
   {keep_state, State};
 connected(info, #incoming_event{event = #header_register_ack{} = Header}, State) ->
   ?'log-info'("~p sending register ack to  ~p    header : ~p",
               [?MODULE, State#state.origin_node, Header]),
-  ranch_tcp:send(State#state.socket, term_to_binary(Header)),
+  ranch_tcp:send(State#state.socket, encode_message_helper(Header)),
   {keep_state, State};
 connected({call, From}, {accept_join, #header_join_ack{} = Header}, State) ->
   ?'log-info'("~p sending join ack to  ~p", [?MODULE, State#state.origin_node]),
-  ranch_tcp:send(State#state.socket, term_to_binary(Header)),
+  ranch_tcp:send(State#state.socket, encode_message_helper(Header)),
   gen_statem:reply(From, ok),
   {keep_state, State};
 connected({call, From},
@@ -452,21 +459,21 @@ connected(info,
           #state{} = State) ->
   ?'log-info'("~p sending exchange out to  ~p", [?MODULE, State#state.origin_node]),
   ranch_tcp:send(State#state.socket,
-                 term_to_binary(#exchange_out{proposed_sample = ProposedSample})),
+                 encode_message_helper(#exchange_out{proposed_sample = ProposedSample})),
   {keep_state, State};
 connected(info, {reject, Reason}, #state{namespace = NameSpace} = State) ->
   ?'log-info'("~p sending exchange cancelled to  ~p", [?MODULE, State#state.origin_node]),
   Result =
     ranch_tcp:send(State#state.socket,
-                   term_to_binary(#exchange_cancelled{namespace = NameSpace, reason = Reason})),
+                   encode_message_helper(#exchange_cancelled{namespace = NameSpace, reason = Reason})),
   ?'log-info'("~p Exchange cancelled sent ~p", [?MODULE, Result]),
   {keep_state, State};
 connected(cast, {send_history, #ontology_history{} = History}, State) ->
   ?'log-info'("~p sending history to  ~p", [?MODULE, State#state.origin_node]),
-  ranch_tcp:send(State#state.socket, term_to_binary(History)),
+  ranch_tcp:send(State#state.socket, encode_message_helper(History)),
   {keep_state, State};
 connected(info, {send, Data}, State) ->
-  ranch_tcp:send(State#state.socket, term_to_binary(Data)),
+  ranch_tcp:send(State#state.socket, encode_message_helper(Data)),
   {keep_state, State};
 connected(info,
           {tcp_closed, _Ref},
@@ -495,11 +502,10 @@ parse_packet(Buffer,
                                   node_id = NodeId}} =
                State) ->
   Decoded =
-    try binary_to_term(Buffer, [used]) of
+    case bbsvx_asn1_codec:decode_message_used(Buffer) of
       {DecodedEvent, NbBytesUsed} when is_number(NbBytesUsed) ->
-        {complete, DecodedEvent, NbBytesUsed}
-    catch
-      _Error:_Reason ->
+        {complete, DecodedEvent, NbBytesUsed};
+      error ->
         {incomplete, Buffer}
     end,
 

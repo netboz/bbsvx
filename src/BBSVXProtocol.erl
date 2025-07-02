@@ -5,14 +5,14 @@
 -compile(nowarn_unused_vars).
 -dialyzer(no_improper_lists).
 -dialyzer(no_match).
+-include("BBSVXProtocol.hrl").
 -asn1_info([{vsn,'5.2.1'},
             {module,'BBSVXProtocol'},
-            {options,[{i,"/home/yan/src/bbsvx/asn1/../src"},
+            {options,[{i,"/home/yan/src/bbsvx"},
  warnings,ber,errors,
- {cwd,"/home/yan/src/bbsvx/asn1"},
- {outdir,"/home/yan/src/bbsvx/asn1/../src"},
- {i,"/home/yan/src/bbsvx/asn1/."},
- maps,ber,
+ {cwd,"/home/yan/src/bbsvx"},
+ {outdir,"/home/yan/src/bbsvx"},
+ {i,"/home/yan/src/bbsvx/src"},
  {i,"."},
  {i,"/home/yan/src/bbsvx/asn1"}]}]).
 
@@ -48,7 +48,13 @@ enc_ExchangeCancelled/2,
 enc_NodeQuitting/2,
 enc_ChangeLock/2,
 enc_OntologyHistory/2,
+enc_OntologyHistoryRequest/2,
+enc_TransactionType/2,
+enc_TransactionStatus/2,
+enc_Transaction/2,
 enc_EptoMessage/2,
+enc_Neighbor/2,
+enc_LeaderElectionInfo/2,
 enc_SendForwardSubscription/2,
 enc_OpenForwardJoin/2,
 enc_BBSVXMessage/2
@@ -83,7 +89,13 @@ dec_ExchangeCancelled/2,
 dec_NodeQuitting/2,
 dec_ChangeLock/2,
 dec_OntologyHistory/2,
+dec_OntologyHistoryRequest/2,
+dec_TransactionType/2,
+dec_TransactionStatus/2,
+dec_Transaction/2,
 dec_EptoMessage/2,
+dec_Neighbor/2,
+dec_LeaderElectionInfo/2,
 dec_SendForwardSubscription/2,
 dec_OpenForwardJoin/2,
 dec_BBSVXMessage/2
@@ -95,7 +107,7 @@ dec_BBSVXMessage/2
 
 encoding_rule() -> ber.
 
-maps() -> true.
+maps() -> false.
 
 bit_string_format() -> bitstring.
 
@@ -157,7 +169,13 @@ encode_disp('ExchangeCancelled', Data) -> enc_ExchangeCancelled(Data);
 encode_disp('NodeQuitting', Data) -> enc_NodeQuitting(Data);
 encode_disp('ChangeLock', Data) -> enc_ChangeLock(Data);
 encode_disp('OntologyHistory', Data) -> enc_OntologyHistory(Data);
+encode_disp('OntologyHistoryRequest', Data) -> enc_OntologyHistoryRequest(Data);
+encode_disp('TransactionType', Data) -> enc_TransactionType(Data);
+encode_disp('TransactionStatus', Data) -> enc_TransactionStatus(Data);
+encode_disp('Transaction', Data) -> enc_Transaction(Data);
 encode_disp('EptoMessage', Data) -> enc_EptoMessage(Data);
+encode_disp('Neighbor', Data) -> enc_Neighbor(Data);
+encode_disp('LeaderElectionInfo', Data) -> enc_LeaderElectionInfo(Data);
 encode_disp('SendForwardSubscription', Data) -> enc_SendForwardSubscription(Data);
 encode_disp('OpenForwardJoin', Data) -> enc_OpenForwardJoin(Data);
 encode_disp('BBSVXMessage', Data) -> enc_BBSVXMessage(Data);
@@ -191,7 +209,13 @@ decode_disp('ExchangeCancelled', Data) -> dec_ExchangeCancelled(Data);
 decode_disp('NodeQuitting', Data) -> dec_NodeQuitting(Data);
 decode_disp('ChangeLock', Data) -> dec_ChangeLock(Data);
 decode_disp('OntologyHistory', Data) -> dec_OntologyHistory(Data);
+decode_disp('OntologyHistoryRequest', Data) -> dec_OntologyHistoryRequest(Data);
+decode_disp('TransactionType', Data) -> dec_TransactionType(Data);
+decode_disp('TransactionStatus', Data) -> dec_TransactionStatus(Data);
+decode_disp('Transaction', Data) -> dec_Transaction(Data);
 decode_disp('EptoMessage', Data) -> dec_EptoMessage(Data);
+decode_disp('Neighbor', Data) -> dec_Neighbor(Data);
+decode_disp('LeaderElectionInfo', Data) -> dec_LeaderElectionInfo(Data);
 decode_disp('SendForwardSubscription', Data) -> dec_SendForwardSubscription(Data);
 decode_disp('OpenForwardJoin', Data) -> dec_OpenForwardJoin(Data);
 decode_disp('BBSVXMessage', Data) -> dec_BBSVXMessage(Data);
@@ -455,21 +479,13 @@ enc_NodeEntry(Val) ->
     enc_NodeEntry(Val, [<<48>>]).
 
 enc_NodeEntry(Val, TagIn) ->
-#{host:=Cindex2} = Val,
-Cindex1 = case Val of
-  #{nodeId:=Cindex1_0} -> Cindex1_0;
-  _ -> asn1__MISSING_IN_MAP
-end,
-Cindex3 = case Val of
-  #{port:=Cindex3_0} -> Cindex3_0;
-  _ -> asn1__MISSING_IN_MAP
-end,
+{_,Cindex1,Cindex2,Cindex3} = Val,
 
 %%-------------------------------------------------
 %% attribute nodeId(1) with type OCTET STRING OPTIONAL
 %%-------------------------------------------------
    {EncBytes1,EncLen1} =  case Cindex1 of
-         asn1__MISSING_IN_MAP -> {<<>>,0};
+         asn1_NOVALUE -> {<<>>,0};
          _ ->
             encode_restricted_string(Cindex1, [<<128>>])
        end,
@@ -483,7 +499,7 @@ end,
 %% attribute port(3) with type INTEGER DEFAULT = 2304
 %%-------------------------------------------------
    {EncBytes3,EncLen3} =  case Cindex3 of
-         asn1__MISSING_IN_MAP ->
+         asn1_DEFAULT ->
             {<<>>,0};
          _ when Cindex3 =:= 2304 ->
             {<<>>,0};
@@ -549,12 +565,8 @@ end,
 case Tlv4 of
 [] -> true;_ -> exit({error,{asn1, {unexpected,Tlv4}}}) % extra fields not allowed
 end,
-Res1 = #{host=>Term2,port=>Term3},
-Res2 = case Term1 of
-  asn1_NOVALUE -> Res1;
-  _ -> Res1#{nodeId=>Term1}
-end,
-Res2.
+Res1 = {'NodeEntry',Term1,Term2,Term3},
+Res1.
 
 
 %%================================
@@ -564,11 +576,7 @@ enc_ExchangeEntry(Val) ->
     enc_ExchangeEntry(Val, [<<48>>]).
 
 enc_ExchangeEntry(Val, TagIn) ->
-#{ulid:=Cindex1,lock:=Cindex2,target:=Cindex3} = Val,
-Cindex4 = case Val of
-  #{newLock:=Cindex4_0} -> Cindex4_0;
-  _ -> asn1__MISSING_IN_MAP
-end,
+{_,Cindex1,Cindex2,Cindex3,Cindex4} = Val,
 
 %%-------------------------------------------------
 %% attribute ulid(1) with type OCTET STRING
@@ -589,7 +597,7 @@ end,
 %% attribute newLock(4) with type OCTET STRING OPTIONAL
 %%-------------------------------------------------
    {EncBytes4,EncLen4} =  case Cindex4 of
-         asn1__MISSING_IN_MAP -> {<<>>,0};
+         asn1_NOVALUE -> {<<>>,0};
          _ ->
             encode_restricted_string(Cindex4, [<<131>>])
        end,
@@ -663,12 +671,8 @@ end,
 case Tlv5 of
 [] -> true;_ -> exit({error,{asn1, {unexpected,Tlv5}}}) % extra fields not allowed
 end,
-Res1 = #{ulid=>Term1,lock=>Term2,target=>Term3},
-Res2 = case Term4 of
-  asn1_NOVALUE -> Res1;
-  _ -> Res1#{newLock=>Term4}
-end,
-Res2.
+Res1 = {'ExchangeEntry',Term1,Term2,Term3,Term4},
+Res1.
 
 
 %%================================
@@ -778,21 +782,13 @@ enc_HeaderConnect(Val) ->
     enc_HeaderConnect(Val, [<<48>>]).
 
 enc_HeaderConnect(Val, TagIn) ->
-#{nodeId:=Cindex3,namespace:=Cindex4} = Val,
-Cindex1 = case Val of
-  #{version:=Cindex1_0} -> Cindex1_0;
-  _ -> asn1__MISSING_IN_MAP
-end,
-Cindex2 = case Val of
-  #{connectionType:=Cindex2_0} -> Cindex2_0;
-  _ -> asn1__MISSING_IN_MAP
-end,
+{_,Cindex1,Cindex2,Cindex3,Cindex4} = Val,
 
 %%-------------------------------------------------
 %% attribute version(1) with type UTF8String DEFAULT = [48,46,49,46,48]
 %%-------------------------------------------------
    {EncBytes1,EncLen1} =  case Cindex1 of
-         asn1__MISSING_IN_MAP ->
+         asn1_DEFAULT ->
             {<<>>,0};
          _ when Cindex1 =:= [48,46,49,46,48] ->
             {<<>>,0};
@@ -804,15 +800,19 @@ end,
 %% attribute connectionType(2) with type UTF8String OPTIONAL
 %%-------------------------------------------------
    {EncBytes2,EncLen2} =  case Cindex2 of
-         asn1__MISSING_IN_MAP -> {<<>>,0};
+         asn1_NOVALUE -> {<<>>,0};
          _ ->
             encode_UTF8_string(Cindex2, [<<129>>])
        end,
 
 %%-------------------------------------------------
-%% attribute nodeId(3) with type OCTET STRING
+%% attribute nodeId(3) with type OCTET STRING OPTIONAL
 %%-------------------------------------------------
-   {EncBytes3,EncLen3} = encode_restricted_string(Cindex3, [<<130>>]),
+   {EncBytes3,EncLen3} =  case Cindex3 of
+         asn1_NOVALUE -> {<<>>,0};
+         _ ->
+            encode_restricted_string(Cindex3, [<<130>>])
+       end,
 
 %%-------------------------------------------------
 %% attribute namespace(4) with type UTF8String
@@ -854,17 +854,21 @@ end,
 end,
 
 %%-------------------------------------------------
-%% attribute nodeId(3) with type OCTET STRING
+%% attribute nodeId(3) with type OCTET STRING OPTIONAL
 %%-------------------------------------------------
-[V3|Tlv4] = Tlv3, 
-Term3 = begin
-Val1 = decode_octet_string(V3, [131074]),
+{Term3,Tlv4} = case Tlv3 of
+[{131074,V3}|TempTlv4] ->
+    {begin
+Val1 = decode_octet_string(V3, []),
 C1 = byte_size(Val1),
 if 32 =< C1, C1 =< 64 ->
 Val1;
 true ->
 exit({error,{asn1,bad_range}})
 end
+end, TempTlv4};
+    _ ->
+        { asn1_NOVALUE, Tlv3}
 end,
 
 %%-------------------------------------------------
@@ -876,12 +880,8 @@ Term4 = decode_UTF8_string(V4, [131075]),
 case Tlv5 of
 [] -> true;_ -> exit({error,{asn1, {unexpected,Tlv5}}}) % extra fields not allowed
 end,
-Res1 = #{version=>Term1,nodeId=>Term3,namespace=>Term4},
-Res2 = case Term2 of
-  asn1_NOVALUE -> Res1;
-  _ -> Res1#{connectionType=>Term2}
-end,
-Res2.
+Res1 = {'HeaderConnect',Term1,Term2,Term3,Term4},
+Res1.
 
 
 %%================================
@@ -891,7 +891,7 @@ enc_HeaderConnectAck(Val) ->
     enc_HeaderConnectAck(Val, [<<48>>]).
 
 enc_HeaderConnectAck(Val, TagIn) ->
-#{result:=Cindex1,nodeId:=Cindex2} = Val,
+{_,Cindex1,Cindex2} = Val,
 
 %%-------------------------------------------------
 %% attribute result(1) with type ENUMERATED
@@ -956,7 +956,7 @@ end,
 case Tlv3 of
 [] -> true;_ -> exit({error,{asn1, {unexpected,Tlv3}}}) % extra fields not allowed
 end,
-Res1 = #{result=>Term1,nodeId=>Term2},
+Res1 = {'HeaderConnectAck',Term1,Term2},
 Res1.
 
 
@@ -967,7 +967,7 @@ enc_HeaderRegister(Val) ->
     enc_HeaderRegister(Val, [<<48>>]).
 
 enc_HeaderRegister(Val, TagIn) ->
-#{namespace:=Cindex1,ulid:=Cindex2,lock:=Cindex3} = Val,
+{_,Cindex1,Cindex2,Cindex3} = Val,
 
 %%-------------------------------------------------
 %% attribute namespace(1) with type UTF8String
@@ -1035,7 +1035,7 @@ end,
 case Tlv4 of
 [] -> true;_ -> exit({error,{asn1, {unexpected,Tlv4}}}) % extra fields not allowed
 end,
-Res1 = #{namespace=>Term1,ulid=>Term2,lock=>Term3},
+Res1 = {'HeaderRegister',Term1,Term2,Term3},
 Res1.
 
 
@@ -1046,15 +1046,7 @@ enc_HeaderRegisterAck(Val) ->
     enc_HeaderRegisterAck(Val, [<<48>>]).
 
 enc_HeaderRegisterAck(Val, TagIn) ->
-#{result:=Cindex1} = Val,
-Cindex2 = case Val of
-  #{leader:=Cindex2_0} -> Cindex2_0;
-  _ -> asn1__MISSING_IN_MAP
-end,
-Cindex3 = case Val of
-  #{currentIndex:=Cindex3_0} -> Cindex3_0;
-  _ -> asn1__MISSING_IN_MAP
-end,
+{_,Cindex1,Cindex2,Cindex3} = Val,
 
 %%-------------------------------------------------
 %% attribute result(1) with type ENUMERATED
@@ -1072,7 +1064,7 @@ end,
 %% attribute leader(2) with type OCTET STRING OPTIONAL
 %%-------------------------------------------------
    {EncBytes2,EncLen2} =  case Cindex2 of
-         asn1__MISSING_IN_MAP -> {<<>>,0};
+         asn1_NOVALUE -> {<<>>,0};
          _ ->
             encode_restricted_string(Cindex2, [<<129>>])
        end,
@@ -1081,7 +1073,7 @@ end,
 %% attribute currentIndex(3) with type INTEGER OPTIONAL
 %%-------------------------------------------------
    {EncBytes3,EncLen3} =  case Cindex3 of
-         asn1__MISSING_IN_MAP -> {<<>>,0};
+         asn1_NOVALUE -> {<<>>,0};
          _ ->
             encode_integer(Cindex3, [<<130>>])
        end,
@@ -1144,16 +1136,8 @@ end,
 case Tlv4 of
 [] -> true;_ -> exit({error,{asn1, {unexpected,Tlv4}}}) % extra fields not allowed
 end,
-Res1 = #{result=>Term1},
-Res2 = case Term2 of
-  asn1_NOVALUE -> Res1;
-  _ -> Res1#{leader=>Term2}
-end,
-Res3 = case Term3 of
-  asn1_NOVALUE -> Res2;
-  _ -> Res2#{currentIndex=>Term3}
-end,
-Res3.
+Res1 = {'HeaderRegisterAck',Term1,Term2,Term3},
+Res1.
 
 
 %%================================
@@ -1163,11 +1147,7 @@ enc_HeaderJoin(Val) ->
     enc_HeaderJoin(Val, [<<48>>]).
 
 enc_HeaderJoin(Val, TagIn) ->
-#{namespace:=Cindex1,ulid:=Cindex2,joinType:=Cindex3,currentLock:=Cindex4,newLock:=Cindex5} = Val,
-Cindex6 = case Val of
-  #{options:=Cindex6_0} -> Cindex6_0;
-  _ -> asn1__MISSING_IN_MAP
-end,
+{_,Cindex1,Cindex2,Cindex3,Cindex4,Cindex5,Cindex6} = Val,
 
 %%-------------------------------------------------
 %% attribute namespace(1) with type UTF8String
@@ -1198,7 +1178,7 @@ end,
 %% attribute options(6) with type OCTET STRING OPTIONAL
 %%-------------------------------------------------
    {EncBytes6,EncLen6} =  case Cindex6 of
-         asn1__MISSING_IN_MAP -> {<<>>,0};
+         asn1_NOVALUE -> {<<>>,0};
          _ ->
             encode_restricted_string(Cindex6, [<<133>>])
        end,
@@ -1284,12 +1264,8 @@ end,
 case Tlv7 of
 [] -> true;_ -> exit({error,{asn1, {unexpected,Tlv7}}}) % extra fields not allowed
 end,
-Res1 = #{namespace=>Term1,ulid=>Term2,joinType=>Term3,currentLock=>Term4,newLock=>Term5},
-Res2 = case Term6 of
-  asn1_NOVALUE -> Res1;
-  _ -> Res1#{options=>Term6}
-end,
-Res2.
+Res1 = {'HeaderJoin',Term1,Term2,Term3,Term4,Term5,Term6},
+Res1.
 
 
 %%================================
@@ -1299,11 +1275,7 @@ enc_HeaderJoinAck(Val) ->
     enc_HeaderJoinAck(Val, [<<48>>]).
 
 enc_HeaderJoinAck(Val, TagIn) ->
-#{result:=Cindex1,joinType:=Cindex2} = Val,
-Cindex3 = case Val of
-  #{options:=Cindex3_0} -> Cindex3_0;
-  _ -> asn1__MISSING_IN_MAP
-end,
+{_,Cindex1,Cindex2,Cindex3} = Val,
 
 %%-------------------------------------------------
 %% attribute result(1) with type ENUMERATED
@@ -1326,7 +1298,7 @@ end,
 %% attribute options(3) with type OCTET STRING OPTIONAL
 %%-------------------------------------------------
    {EncBytes3,EncLen3} =  case Cindex3 of
-         asn1__MISSING_IN_MAP -> {<<>>,0};
+         asn1_NOVALUE -> {<<>>,0};
          _ ->
             encode_restricted_string(Cindex3, [<<130>>])
        end,
@@ -1377,12 +1349,8 @@ end,
 case Tlv4 of
 [] -> true;_ -> exit({error,{asn1, {unexpected,Tlv4}}}) % extra fields not allowed
 end,
-Res1 = #{result=>Term1,joinType=>Term2},
-Res2 = case Term3 of
-  asn1_NOVALUE -> Res1;
-  _ -> Res1#{options=>Term3}
-end,
-Res2.
+Res1 = {'HeaderJoinAck',Term1,Term2,Term3},
+Res1.
 
 
 %%================================
@@ -1392,11 +1360,7 @@ enc_HeaderForwardJoin(Val) ->
     enc_HeaderForwardJoin(Val, [<<48>>]).
 
 enc_HeaderForwardJoin(Val, TagIn) ->
-#{namespace:=Cindex1,ulid:=Cindex2,joinType:=Cindex3,lock:=Cindex4} = Val,
-Cindex5 = case Val of
-  #{options:=Cindex5_0} -> Cindex5_0;
-  _ -> asn1__MISSING_IN_MAP
-end,
+{_,Cindex1,Cindex2,Cindex3,Cindex4,Cindex5} = Val,
 
 %%-------------------------------------------------
 %% attribute namespace(1) with type UTF8String
@@ -1422,7 +1386,7 @@ end,
 %% attribute options(5) with type OCTET STRING OPTIONAL
 %%-------------------------------------------------
    {EncBytes5,EncLen5} =  case Cindex5 of
-         asn1__MISSING_IN_MAP -> {<<>>,0};
+         asn1_NOVALUE -> {<<>>,0};
          _ ->
             encode_restricted_string(Cindex5, [<<132>>])
        end,
@@ -1494,12 +1458,8 @@ end,
 case Tlv6 of
 [] -> true;_ -> exit({error,{asn1, {unexpected,Tlv6}}}) % extra fields not allowed
 end,
-Res1 = #{namespace=>Term1,ulid=>Term2,joinType=>Term3,lock=>Term4},
-Res2 = case Term5 of
-  asn1_NOVALUE -> Res1;
-  _ -> Res1#{options=>Term5}
-end,
-Res2.
+Res1 = {'HeaderForwardJoin',Term1,Term2,Term3,Term4,Term5},
+Res1.
 
 
 %%================================
@@ -1509,7 +1469,7 @@ enc_HeaderForwardJoinAck(Val) ->
     enc_HeaderForwardJoinAck(Val, [<<48>>]).
 
 enc_HeaderForwardJoinAck(Val, TagIn) ->
-#{result:=Cindex1,joinType:=Cindex2} = Val,
+{_,Cindex1,Cindex2} = Val,
 
 %%-------------------------------------------------
 %% attribute result(1) with type ENUMERATED
@@ -1564,7 +1524,7 @@ Term2 = decode_UTF8_string(V2, [131073]),
 case Tlv3 of
 [] -> true;_ -> exit({error,{asn1, {unexpected,Tlv3}}}) % extra fields not allowed
 end,
-Res1 = #{result=>Term1,joinType=>Term2},
+Res1 = {'HeaderForwardJoinAck',Term1,Term2},
 Res1.
 
 
@@ -1575,7 +1535,7 @@ enc_ExchangeIn(Val) ->
     enc_ExchangeIn(Val, [<<48>>]).
 
 enc_ExchangeIn(Val, TagIn) ->
-#{proposedSample:=Cindex1} = Val,
+{_,Cindex1} = Val,
 
 %%-------------------------------------------------
 %% attribute proposedSample(1) with type SEQUENCE OF
@@ -1622,7 +1582,7 @@ Term1 = 'dec_ExchangeIn_proposedSample'(V1, [131072]),
 case Tlv2 of
 [] -> true;_ -> exit({error,{asn1, {unexpected,Tlv2}}}) % extra fields not allowed
 end,
-Res1 = #{proposedSample=>Term1},
+Res1 = {'ExchangeIn',Term1},
 Res1.
 'dec_ExchangeIn_proposedSample'(Tlv, TagIn) ->
    %%-------------------------------------------------
@@ -1641,7 +1601,7 @@ enc_ExchangeOut(Val) ->
     enc_ExchangeOut(Val, [<<48>>]).
 
 enc_ExchangeOut(Val, TagIn) ->
-#{proposedSample:=Cindex1} = Val,
+{_,Cindex1} = Val,
 
 %%-------------------------------------------------
 %% attribute proposedSample(1) with type SEQUENCE OF
@@ -1688,7 +1648,7 @@ Term1 = 'dec_ExchangeOut_proposedSample'(V1, [131072]),
 case Tlv2 of
 [] -> true;_ -> exit({error,{asn1, {unexpected,Tlv2}}}) % extra fields not allowed
 end,
-Res1 = #{proposedSample=>Term1},
+Res1 = {'ExchangeOut',Term1},
 Res1.
 'dec_ExchangeOut_proposedSample'(Tlv, TagIn) ->
    %%-------------------------------------------------
@@ -1707,6 +1667,7 @@ enc_ExchangeAccept(Val) ->
     enc_ExchangeAccept(Val, [<<48>>]).
 
 enc_ExchangeAccept(Val, TagIn) ->
+{_} = Val,
 
    BytesSoFar = [],
 LenSoFar = 0,
@@ -1723,7 +1684,7 @@ dec_ExchangeAccept(Tlv, TagIn) ->
 match_tags(Tlv, TagIn),
 
 
-   #{}.
+   {'ExchangeAccept'}.
 
 
 
@@ -1734,7 +1695,7 @@ enc_ExchangeCancelled(Val) ->
     enc_ExchangeCancelled(Val, [<<48>>]).
 
 enc_ExchangeCancelled(Val, TagIn) ->
-#{namespace:=Cindex1,reason:=Cindex2} = Val,
+{_,Cindex1,Cindex2} = Val,
 
 %%-------------------------------------------------
 %% attribute namespace(1) with type UTF8String
@@ -1791,7 +1752,7 @@ end,
 case Tlv3 of
 [] -> true;_ -> exit({error,{asn1, {unexpected,Tlv3}}}) % extra fields not allowed
 end,
-Res1 = #{namespace=>Term1,reason=>Term2},
+Res1 = {'ExchangeCancelled',Term1,Term2},
 Res1.
 
 
@@ -1802,7 +1763,7 @@ enc_NodeQuitting(Val) ->
     enc_NodeQuitting(Val, [<<48>>]).
 
 enc_NodeQuitting(Val, TagIn) ->
-#{reason:=Cindex1} = Val,
+{_,Cindex1} = Val,
 
 %%-------------------------------------------------
 %% attribute reason(1) with type ENUMERATED
@@ -1848,7 +1809,7 @@ end,
 case Tlv2 of
 [] -> true;_ -> exit({error,{asn1, {unexpected,Tlv2}}}) % extra fields not allowed
 end,
-Res1 = #{reason=>Term1},
+Res1 = {'NodeQuitting',Term1},
 Res1.
 
 
@@ -1859,7 +1820,7 @@ enc_ChangeLock(Val) ->
     enc_ChangeLock(Val, [<<48>>]).
 
 enc_ChangeLock(Val, TagIn) ->
-#{newLock:=Cindex1,currentLock:=Cindex2} = Val,
+{_,Cindex1,Cindex2} = Val,
 
 %%-------------------------------------------------
 %% attribute newLock(1) with type OCTET STRING
@@ -1916,7 +1877,7 @@ end,
 case Tlv3 of
 [] -> true;_ -> exit({error,{asn1, {unexpected,Tlv3}}}) % extra fields not allowed
 end,
-Res1 = #{newLock=>Term1,currentLock=>Term2},
+Res1 = {'ChangeLock',Term1,Term2},
 Res1.
 
 
@@ -1927,7 +1888,7 @@ enc_OntologyHistory(Val) ->
     enc_OntologyHistory(Val, [<<48>>]).
 
 enc_OntologyHistory(Val, TagIn) ->
-#{namespace:=Cindex1,oldestIndex:=Cindex2,youngerIndex:=Cindex3,transactions:=Cindex4} = Val,
+{_,Cindex1,Cindex2,Cindex3,Cindex4} = Val,
 
 %%-------------------------------------------------
 %% attribute namespace(1) with type UTF8String
@@ -1990,7 +1951,442 @@ Term4 = decode_octet_string(V4, [131075]),
 case Tlv5 of
 [] -> true;_ -> exit({error,{asn1, {unexpected,Tlv5}}}) % extra fields not allowed
 end,
-Res1 = #{namespace=>Term1,oldestIndex=>Term2,youngerIndex=>Term3,transactions=>Term4},
+Res1 = {'OntologyHistory',Term1,Term2,Term3,Term4},
+Res1.
+
+
+%%================================
+%%  OntologyHistoryRequest
+%%================================
+enc_OntologyHistoryRequest(Val) ->
+    enc_OntologyHistoryRequest(Val, [<<48>>]).
+
+enc_OntologyHistoryRequest(Val, TagIn) ->
+{_,Cindex1,Cindex2,Cindex3,Cindex4} = Val,
+
+%%-------------------------------------------------
+%% attribute namespace(1) with type UTF8String
+%%-------------------------------------------------
+   {EncBytes1,EncLen1} = encode_UTF8_string(Cindex1, [<<128>>]),
+
+%%-------------------------------------------------
+%% attribute requester(2) with type OCTET STRING OPTIONAL
+%%-------------------------------------------------
+   {EncBytes2,EncLen2} =  case Cindex2 of
+         asn1_NOVALUE -> {<<>>,0};
+         _ ->
+            encode_restricted_string(Cindex2, [<<129>>])
+       end,
+
+%%-------------------------------------------------
+%% attribute oldestIndex(3) with type INTEGER
+%%-------------------------------------------------
+   {EncBytes3,EncLen3} = encode_integer(Cindex3, [<<130>>]),
+
+%%-------------------------------------------------
+%% attribute youngerIndex(4) with type INTEGER
+%%-------------------------------------------------
+   {EncBytes4,EncLen4} = encode_integer(Cindex4, [<<131>>]),
+
+   BytesSoFar = [EncBytes1, EncBytes2, EncBytes3, EncBytes4],
+LenSoFar = EncLen1 + EncLen2 + EncLen3 + EncLen4,
+encode_tags(TagIn, BytesSoFar, LenSoFar).
+
+
+dec_OntologyHistoryRequest(Tlv) ->
+   dec_OntologyHistoryRequest(Tlv, [16]).
+
+dec_OntologyHistoryRequest(Tlv, TagIn) ->
+   %%-------------------------------------------------
+   %% decode tag and length 
+   %%-------------------------------------------------
+Tlv1 = match_tags(Tlv, TagIn),
+
+%%-------------------------------------------------
+%% attribute namespace(1) with type UTF8String
+%%-------------------------------------------------
+[V1|Tlv2] = Tlv1, 
+Term1 = decode_UTF8_string(V1, [131072]),
+
+%%-------------------------------------------------
+%% attribute requester(2) with type OCTET STRING OPTIONAL
+%%-------------------------------------------------
+{Term2,Tlv3} = case Tlv2 of
+[{131073,V2}|TempTlv3] ->
+    {decode_octet_string(V2, []), TempTlv3};
+    _ ->
+        { asn1_NOVALUE, Tlv2}
+end,
+
+%%-------------------------------------------------
+%% attribute oldestIndex(3) with type INTEGER
+%%-------------------------------------------------
+[V3|Tlv4] = Tlv3, 
+Term3 = decode_integer(V3, [131074]),
+
+%%-------------------------------------------------
+%% attribute youngerIndex(4) with type INTEGER
+%%-------------------------------------------------
+[V4|Tlv5] = Tlv4, 
+Term4 = decode_integer(V4, [131075]),
+
+case Tlv5 of
+[] -> true;_ -> exit({error,{asn1, {unexpected,Tlv5}}}) % extra fields not allowed
+end,
+Res1 = {'OntologyHistoryRequest',Term1,Term2,Term3,Term4},
+Res1.
+
+
+%%================================
+%%  TransactionType
+%%================================
+enc_TransactionType(Val) ->
+    enc_TransactionType(Val, [<<10>>]).
+
+enc_TransactionType(Val, TagIn) ->
+case Val of
+creation -> encode_tags(TagIn, [0], 1);
+goal -> encode_tags(TagIn, [1], 1);
+Enumval1 -> exit({error,{asn1, {enumerated_not_in_range,Enumval1}}})
+end.
+
+
+dec_TransactionType(Tlv) ->
+   dec_TransactionType(Tlv, [10]).
+
+dec_TransactionType(Tlv, TagIn) ->
+case decode_integer(Tlv, TagIn) of
+0 -> creation;
+1 -> goal;
+Default1 -> exit({error,{asn1,{illegal_enumerated,Default1}}})
+end.
+
+
+
+%%================================
+%%  TransactionStatus
+%%================================
+enc_TransactionStatus(Val) ->
+    enc_TransactionStatus(Val, [<<10>>]).
+
+enc_TransactionStatus(Val, TagIn) ->
+case Val of
+created -> encode_tags(TagIn, [0], 1);
+posted -> encode_tags(TagIn, [1], 1);
+delivered -> encode_tags(TagIn, [2], 1);
+processed -> encode_tags(TagIn, [3], 1);
+Enumval1 -> exit({error,{asn1, {enumerated_not_in_range,Enumval1}}})
+end.
+
+
+dec_TransactionStatus(Tlv) ->
+   dec_TransactionStatus(Tlv, [10]).
+
+dec_TransactionStatus(Tlv, TagIn) ->
+case decode_integer(Tlv, TagIn) of
+0 -> created;
+1 -> posted;
+2 -> delivered;
+3 -> processed;
+Default1 -> exit({error,{asn1,{illegal_enumerated,Default1}}})
+end.
+
+
+
+%%================================
+%%  Transaction
+%%================================
+enc_Transaction(Val) ->
+    enc_Transaction(Val, [<<48>>]).
+
+enc_Transaction(Val, TagIn) ->
+{_,Cindex1,Cindex2,Cindex3,Cindex4,Cindex5,Cindex6,Cindex7,Cindex8,Cindex9,Cindex10,Cindex11,Cindex12,Cindex13,Cindex14,Cindex15,Cindex16} = Val,
+
+%%-------------------------------------------------
+%% attribute index(1) with type INTEGER DEFAULT = 0
+%%-------------------------------------------------
+   {EncBytes1,EncLen1} =  case Cindex1 of
+         asn1_DEFAULT ->
+            {<<>>,0};
+         _ when Cindex1 =:= 0 ->
+            {<<>>,0};
+         _ ->
+            encode_integer(Cindex1, [<<128>>])
+       end,
+
+%%-------------------------------------------------
+%% attribute type(2) with type ENUMERATED
+%%-------------------------------------------------
+   {EncBytes2,EncLen2} = case Cindex2 of
+creation -> encode_tags([<<129>>], [0], 1);
+goal -> encode_tags([<<129>>], [1], 1);
+Enumval2 -> exit({error,{asn1, {enumerated_not_in_range,Enumval2}}})
+end,
+
+%%-------------------------------------------------
+%% attribute signature(3) with type OCTET STRING
+%%-------------------------------------------------
+   {EncBytes3,EncLen3} = encode_restricted_string(Cindex3, [<<130>>]),
+
+%%-------------------------------------------------
+%% attribute tsCreated(4) with type INTEGER DEFAULT = 0
+%%-------------------------------------------------
+   {EncBytes4,EncLen4} =  case Cindex4 of
+         asn1_DEFAULT ->
+            {<<>>,0};
+         _ when Cindex4 =:= 0 ->
+            {<<>>,0};
+         _ ->
+            encode_integer(Cindex4, [<<131>>])
+       end,
+
+%%-------------------------------------------------
+%% attribute tsPosted(5) with type INTEGER DEFAULT = 0
+%%-------------------------------------------------
+   {EncBytes5,EncLen5} =  case Cindex5 of
+         asn1_DEFAULT ->
+            {<<>>,0};
+         _ when Cindex5 =:= 0 ->
+            {<<>>,0};
+         _ ->
+            encode_integer(Cindex5, [<<132>>])
+       end,
+
+%%-------------------------------------------------
+%% attribute tsDelivered(6) with type INTEGER DEFAULT = 0
+%%-------------------------------------------------
+   {EncBytes6,EncLen6} =  case Cindex6 of
+         asn1_DEFAULT ->
+            {<<>>,0};
+         _ when Cindex6 =:= 0 ->
+            {<<>>,0};
+         _ ->
+            encode_integer(Cindex6, [<<133>>])
+       end,
+
+%%-------------------------------------------------
+%% attribute tsProcessed(7) with type INTEGER OPTIONAL
+%%-------------------------------------------------
+   {EncBytes7,EncLen7} =  case Cindex7 of
+         asn1_NOVALUE -> {<<>>,0};
+         _ ->
+            encode_integer(Cindex7, [<<134>>])
+       end,
+
+%%-------------------------------------------------
+%% attribute sourceOntologyId(8) with type OCTET STRING
+%%-------------------------------------------------
+   {EncBytes8,EncLen8} = encode_restricted_string(Cindex8, [<<135>>]),
+
+%%-------------------------------------------------
+%% attribute prevAddress(9) with type OCTET STRING
+%%-------------------------------------------------
+   {EncBytes9,EncLen9} = encode_restricted_string(Cindex9, [<<136>>]),
+
+%%-------------------------------------------------
+%% attribute prevHash(10) with type OCTET STRING
+%%-------------------------------------------------
+   {EncBytes10,EncLen10} = encode_restricted_string(Cindex10, [<<137>>]),
+
+%%-------------------------------------------------
+%% attribute currentAddress(11) with type OCTET STRING
+%%-------------------------------------------------
+   {EncBytes11,EncLen11} = encode_restricted_string(Cindex11, [<<138>>]),
+
+%%-------------------------------------------------
+%% attribute namespace(12) with type UTF8String
+%%-------------------------------------------------
+   {EncBytes12,EncLen12} = encode_UTF8_string(Cindex12, [<<139>>]),
+
+%%-------------------------------------------------
+%% attribute leader(13) with type OCTET STRING OPTIONAL
+%%-------------------------------------------------
+   {EncBytes13,EncLen13} =  case Cindex13 of
+         asn1_NOVALUE -> {<<>>,0};
+         _ ->
+            encode_restricted_string(Cindex13, [<<140>>])
+       end,
+
+%%-------------------------------------------------
+%% attribute payload(14) with type OCTET STRING
+%%-------------------------------------------------
+   {EncBytes14,EncLen14} = encode_restricted_string(Cindex14, [<<141>>]),
+
+%%-------------------------------------------------
+%% attribute diff(15) with type OCTET STRING
+%%-------------------------------------------------
+   {EncBytes15,EncLen15} = encode_restricted_string(Cindex15, [<<142>>]),
+
+%%-------------------------------------------------
+%% attribute status(16) with type ENUMERATED DEFAULT = created
+%%-------------------------------------------------
+   {EncBytes16,EncLen16} =  case Cindex16 of
+         asn1_DEFAULT ->
+            {<<>>,0};
+         _ when Cindex16 =:= created ->
+            {<<>>,0};
+         _ ->
+            case Cindex16 of
+created -> encode_tags([<<143>>], [0], 1);
+posted -> encode_tags([<<143>>], [1], 1);
+delivered -> encode_tags([<<143>>], [2], 1);
+processed -> encode_tags([<<143>>], [3], 1);
+Enumval16 -> exit({error,{asn1, {enumerated_not_in_range,Enumval16}}})
+end
+       end,
+
+   BytesSoFar = [EncBytes1, EncBytes2, EncBytes3, EncBytes4, EncBytes5, EncBytes6, EncBytes7, EncBytes8, EncBytes9, EncBytes10, EncBytes11, EncBytes12, EncBytes13, EncBytes14, EncBytes15, EncBytes16],
+LenSoFar = EncLen1 + EncLen2 + EncLen3 + EncLen4 + EncLen5 + EncLen6 + EncLen7 + EncLen8 + EncLen9 + EncLen10 + EncLen11 + EncLen12 + EncLen13 + EncLen14 + EncLen15 + EncLen16,
+encode_tags(TagIn, BytesSoFar, LenSoFar).
+
+
+dec_Transaction(Tlv) ->
+   dec_Transaction(Tlv, [16]).
+
+dec_Transaction(Tlv, TagIn) ->
+   %%-------------------------------------------------
+   %% decode tag and length 
+   %%-------------------------------------------------
+Tlv1 = match_tags(Tlv, TagIn),
+
+%%-------------------------------------------------
+%% attribute index(1) with type INTEGER DEFAULT = 0
+%%-------------------------------------------------
+{Term1,Tlv2} = case Tlv1 of
+[{131072,V1}|TempTlv2] ->
+    {decode_integer(V1, []), TempTlv2};
+    _ ->
+        {0,Tlv1}
+end,
+
+%%-------------------------------------------------
+%% attribute type(2) with type ENUMERATED
+%%-------------------------------------------------
+[V2|Tlv3] = Tlv2, 
+Term2 = case decode_integer(V2, [131073]) of
+0 -> creation;
+1 -> goal;
+Default1 -> exit({error,{asn1,{illegal_enumerated,Default1}}})
+end,
+
+%%-------------------------------------------------
+%% attribute signature(3) with type OCTET STRING
+%%-------------------------------------------------
+[V3|Tlv4] = Tlv3, 
+Term3 = decode_octet_string(V3, [131074]),
+
+%%-------------------------------------------------
+%% attribute tsCreated(4) with type INTEGER DEFAULT = 0
+%%-------------------------------------------------
+{Term4,Tlv5} = case Tlv4 of
+[{131075,V4}|TempTlv5] ->
+    {decode_integer(V4, []), TempTlv5};
+    _ ->
+        {0,Tlv4}
+end,
+
+%%-------------------------------------------------
+%% attribute tsPosted(5) with type INTEGER DEFAULT = 0
+%%-------------------------------------------------
+{Term5,Tlv6} = case Tlv5 of
+[{131076,V5}|TempTlv6] ->
+    {decode_integer(V5, []), TempTlv6};
+    _ ->
+        {0,Tlv5}
+end,
+
+%%-------------------------------------------------
+%% attribute tsDelivered(6) with type INTEGER DEFAULT = 0
+%%-------------------------------------------------
+{Term6,Tlv7} = case Tlv6 of
+[{131077,V6}|TempTlv7] ->
+    {decode_integer(V6, []), TempTlv7};
+    _ ->
+        {0,Tlv6}
+end,
+
+%%-------------------------------------------------
+%% attribute tsProcessed(7) with type INTEGER OPTIONAL
+%%-------------------------------------------------
+{Term7,Tlv8} = case Tlv7 of
+[{131078,V7}|TempTlv8] ->
+    {decode_integer(V7, []), TempTlv8};
+    _ ->
+        { asn1_NOVALUE, Tlv7}
+end,
+
+%%-------------------------------------------------
+%% attribute sourceOntologyId(8) with type OCTET STRING
+%%-------------------------------------------------
+[V8|Tlv9] = Tlv8, 
+Term8 = decode_octet_string(V8, [131079]),
+
+%%-------------------------------------------------
+%% attribute prevAddress(9) with type OCTET STRING
+%%-------------------------------------------------
+[V9|Tlv10] = Tlv9, 
+Term9 = decode_octet_string(V9, [131080]),
+
+%%-------------------------------------------------
+%% attribute prevHash(10) with type OCTET STRING
+%%-------------------------------------------------
+[V10|Tlv11] = Tlv10, 
+Term10 = decode_octet_string(V10, [131081]),
+
+%%-------------------------------------------------
+%% attribute currentAddress(11) with type OCTET STRING
+%%-------------------------------------------------
+[V11|Tlv12] = Tlv11, 
+Term11 = decode_octet_string(V11, [131082]),
+
+%%-------------------------------------------------
+%% attribute namespace(12) with type UTF8String
+%%-------------------------------------------------
+[V12|Tlv13] = Tlv12, 
+Term12 = decode_UTF8_string(V12, [131083]),
+
+%%-------------------------------------------------
+%% attribute leader(13) with type OCTET STRING OPTIONAL
+%%-------------------------------------------------
+{Term13,Tlv14} = case Tlv13 of
+[{131084,V13}|TempTlv14] ->
+    {decode_octet_string(V13, []), TempTlv14};
+    _ ->
+        { asn1_NOVALUE, Tlv13}
+end,
+
+%%-------------------------------------------------
+%% attribute payload(14) with type OCTET STRING
+%%-------------------------------------------------
+[V14|Tlv15] = Tlv14, 
+Term14 = decode_octet_string(V14, [131085]),
+
+%%-------------------------------------------------
+%% attribute diff(15) with type OCTET STRING
+%%-------------------------------------------------
+[V15|Tlv16] = Tlv15, 
+Term15 = decode_octet_string(V15, [131086]),
+
+%%-------------------------------------------------
+%% attribute status(16) with type ENUMERATED DEFAULT = created
+%%-------------------------------------------------
+{Term16,Tlv17} = case Tlv16 of
+[{131087,V16}|TempTlv17] ->
+    {case decode_integer(V16, []) of
+0 -> created;
+1 -> posted;
+2 -> delivered;
+3 -> processed;
+Default2 -> exit({error,{asn1,{illegal_enumerated,Default2}}})
+end, TempTlv17};
+    _ ->
+        {created,Tlv16}
+end,
+
+case Tlv17 of
+[] -> true;_ -> exit({error,{asn1, {unexpected,Tlv17}}}) % extra fields not allowed
+end,
+Res1 = {'Transaction',Term1,Term2,Term3,Term4,Term5,Term6,Term7,Term8,Term9,Term10,Term11,Term12,Term13,Term14,Term15,Term16},
 Res1.
 
 
@@ -2001,7 +2397,7 @@ enc_EptoMessage(Val) ->
     enc_EptoMessage(Val, [<<48>>]).
 
 enc_EptoMessage(Val, TagIn) ->
-#{payload:=Cindex1} = Val,
+{_,Cindex1} = Val,
 
 %%-------------------------------------------------
 %% attribute payload(1) with type OCTET STRING
@@ -2031,7 +2427,157 @@ Term1 = decode_octet_string(V1, [131072]),
 case Tlv2 of
 [] -> true;_ -> exit({error,{asn1, {unexpected,Tlv2}}}) % extra fields not allowed
 end,
-Res1 = #{payload=>Term1},
+Res1 = {'EptoMessage',Term1},
+Res1.
+
+
+%%================================
+%%  Neighbor
+%%================================
+enc_Neighbor(Val) ->
+    enc_Neighbor(Val, [<<48>>]).
+
+enc_Neighbor(Val, TagIn) ->
+{_,Cindex1,Cindex2,Cindex3,Cindex4,Cindex5} = Val,
+
+%%-------------------------------------------------
+%% attribute nodeId(1) with type OCTET STRING
+%%-------------------------------------------------
+   {EncBytes1,EncLen1} = encode_restricted_string(Cindex1, [<<128>>]),
+
+%%-------------------------------------------------
+%% attribute chosenLeader(2) with type OCTET STRING OPTIONAL
+%%-------------------------------------------------
+   {EncBytes2,EncLen2} =  case Cindex2 of
+         asn1_NOVALUE -> {<<>>,0};
+         _ ->
+            encode_restricted_string(Cindex2, [<<129>>])
+       end,
+
+%%-------------------------------------------------
+%% attribute publicKey(3) with type OCTET STRING
+%%-------------------------------------------------
+   {EncBytes3,EncLen3} = encode_restricted_string(Cindex3, [<<130>>]),
+
+%%-------------------------------------------------
+%% attribute signedTs(4) with type OCTET STRING
+%%-------------------------------------------------
+   {EncBytes4,EncLen4} = encode_restricted_string(Cindex4, [<<131>>]),
+
+%%-------------------------------------------------
+%% attribute ts(5) with type INTEGER
+%%-------------------------------------------------
+   {EncBytes5,EncLen5} = encode_integer(Cindex5, [<<132>>]),
+
+   BytesSoFar = [EncBytes1, EncBytes2, EncBytes3, EncBytes4, EncBytes5],
+LenSoFar = EncLen1 + EncLen2 + EncLen3 + EncLen4 + EncLen5,
+encode_tags(TagIn, BytesSoFar, LenSoFar).
+
+
+dec_Neighbor(Tlv) ->
+   dec_Neighbor(Tlv, [16]).
+
+dec_Neighbor(Tlv, TagIn) ->
+   %%-------------------------------------------------
+   %% decode tag and length 
+   %%-------------------------------------------------
+Tlv1 = match_tags(Tlv, TagIn),
+
+%%-------------------------------------------------
+%% attribute nodeId(1) with type OCTET STRING
+%%-------------------------------------------------
+[V1|Tlv2] = Tlv1, 
+Term1 = begin
+Val1 = decode_octet_string(V1, [131072]),
+C1 = byte_size(Val1),
+if 32 =< C1, C1 =< 64 ->
+Val1;
+true ->
+exit({error,{asn1,bad_range}})
+end
+end,
+
+%%-------------------------------------------------
+%% attribute chosenLeader(2) with type OCTET STRING OPTIONAL
+%%-------------------------------------------------
+{Term2,Tlv3} = case Tlv2 of
+[{131073,V2}|TempTlv3] ->
+    {begin
+Val2 = decode_octet_string(V2, []),
+C2 = byte_size(Val2),
+if 32 =< C2, C2 =< 64 ->
+Val2;
+true ->
+exit({error,{asn1,bad_range}})
+end
+end, TempTlv3};
+    _ ->
+        { asn1_NOVALUE, Tlv2}
+end,
+
+%%-------------------------------------------------
+%% attribute publicKey(3) with type OCTET STRING
+%%-------------------------------------------------
+[V3|Tlv4] = Tlv3, 
+Term3 = decode_octet_string(V3, [131074]),
+
+%%-------------------------------------------------
+%% attribute signedTs(4) with type OCTET STRING
+%%-------------------------------------------------
+[V4|Tlv5] = Tlv4, 
+Term4 = decode_octet_string(V4, [131075]),
+
+%%-------------------------------------------------
+%% attribute ts(5) with type INTEGER
+%%-------------------------------------------------
+[V5|Tlv6] = Tlv5, 
+Term5 = decode_integer(V5, [131076]),
+
+case Tlv6 of
+[] -> true;_ -> exit({error,{asn1, {unexpected,Tlv6}}}) % extra fields not allowed
+end,
+Res1 = {'Neighbor',Term1,Term2,Term3,Term4,Term5},
+Res1.
+
+
+%%================================
+%%  LeaderElectionInfo
+%%================================
+enc_LeaderElectionInfo(Val) ->
+    enc_LeaderElectionInfo(Val, [<<48>>]).
+
+enc_LeaderElectionInfo(Val, TagIn) ->
+{_,Cindex1} = Val,
+
+%%-------------------------------------------------
+%% attribute payload(1)   External BBSVXProtocol:Neighbor
+%%-------------------------------------------------
+   {EncBytes1,EncLen1} = 'enc_Neighbor'(Cindex1, [<<160>>]),
+
+   BytesSoFar = [EncBytes1],
+LenSoFar = EncLen1,
+encode_tags(TagIn, BytesSoFar, LenSoFar).
+
+
+dec_LeaderElectionInfo(Tlv) ->
+   dec_LeaderElectionInfo(Tlv, [16]).
+
+dec_LeaderElectionInfo(Tlv, TagIn) ->
+   %%-------------------------------------------------
+   %% decode tag and length 
+   %%-------------------------------------------------
+Tlv1 = match_tags(Tlv, TagIn),
+
+%%-------------------------------------------------
+%% attribute payload(1)   External BBSVXProtocol:Neighbor
+%%-------------------------------------------------
+[V1|Tlv2] = Tlv1, 
+Term1 = 'dec_Neighbor'(V1, [131072]),
+
+case Tlv2 of
+[] -> true;_ -> exit({error,{asn1, {unexpected,Tlv2}}}) % extra fields not allowed
+end,
+Res1 = {'LeaderElectionInfo',Term1},
 Res1.
 
 
@@ -2042,7 +2588,7 @@ enc_SendForwardSubscription(Val) ->
     enc_SendForwardSubscription(Val, [<<48>>]).
 
 enc_SendForwardSubscription(Val, TagIn) ->
-#{subscriberNode:=Cindex1,lock:=Cindex2} = Val,
+{_,Cindex1,Cindex2} = Val,
 
 %%-------------------------------------------------
 %% attribute subscriberNode(1)   External BBSVXProtocol:NodeEntry
@@ -2091,7 +2637,7 @@ end,
 case Tlv3 of
 [] -> true;_ -> exit({error,{asn1, {unexpected,Tlv3}}}) % extra fields not allowed
 end,
-Res1 = #{subscriberNode=>Term1,lock=>Term2},
+Res1 = {'SendForwardSubscription',Term1,Term2},
 Res1.
 
 
@@ -2102,7 +2648,7 @@ enc_OpenForwardJoin(Val) ->
     enc_OpenForwardJoin(Val, [<<48>>]).
 
 enc_OpenForwardJoin(Val, TagIn) ->
-#{subscriberNode:=Cindex1,lock:=Cindex2} = Val,
+{_,Cindex1,Cindex2} = Val,
 
 %%-------------------------------------------------
 %% attribute subscriberNode(1)   External BBSVXProtocol:NodeEntry
@@ -2151,7 +2697,7 @@ end,
 case Tlv3 of
 [] -> true;_ -> exit({error,{asn1, {unexpected,Tlv3}}}) % extra fields not allowed
 end,
-Res1 = #{subscriberNode=>Term1,lock=>Term2},
+Res1 = {'OpenForwardJoin',Term1,Term2},
 Res1.
 
 
@@ -2197,8 +2743,12 @@ enc_BBSVXMessage(Val, TagIn) ->
          'enc_OpenForwardJoin'(element(2,Val), [<<191,42>>]);
       ontologyHistory ->
          'enc_OntologyHistory'(element(2,Val), [<<191,50>>]);
+      ontologyHistoryRequest ->
+         'enc_OntologyHistoryRequest'(element(2,Val), [<<191,51>>]);
       eptoMessage ->
-         'enc_EptoMessage'(element(2,Val), [<<191,51>>]);
+         'enc_EptoMessage'(element(2,Val), [<<191,52>>]);
+      leaderElectionInfo ->
+         'enc_LeaderElectionInfo'(element(2,Val), [<<191,53>>]);
       Else -> 
          exit({error,{asn1,{invalid_choice_type,Else}}})
    end,
@@ -2300,9 +2850,19 @@ case (case Tlv1 of [CtempTlv1] -> CtempTlv1; _ -> Tlv1 end) of
         {ontologyHistory, 'dec_OntologyHistory'(V1, [])};
 
 
-%% 'eptoMessage'
+%% 'ontologyHistoryRequest'
     {131123, V1} -> 
+        {ontologyHistoryRequest, 'dec_OntologyHistoryRequest'(V1, [])};
+
+
+%% 'eptoMessage'
+    {131124, V1} -> 
         {eptoMessage, 'dec_EptoMessage'(V1, [])};
+
+
+%% 'leaderElectionInfo'
+    {131125, V1} -> 
+        {leaderElectionInfo, 'dec_LeaderElectionInfo'(V1, [])};
 
       Else -> 
          exit({error,{asn1,{invalid_choice_tag,Else}}})
