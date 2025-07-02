@@ -38,6 +38,9 @@ cd bbsvx
 # Build the BBSvx Docker image
 docker build . -t bbsvx
 
+# Build the Graph Visualizer Docker image
+docker build ./priv/graph-visualizer -t graph-visualizer
+
 # Start BBSvx with 4 client nodes
 docker compose up --scale bbsvx_client=4
 ```
