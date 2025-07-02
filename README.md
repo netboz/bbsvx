@@ -1,6 +1,23 @@
 # BBSvx
 
-BBSvx is a blockchain-powered BBS (Bulletin Board System) built on Erlang/OTP with distributed consensus and knowledge management capabilities.
+BBSvx is a blockchain-powered Virtual Reality system built on Erlang/OTP with distributed consensus and knowledge management capabilities.
+
+## Overview
+
+This project is under development and started as a proof of concept.
+
+Integrating blockchain into Virtual Reality systems should permit to:
+
+- Have permanent ontologies
+- Have permanently running agents (agents being ontologies)
+- Keep consistency of ontologies in distributed environments as agents are interacting with them
+- Benefit from blockchain inherent characteristics: Enhanced security, transparency, traceability etc.
+
+This blockchain is supported by a P2P overlay network formed by nodes following SPRAY protocol. This permits to bring up a network where each peer only has a partial view of the whole network, named neighbors. Regularly, each node exchanges a part of its neighbors with one of them.
+
+Nodes are exchanging messages following EPTO protocol. This permits to have a consistent ordering of events among the nodes.
+
+To permit side effects to Prolog queries, a leader is elected among the nodes of an ontology.
 
 ## Introduction - Quick Start with Docker
 
@@ -15,7 +32,7 @@ This tutorial will get you up and running with BBSvx in minutes using Docker Com
 
 ```bash
 # Clone and enter the repository
-git clone <repository-url>
+git clone https://github.com/netboz/bbsvx.git
 cd bbsvx
 
 # Start BBSvx with 4 client nodes
@@ -100,15 +117,6 @@ docker compose down
 docker compose down -v
 ```
 
-### What You Just Learned
-
-- **Distributed Bootstrap**: Nodes automatically discover and join the cluster
-- **SPRAY Protocol**: P2P overlay network formation with automatic load balancing
-- **Real-time Monitoring**: Visual feedback on network topology and performance
-- **Horizontal Scaling**: Adding nodes dynamically without service interruption
-- **Fault Tolerance**: Built-in resilience through distributed architecture
-
-This demonstrates BBSvx's core strength: **autonomous distributed networking** with built-in monitoring and visualization tools for understanding complex P2P behaviors.
 
 ## Features
 
@@ -168,9 +176,9 @@ BBSvx supports intelligent configuration with automatic file location detection:
 
 ### Smart Boot Modes
 
-- **`boot = auto`** - Automatic detection (restarts only)
 - **`boot = root`** - Start new cluster (fresh data only)
 - **`boot = join <host> <port>`** - Join existing cluster
+- **`boot = auto`** - Automatic detection (restarts only)
 
 ### Configuration Examples
 
