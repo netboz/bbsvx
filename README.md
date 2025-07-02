@@ -28,12 +28,15 @@ This tutorial will get you up and running with BBSvx in minutes using Docker Com
 - Docker and Docker Compose installed
 - Git (to clone the repository)
 
-### Step 1: Start the BBSvx Cluster
+### Step 1: Build and Start the BBSvx Cluster
 
 ```bash
 # Clone and enter the repository
 git clone https://github.com/netboz/bbsvx.git
 cd bbsvx
+
+# Build the BBSvx Docker image
+docker build . -t bbsvx
 
 # Start BBSvx with 4 client nodes
 docker compose up --scale bbsvx_client=4
