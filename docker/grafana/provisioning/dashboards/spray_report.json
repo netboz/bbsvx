@@ -24,7 +24,7 @@
     {
       "datasource": {
         "type": "victoriametrics-datasource",
-        "uid": "adqng4jfwlslcd"
+        "uid": "P4169E866C3094E38"
       },
       "fieldConfig": {
         "defaults": {
@@ -105,7 +105,7 @@
         {
           "datasource": {
             "type": "victoriametrics-datasource",
-            "uid": "adqng4jfwlslcd"
+            "uid": "P4169E866C3094E38"
           },
           "editorMode": "builder",
           "expr": "bbsvx_spray_outview_size{namespace=\"bbsvx:root\", container_name=~\"$container\"}",
@@ -116,7 +116,7 @@
         {
           "datasource": {
             "type": "victoriametrics-datasource",
-            "uid": "adqng4jfwlslcd"
+            "uid": "P4169E866C3094E38"
           },
           "editorMode": "builder",
           "expr": "bbsvx_spray_inview_size{namespace=\"bbsvx:root\", container_name=~\"$container\"}",
@@ -132,7 +132,7 @@
     {
       "datasource": {
         "type": "victoriametrics-datasource",
-        "uid": "adqng4jfwlslcd"
+        "uid": "P4169E866C3094E38"
       },
       "fieldConfig": {
         "defaults": {
@@ -213,7 +213,7 @@
         {
           "datasource": {
             "type": "victoriametrics-datasource",
-            "uid": "adqng4jfwlslcd"
+            "uid": "P4169E866C3094E38"
           },
           "editorMode": "builder",
           "expr": "bbsvx_spray_exchange_cancelled{container_name=~\"$container\"}",
@@ -228,7 +228,7 @@
     {
       "datasource": {
         "type": "victoriametrics-datasource",
-        "uid": "adqng4jfwlslcd"
+        "uid": "P4169E866C3094E38"
       },
       "fieldConfig": {
         "defaults": {
@@ -309,7 +309,7 @@
         {
           "datasource": {
             "type": "victoriametrics-datasource",
-            "uid": "adqng4jfwlslcd"
+            "uid": "P4169E866C3094E38"
           },
           "editorMode": "builder",
           "expr": "bbsvx_spray_inview_depleted{namespace=\"bbsvx:root\", container_name=~\"$container\"}",
@@ -320,7 +320,7 @@
         {
           "datasource": {
             "type": "victoriametrics-datasource",
-            "uid": "adqng4jfwlslcd"
+            "uid": "P4169E866C3094E38"
           },
           "editorMode": "builder",
           "expr": "bbsvx_spray_outview_depleted{namespace=~\"bbsvx:root\", container_name=~\"$container\"}",
@@ -336,7 +336,7 @@
     {
       "datasource": {
         "type": "victoriametrics-datasource",
-        "uid": "adqng4jfwlslcd"
+        "uid": "P4169E866C3094E38"
       },
       "fieldConfig": {
         "defaults": {
@@ -448,7 +448,7 @@
         {
           "datasource": {
             "type": "victoriametrics-datasource",
-            "uid": "adqng4jfwlslcd"
+            "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
           "expr": "sum(bbsvx_spray_inview_size{namespace=\"bbsvx:root\", container_name=~\"$container\"})",
@@ -459,7 +459,7 @@
         {
           "datasource": {
             "type": "victoriametrics-datasource",
-            "uid": "adqng4jfwlslcd"
+            "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
           "expr": "sum(bbsvx_spray_outview_size{namespace=\"bbsvx:root\", container_name=~\"$container\"})",
@@ -489,7 +489,7 @@
         },
         "datasource": {
           "type": "victoriametrics-datasource",
-          "uid": "adqng4jfwlslcd"
+          "uid": "P4169E866C3094E38"
         },
         "definition": "label_values(container_name)",
         "description": "Monitored Container",

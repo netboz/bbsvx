@@ -4,6 +4,7 @@ datasources:
 - name: VictoriaMetrics
   type: victoriametrics-datasource
   access: proxy
+  uid: adqng4jfwlslcd
   orgId: 1
   url: http://victoria_metrics:8428
   isDefault: true

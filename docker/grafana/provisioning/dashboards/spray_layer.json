@@ -25,7 +25,7 @@
     {
       "datasource": {
         "type": "victoriametrics-datasource",
-        "uid": "adqng4jfwlslcd"
+        "uid": "P4169E866C3094E38"
       },
       "description": "Number of nodes in out and in view.",
       "fieldConfig": {
@@ -108,7 +108,7 @@
         {
           "datasource": {
             "type": "victoriametrics-datasource",
-            "uid": "adqng4jfwlslcd"
+            "uid": "P4169E866C3094E38"
           },
           "editorMode": "builder",
           "expr": "bbsvx_spray_outview_size{namespace=\"bbsvx:root\", container_name=\"$container\"}",
@@ -119,7 +119,7 @@
         {
           "datasource": {
             "type": "victoriametrics-datasource",
-            "uid": "adqng4jfwlslcd"
+            "uid": "P4169E866C3094E38"
           },
           "editorMode": "builder",
           "expr": "bbsvx_spray_inview_size{namespace=\"bbsvx:root\", container_name=\"$container\"}",
@@ -135,7 +135,7 @@
     {
       "datasource": {
         "type": "victoriametrics-datasource",
-        "uid": "adqng4jfwlslcd"
+        "uid": "P4169E866C3094E38"
       },
       "description": "Increase when inview size reach 0",
       "fieldConfig": {
@@ -218,7 +218,7 @@
         {
           "datasource": {
             "type": "victoriametrics-datasource",
-            "uid": "adqng4jfwlslcd"
+            "uid": "P4169E866C3094E38"
           },
           "editorMode": "builder",
           "expr": "spray_inview_depleted_bbsvx_root{container_name=~\"$container\"}",
@@ -229,7 +229,7 @@
         {
           "datasource": {
             "type": "victoriametrics-datasource",
-            "uid": "adqng4jfwlslcd"
+            "uid": "P4169E866C3094E38"
           },
           "editorMode": "builder",
           "expr": "spray_outview_depleted_bbsvx_root{container_name=~\"$container\"}",
@@ -245,7 +245,7 @@
     {
       "datasource": {
         "type": "victoriametrics-datasource",
-        "uid": "adqng4jfwlslcd"
+        "uid": "P4169E866C3094E38"
       },
       "description": "Sum of all nodes views and inviews",
       "fieldConfig": {
@@ -328,7 +328,7 @@
         {
           "datasource": {
             "type": "victoriametrics-datasource",
-            "uid": "adqng4jfwlslcd"
+            "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
           "expr": "sum(spray_outview_size_bbsvx_root)",
@@ -339,7 +339,7 @@
         {
           "datasource": {
             "type": "victoriametrics-datasource",
-            "uid": "adqng4jfwlslcd"
+            "uid": "P4169E866C3094E38"
           },
           "editorMode": "code",
           "expr": "sum(spray_inview_size_bbsvx_root)",
@@ -355,7 +355,7 @@
     {
       "datasource": {
         "type": "victoriametrics-datasource",
-        "uid": "adqng4jfwlslcd"
+        "uid": "P4169E866C3094E38"
       },
       "fieldConfig": {
         "defaults": {
@@ -434,7 +434,7 @@
         {
           "datasource": {
             "type": "victoriametrics-datasource",
-            "uid": "adqng4jfwlslcd"
+            "uid": "P4169E866C3094E38"
           },
           "editorMode": "builder",
           "expr": "spray_initiator_echange_timeout_bbsvx_root{container_name=~\"$container\"}",
@@ -464,7 +464,7 @@
         },
         "datasource": {
           "type": "victoriametrics-datasource",
-          "uid": "adqng4jfwlslcd"
+          "uid": "P4169E866C3094E38"
         },
         "definition": "label_values(container_name)",
         "description": "Monitored container",
