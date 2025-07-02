@@ -12,7 +12,7 @@ Integrating blockchain into BBS should permit to :
 * Keep concistency of ontologies in a distributed environements as agents are interacting with them
 * Benefit from blockchain inherent characteristics : Enhanced security, transparency, tracability etc ...
 
-This blockchain is supported by a P2P overlay network formed by nodes following [SPRAY protocol](https://hal.science/hal-01203363). This permits to bring up a network where each peer only have a partial view of the whole network, named neighnours. Each node exchange a part of its neighbours with one of them.
+This blockchain is supported by a P2P overlay network formed by nodes following [SPRAY protocol](https://hal.science/hal-01203363). This permits to bring up a network where each peer only have a partial view of the whole network, named neighnours. Regularly, each node exchange a part of its neighbours with one of them.
 
 Nodes are exchanging messages following [Epto protocol](https://www.dpss.inesc-id.pt/~mm/papers/2015/middleware_epto.pdf). This permits to have a concistent ordering of events among the nodes.
 
