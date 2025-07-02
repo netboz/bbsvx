@@ -1,9 +1,11 @@
 BBSvx
 =====
 
-BBSvx is blockchain powered [BBS](https://github.com/netboz/bbs)
-
 This project is under development and started as a proof of concept.
+
+BBSvx is blockchain powered Virtual Reality engine.
+
+Application logic is based on [BBS](https://github.com/netboz/bbs)
 
 Integrating blockchain into BBS should permit to :
 
