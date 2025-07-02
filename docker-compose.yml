@@ -21,13 +21,13 @@ services:
         - BBSVX_HTTP_PORT=8085
       networks:
         - bbsvx-net
-      logging:
-        driver: loki
-        options:
-          loki-url: "http://127.0.0.1:3100/loki/api/v1/push"
-          mode: non-blocking
-          max-buffer-size: 4m
-          loki-retries: "3"
+      # logging:
+      #   driver: loki
+      #   options:
+      #     loki-url: "http://127.0.0.1:3100/loki/api/v1/push"
+      #     mode: non-blocking
+      #     max-buffer-size: 4m
+      #     loki-retries: "3"
       volumes:
         - ./docker/logs:/logs
       labels:
@@ -53,13 +53,13 @@ services:
       - BBSVX_HTTP_PORT=8085
     networks:
       - bbsvx-net
-    logging:
-        driver: loki
-        options:
-          loki-url: "http://127.0.0.1:3100/loki/api/v1/push"
-          mode: non-blocking
-          max-buffer-size: 4m
-          loki-retries: "3"
+    # logging:
+    #     driver: loki
+    #     options:
+    #       loki-url: "http://127.0.0.1:3100/loki/api/v1/push"
+    #       mode: non-blocking
+    #       max-buffer-size: 4m
+    #       loki-retries: "3"
     volumes:
       - ./docker/logs:/logs
     depends_on:
