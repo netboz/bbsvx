@@ -1,15 +1,31 @@
 # BBSvx 🫧
-### *The Blockchain-Powered BubbleSoap System That Actually Makes Sense*
+### *A Blockchain-Powered Distributed VR System That Actually Makes Sense*
 
 ---
 
 ## What's a BubbleSoap System? 🤔
 
-Forget everything you thought you knew about boring old Bulletin Board Systems. BBSvx stands for **BubbleSoap System** – a name that perfectly captures the essence of what we're building: a system where ideas, knowledge, and interactions bubble up naturally and spread across the network like soap bubbles in the wind.
+BBSvx have nothing related to what we used to know as BBS ( Bulletin Board System ).
 
-Just like soap bubbles that form, merge, and carry information across space, BBSvx creates a distributed environment where knowledge ontologies bubble up from individual nodes and spread throughout the network, creating a shared understanding that's both resilient and beautiful to watch.
+. BBSvx stands for **BubbleSoap System** : a system where ideas, knowledge, and interactions bubble up naturally and spread across the network like soap bubbles in the air.
 
 BBSvx is a blockchain-powered evolution of the classic [BubbleSoap System](https://github.com/netboz/bbs), built on Erlang/OTP for that rock-solid telecommunications-grade reliability that ensures your bubbles never pop unexpectedly.
+
+---
+
+## What Makes BBSvx Special? ✨
+
+### 🫧 **Bubbling Knowledge Ontologies**
+Your knowledge doesn't stay trapped in silos. It bubbles up naturally and spreads across the network, creating shared understanding that persists even when individual nodes disappear.
+
+### 🤖 **Soap-Film Agents**
+Agents in BBSvx are like the thin soap film that gives bubbles their structure. They're lightweight but incredibly strong, managing ontologies and ensuring knowledge flows smoothly through the network.
+
+### 🔄 **Bubble Dynamics**
+Using the SPRAY protocol for overlay networks and EPTO for event ordering, we create natural bubble dynamics where knowledge merges, splits, and propagates organically – just like real soap bubbles, but with Byzantine fault tolerance.
+
+### 🌈 **Blockchain Iridescence**
+All the shimmering benefits of blockchain technology: enhanced security, transparency, and traceability. Plus the ability to track exactly how knowledge bubbles formed and evolved.
 
 ---
 
@@ -32,23 +48,7 @@ This demonstrates how BBSvx's distributed ontologies enable flexible, intelligen
 
 *This is the real power of BubbleSoap Systems: structured knowledge that flows naturally through distributed networks, enabling emergent intelligence.*
 
----
 
-## What Makes BBSvx Special? ✨
-
-### 🫧 **Bubbling Knowledge Ontologies**
-Your knowledge doesn't stay trapped in silos. It bubbles up naturally and spreads across the network, creating shared understanding that persists even when individual nodes disappear.
-
-### 🤖 **Soap-Film Agents**
-Agents in BBSvx are like the thin soap film that gives bubbles their structure. They're lightweight but incredibly strong, managing ontologies and ensuring knowledge flows smoothly through the network.
-
-### 🔄 **Bubble Dynamics**
-Using the SPRAY protocol for overlay networks and EPTO for event ordering, we create natural bubble dynamics where knowledge merges, splits, and propagates organically – just like real soap bubbles, but with Byzantine fault tolerance.
-
-### 🌈 **Blockchain Iridescence**
-All the shimmering benefits of blockchain technology: enhanced security, transparency, and traceability. Plus the ability to track exactly how knowledge bubbles formed and evolved.
-
----
 
 ## Architecture: The BubbleSoap Factory 🏗️
 
