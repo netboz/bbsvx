@@ -3,29 +3,25 @@
 
 ---
 
-## What's a BubbleSoap System? 🤔
+## What's a Bubble ? 🤔
 
 BBSvx have nothing related to what we used to know as BBS ( Bulletin Board System ).
 
-. BBSvx stands for **BubbleSoap System** : a system where ideas, knowledge, and interactions bubble up naturally and spread across the network like soap bubbles in the air.
+The base unit of BBSvx is the onthology ( basically a set of concepts and the relations between them ).
 
-BBSvx is a blockchain-powered evolution of the classic [BubbleSoap System](https://github.com/netboz/bbs), built on Erlang/OTP for that rock-solid telecommunications-grade reliability that ensures your bubbles never pop unexpectedly.
+Ontologies are mutable.
 
----
+Onthologies can be shared or not.
 
-## What Makes BBSvx Special? ✨
+All participants of a shared ontology are forming a blockchain.
 
-### 🫧 **Bubbling Knowledge Ontologies**
-Your knowledge doesn't stay trapped in silos. It bubbles up naturally and spreads across the network, creating shared understanding that persists even when individual nodes disappear.
+An Ontology ( concepts, relations ) can be virtualized as a bounded 3D space. This is called a Bubble.
 
-### 🤖 **Soap-Film Agents**
-Agents in BBSvx are like the thin soap film that gives bubbles their structure. They're lightweight but incredibly strong, managing ontologies and ensuring knowledge flows smoothly through the network.
+Changes in ontholgies are triguerred by agents, being themselves ontologies.
 
-### 🔄 **Bubble Dynamics**
-Using the SPRAY protocol for overlay networks and EPTO for event ordering, we create natural bubble dynamics where knowledge merges, splits, and propagates organically – just like real soap bubbles, but with Byzantine fault tolerance.
+Hence Ontologies are interacting with ontologies, as the support of a virtualed 3D space.
 
-### 🌈 **Blockchain Iridescence**
-All the shimmering benefits of blockchain technology: enhanced security, transparency, and traceability. Plus the ability to track exactly how knowledge bubbles formed and evolved.
+This is BBSvx
 
 ---
 
