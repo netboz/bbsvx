@@ -27,7 +27,7 @@ This is BBSvx
 
 ## The "Distributed Bottle Emptying" Problem 🍺
 
-Imagine an agent trying to empty a bottle. In traditional systems, there's usually only one rigid path to achieve this goal. But BBSvx's ontology system provides multiple action pathways:
+Imagine an agent trying to empty a bottle. In traditional systems, there's usually only one rigid path to achieve this goal. But BBSvx's ontology system let you provides multiple action pathways:
 
 ```prolog
 action(drink_bottle(Bottle), [cap_opened(Bottle)], empty(Bottle)).
