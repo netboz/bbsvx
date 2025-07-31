@@ -29,6 +29,15 @@
 %% All state events
 -export([handle_event/3]).
 
+%%%=============================================================================
+%%% Helper Functions  
+%%%=============================================================================
+
+%% @doc Helper to encode messages properly
+encode_message_helper(Message) ->
+    {ok, EncodedMessage} = bbsvx_asn1_codec:encode_message(Message),
+    EncodedMessage.
+
 -record(state,
         {ulid :: binary(),
          type :: register | join | forward_join,
@@ -93,10 +102,10 @@ stop() ->
 %%%=============================================================================
 
 init([forward_join, NameSpace, MyNode, TargetNode, Options]) ->
-    ?'log-info'("Initializing forward join connection from ~p, to ~p", [MyNode, TargetNode]),
+    ?'log-info'("Initializing forward join connection fromage ~p, to ~p", [MyNode, TargetNode]),
     Lock = get_lock(?LOCK_SIZE),
     Ulid = get_ulid(),
-    gproc:reg({n, l, {arc, out, Ulid}}, Lock),
+    gproc:reg({n, l, {arc, out, Ulid}}, {Lock, TargetNode}),
     {ok,
      connect,
      #state{type = forward_join,
@@ -113,7 +122,7 @@ init([join, NameSpace, MyNode, TargetNode, Ulid, TargetLock, Type, Options]) ->
                 ": ~p",
                 [Ulid, TargetNode, Type]),
 
-    gproc:reg({n, l, {arc, out, Ulid}}, TargetLock),
+    gproc:reg({n, l, {arc, out, Ulid}}, {TargetLock, TargetNode}),
     %% We have CONNECTION_TIMEOUT to connect to the target node
     %% Start a timer to notify timeout
     JoinTimer = erlang:send_after(?CONNECTION_TIMEOUT, self(), {close, connection_timeout}),
@@ -136,7 +145,7 @@ init([register, NameSpace, MyNode, TargetNode, Options]) ->
     Lock = get_lock(?LOCK_SIZE),
 
     Ulid = get_ulid(),
-    gproc:reg({n, l, {arc, out, Ulid}}, Lock),
+    gproc:reg({n, l, {arc, out, Ulid}}, {Lock, TargetNode}),
     {ok,
      connect,
      #state{type = register,
@@ -148,17 +157,27 @@ init([register, NameSpace, MyNode, TargetNode, Options]) ->
             options = Options,
             target_node = TargetNode}}.
 
-terminate(Reason, connected, #state{ulid = MyUlid, namespace = NameSpace} = State) ->
+terminate({shutdown, mirror}, connected, #state{ulid = MyUlid, namespace = NameSpace, my_node = MyNode} = State) ->
+    ?'log-info'("~p Terminating connection from ~p, to ~p while in state ~p "
+                "with reason ~p",
+                [?MODULE, State#state.my_node, State#state.target_node, connected, mirror]),
+    arc_event(NameSpace, MyUlid, #evt_arc_disconnected{ulid = MyUlid, direction = out, origin_node = MyNode}),
+    prometheus_gauge:dec(<<"bbsvx_spray_outview_size">>, [NameSpace]),
+    ok;
+
+terminate(Reason, connected, #state{ulid = MyUlid, namespace = NameSpace, my_node = MyNode} = State) ->
     ?'log-info'("~p Terminating connection from ~p, to ~p while in state ~p "
                 "with reason ~p",
                 [?MODULE, State#state.my_node, State#state.target_node, connected, Reason]),
-    arc_event(NameSpace, MyUlid, #evt_arc_disconnected{ulid = MyUlid, direction = out}),
+    arc_event(NameSpace, MyUlid, #evt_arc_disconnected{ulid = MyUlid, direction = out, origin_node = MyNode}),
     prometheus_gauge:dec(<<"bbsvx_spray_outview_size">>, [NameSpace]),
     ok;
-terminate(Reason, PreviousState, State) ->
-    ?'log-info'("~p Terminating connection from ~p, to ~p while in state ~p "
+terminate(Reason, PreviousState, #state{ulid = MyUlid, namespace = NameSpace, my_node = MyNode} = State) ->
+    ?'log-warning'("~p Terminating connection from ~p, to ~p while in state ~p "
                 "with reason ~p",
                 [?MODULE, State#state.my_node, State#state.target_node, PreviousState, Reason]),
+             arc_event(NameSpace, MyUlid, #evt_arc_disconnected{ulid = MyUlid, direction = out, origin_node = MyNode}),
+    prometheus_gauge:dec(<<"bbsvx_spray_outview_size">>, [NameSpace]),
 
     ok.
 
@@ -202,10 +221,9 @@ connect(enter,
                          ?CONNECTION_TIMEOUT)
     of
         {ok, Socket} ->
-            ok =
-                gen_tcp:send(Socket,
-                             term_to_binary(#header_connect{namespace = NameSpace,
-                                                            node_id = NodeId})),
+            {ok, EncodedMessage} = bbsvx_asn1_codec:encode_message(#header_connect{namespace = NameSpace,
+                                                                                      node_id = NodeId}),
+            ok = gen_tcp:send(Socket, EncodedMessage),
             {keep_state, State#state{socket = Socket}, ?HEADER_TIMEOUT};
         {error, Reason} ->
             arc_event(NameSpace,
@@ -228,7 +246,7 @@ connect(info,
                options = Options,
                target_node = TargetNode} =
             State) ->
-    case binary_to_term(Bin, [safe, used]) of
+    case bbsvx_asn1_codec:decode_message_used(Bin) of
         {#header_connect_ack{node_id = TargetNodeId} = ConnectHeader, ByteRead}
             when is_number(ByteRead) ->
             case ConnectHeader#header_connect_ack.result of
@@ -238,9 +256,9 @@ connect(info,
                     case Type of
                         register ->
                             gen_tcp:send(Socket,
-                                         term_to_binary(#header_register{namespace = NameSpace,
-                                                                         lock = CurrentLock,
-                                                                         ulid = MyUlid})),
+                                         encode_message_helper(#header_register{namespace = NameSpace,
+                                                                                         lock = CurrentLock,
+                                                                                         ulid = MyUlid})),
                             {next_state,
                              register,
                              State#state{socket = Socket,
@@ -250,11 +268,11 @@ connect(info,
                              ?HEADER_TIMEOUT};
                         forward_join ->
                             gen_tcp:send(Socket,
-                                         term_to_binary(#header_forward_join{namespace = NameSpace,
-                                                                             ulid = MyUlid,
-                                                                             type = Type,
-                                                                             lock = CurrentLock,
-                                                                             options = Options})),
+                                         encode_message_helper(#header_forward_join{namespace = NameSpace,
+                                                                                             ulid = MyUlid,
+                                                                                             type = Type,
+                                                                                             lock = CurrentLock,
+                                                                                             options = Options})),
                             {next_state,
                              forward_join,
                              State#state{socket = Socket,
@@ -264,15 +282,15 @@ connect(info,
                              ?HEADER_TIMEOUT};
                         mirror ->
                             NewLock = get_lock(?LOCK_SIZE),
-                            gproc:set_value({n, l, {arc, out, MyUlid}}, NewLock),
+                            gproc:set_value({n, l, {arc, out, MyUlid}}, {NewLock, TargetNode}),
 
                             gen_tcp:send(Socket,
-                                         term_to_binary(#header_join{namespace = NameSpace,
-                                                                     ulid = MyUlid,
-                                                                     current_lock = CurrentLock,
-                                                                     new_lock = NewLock,
-                                                                     type = Type,
-                                                                     options = Options})),
+                                         encode_message_helper(#header_join{namespace = NameSpace,
+                                                                                     ulid = MyUlid,
+                                                                                     current_lock = CurrentLock,
+                                                                                     new_lock = NewLock,
+                                                                                     type = Type,
+                                                                                     options = Options})),
                             {next_state,
                              join,
                              State#state{socket = Socket,
@@ -283,14 +301,14 @@ connect(info,
                              ?HEADER_TIMEOUT};
                         normal ->
                             NewLock = get_lock(?LOCK_SIZE),
-                            gproc:set_value({n, l, {arc, out, MyUlid}}, NewLock),
+                            gproc:set_value({n, l, {arc, out, MyUlid}}, {NewLock, TargetNode}),
                             gen_tcp:send(Socket,
-                                         term_to_binary(#header_join{namespace = NameSpace,
-                                                                     ulid = MyUlid,
-                                                                     current_lock = CurrentLock,
-                                                                     new_lock = NewLock,
-                                                                     type = Type,
-                                                                     options = Options})),
+                                         encode_message_helper(#header_join{namespace = NameSpace,
+                                                                                     ulid = MyUlid,
+                                                                                     current_lock = CurrentLock,
+                                                                                     new_lock = NewLock,
+                                                                                     type = Type,
+                                                                                     options = Options})),
                             {next_state,
                              join,
                              State#state{socket = Socket,
@@ -375,7 +393,7 @@ register(info,
                 target_node = TargetNode} =
              State) ->
     ConcatBuf = <<Buffer/binary, Bin/binary>>,
-    case binary_to_term(ConcatBuf, [safe, used]) of
+    case bbsvx_asn1_codec:decode_message_used(ConcatBuf) of
         {#header_register_ack{result = Result,
                               current_index = CurrentIndex,
                               leader = Leader},
@@ -452,7 +470,7 @@ forward_join(info,
                     buffer = Buffer} =
                  State) ->
     ConcatBuf = <<Buffer/binary, Bin/binary>>,
-    case binary_to_term(ConcatBuf, [safe, used]) of
+    case bbsvx_asn1_codec:decode_message_used(ConcatBuf) of
         {#header_forward_join_ack{result = Result, type = Type}, ByteRead}
             when is_number(ByteRead) ->
             case Result of
@@ -521,7 +539,7 @@ join(info,
             buffer = Buffer} =
          State) ->
     ConcatBuf = <<Buffer/binary, Bin/binary>>,
-    case binary_to_term(ConcatBuf, [safe, used]) of
+    case bbsvx_asn1_codec:decode_message_used(ConcatBuf) of
         {#header_join_ack{result = Result}, ByteRead} when is_number(ByteRead) ->
             case Result of
                 ok ->
@@ -615,11 +633,11 @@ connected(info,
     when Socket =/= undefined ->
     ?'log-info'("~p Forwarding subscription ~p   to ~p",
                 [?MODULE, Msg, State#state.target_node]),
-    gen_tcp:send(Socket, term_to_binary(Msg)),
+    gen_tcp:send(Socket, encode_message_helper(Msg)),
     {keep_state, State};
 connected(info, {send, Event}, #state{socket = Socket} = State)
     when Socket =/= undefined ->
-    gen_tcp:send(Socket, term_to_binary(Event)),
+    gen_tcp:send(Socket, encode_message_helper(Event)),
     {keep_state, State};
 connected(info, {tcp_closed, Socket}, #state{socket = Socket, ulid = MyUlid}) ->
     ?'log-info'("~p Connection out closed ~p Reason tcp_closed", [?MODULE, MyUlid]),
@@ -696,12 +714,11 @@ parse_packet(Buffer,
                     target_node = #node_entry{node_id = TargetNodeId, host = Host, port = Port}} =
                  State) ->
     Decoded =
-        try binary_to_term(Buffer, [used]) of
+        case bbsvx_asn1_codec:decode_message_used(Buffer) of
             {DecodedEvent, NbBytesUsed} when is_number(NbBytesUsed) ->
-                {complete, DecodedEvent, NbBytesUsed}
-        catch
-            Error:Reason ->
-                ?'log-notice'("Parsing incomplete : ~p~n", [{Error, Reason}]),
+                {complete, DecodedEvent, NbBytesUsed};
+            error ->
+                ?'log-notice'("Parsing incomplete : ~p~n", [error]),
                 {incomplete, Buffer}
         end,
 
@@ -745,10 +762,6 @@ parse_packet(Buffer,
 
 
 
--spec build_metric_view_name(NameSpace :: binary(), MetricName :: binary()) -> atom().
-build_metric_view_name(NameSpace, MetricName) ->
-    binary_to_atom(iolist_to_binary([MetricName,
-                                     binary:replace(NameSpace, <<":">>, <<"_">>)])).
 
 %%%=============================================================================
 %%% Eunit Tests

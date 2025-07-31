@@ -18,7 +18,8 @@
 %%%=============================================================================
 
 -define(SERVER, ?MODULE).
--define(EXCHANGE_INTERVAL, 4000).
+
+-define(EXCHANGE_INTERVAL, 15000).
 -define(WAIT_EXCHANGE_OUT_TIMEOUT, ?EXCHANGE_INTERVAL div 5).
 -define(WAIT_EXCHANGE_ACCEPT_TIMEOUT, ?EXCHANGE_INTERVAL div 5).
 -define(EXCHANGE_END_TIMEOUT, ?EXCHANGE_INTERVAL - round(?EXCHANGE_INTERVAL / 10)).
@@ -203,7 +204,7 @@ handle_event(info,
                                                        spread = Spread}},
              disconnected,
              #state{namespace = NameSpace, my_node = MyNode} = StateData) ->
-    ?'log-info'("New incoming arc, but empty outview, requesting joing"),
+    ?'log-info'("New incoming arc, but empty outview, requesting join"),
     case Spread of
         {true, Lock} ->
             open_connection(NameSpace, MyNode, Source, []);
@@ -618,7 +619,7 @@ handle_event(info,
              #evt_end_exchange{exchanged_ulids = EndedExchangeUlids},
              CurrentState,
              #state{arcs_to_leave = ArcsToLeave} = State)
-    when CurrentState == connected orelse CurrentState == empty_inview ->
+    when CurrentState == connected orelse CurrentState == empty_inview orelse CurrentState == empty_outview ->
     ?'log-info'("spray Agent ~p : Running state, end exchange, veryting arcs ~p",
                 [State#state.namespace, EndedExchangeUlids]),
     ?'log-info'("Arcs to leave ~p", [ArcsToLeave]),
@@ -1166,8 +1167,8 @@ filter_arcs_to_leave(OutView, ArcsToLeave) ->
 -spec get_big_random_sample([arc()]) -> {[arc()], [arc()]}.
 get_big_random_sample([]) ->
     {[], []};
-get_big_random_sample([_] = View) ->
-    {[], View};
+get_big_random_sample([Arc] = _View) ->
+    {[Arc], []};
 get_big_random_sample(View) ->
     %% Shuffle the view
     Shuffled = [X || {_, X} <- lists:sort([{rand:uniform(), N} || N <- View])],

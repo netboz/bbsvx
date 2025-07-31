@@ -11,7 +11,7 @@ init(Req, _Opts) ->
     {cowboy_websocket, Req, #{}, #{
         idle_timeout => infinity}}.
 
-terminate(Reason, PartialReq, State) -> 
+terminate(Reason, _PartialReq, _State) -> 
     ?'log-info'("Cowboy Handler : Terminating ~p", [Reason]),
     ok.
 

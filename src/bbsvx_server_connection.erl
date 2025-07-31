@@ -35,6 +35,15 @@
 %% State transitions
 -export([authenticate/3, wait_for_subscription/3, connected/3]).
 
+%%%=============================================================================
+%%% Helper Functions  
+%%%=============================================================================
+
+%% @doc Helper to encode messages properly
+encode_message_helper(Message) ->
+    {ok, EncodedMessage} = bbsvx_asn1_codec:encode_message(Message),
+    EncodedMessage.
+
 -record(state,
         {ref :: any(),
          my_ulid :: binary() | undefined,
@@ -105,23 +114,47 @@ terminate(normal,
                  origin_node = OriginNode,
                  my_ulid = MyUlid} =
             State) ->
-  ?'log-info'("~p Normally Terminating conenction IN from ...~p   Reason ~p",
+  ?'log-info'("~p Terminating conenction IN from ...~p   Reason ~p",
               [?MODULE, OriginNode, normal]),
   prometheus_gauge:dec(<<"bbsvx_spray_inview_size">>, [NameSpace]),
   gen_tcp:close(State#state.socket),
-  arc_event(NameSpace, MyUlid, #evt_arc_disconnected{direction = in, ulid = MyUlid}),
+  arc_event(NameSpace, MyUlid, #evt_arc_disconnected{direction = in, ulid = MyUlid, origin_node = State#state.origin_node}),
   void;
+%% Here the connection is swapped ( meaning this connection will replace another server connection as we are 
+%% changing the orgin)
+terminate({shutdown, {swap, _NewOrigin, _NewLock}},
+          connected,
+          #state{origin_node = OriginNode} =
+            State) ->
+  ?'log-info'("~p Terminating conenction IN from ...~p   Reason ~p",
+              [?MODULE, OriginNode, normal]),
+  gen_tcp:close(State#state.socket),
+  void;
+
+terminate(mirror,
+          connected,
+          #state{namespace = NameSpace,
+                 origin_node = OriginNode,
+                 my_ulid = MyUlid} =
+            State) ->
+  ?'log-warning'("~p ----->>> NOT SUPPOSED TO BE CALLED Terminating conenction IN from ...~p   Reason ~p",
+              [?MODULE, OriginNode, normal]),
+  prometheus_gauge:dec(<<"bbsvx_spray_inview_size">>, [NameSpace]),
+  gen_tcp:close(State#state.socket),
+  arc_event(NameSpace, MyUlid, #evt_arc_disconnected{direction = in, ulid = MyUlid, origin_node = State#state.origin_node}),
+  void;
+
 terminate(OtherReason,
           connected,
           #state{namespace = NameSpace,
                  origin_node = OriginNode,
                  my_ulid = MyUlid} =
             State) ->
-  ?'log-info'("~p Terminating conenction IN from ...~p   Reason ~p",
+  ?'log-warning'("~p Terminating conenction IN from ...~p   Reason ~p",
               [?MODULE, OriginNode, OtherReason]),
   prometheus_gauge:dec(<<"bbsvx_spray_inview_size">>, [NameSpace]),
   gen_tcp:close(State#state.socket),
-  arc_event(NameSpace, MyUlid, #evt_arc_disconnected{direction = in, ulid = MyUlid}),
+  arc_event(NameSpace, MyUlid, #evt_arc_disconnected{direction = in, ulid = MyUlid, origin_node = State#state.origin_node}),
   void;
 terminate(Reason, _CurrentState, #state{origin_node = OriginNode} = State) ->
   ?'log-info'("~p Terminating unconnected connection IN from...~p   Reason ~p",
@@ -166,12 +199,11 @@ authenticate(info,
   when is_binary(BinData) andalso MyNodeId =/= undefined ->
   %% Perform authentication
   Decoded =
-    try binary_to_term(BinData, [safe, used]) of
+    case bbsvx_asn1_codec:decode_message_used(BinData) of
       {DecodedTerm, Index} when is_number(Index) ->
         <<_:Index/binary, Rest/binary>> = BinData,
-        {ok, DecodedTerm, Rest}
-    catch
-      _:_ ->
+        {ok, DecodedTerm, Rest};
+      error ->
         logger:error("Failed to decode binary data: ~p", [BinData]),
         {error, "Failed to decode binary data"}
     end,
@@ -180,14 +212,14 @@ authenticate(info,
       ?'log-warning'("~p Connection to self   ~p", [?MODULE, MyNodeId]),
       %% Connecting to self
       ranch_tcp:send(State#state.socket,
-                     term_to_binary(#header_connect_ack{node_id = MyNodeId,
-                                                        result = connection_to_self})),
+                     encode_message_helper(#header_connect_ack{node_id = MyNodeId,
+                                                                                        result = connection_to_self})),
       {stop, normal, State};
     {ok, #header_connect{node_id = IncomingNodeId} = Header, NewBuffer} ->
       ranch_tcp:send(State#state.socket,
-                     term_to_binary(#header_connect_ack{node_id =
-                                                          State#state.my_node#node_entry.node_id,
-                                                        result = ok})),
+                     encode_message_helper(#header_connect_ack{node_id =
+                                                                                        State#state.my_node#node_entry.node_id,
+                                                                                        result = ok})),
       ranch_tcp:setopts(State#state.socket, [{active, once}]),
       {next_state,
        wait_for_subscription,
@@ -214,193 +246,21 @@ wait_for_subscription(enter, _, State) ->
   {keep_state, State};
 wait_for_subscription(info,
                       {tcp, _Ref, BinData},
-                      #state{namespace = NameSpace,
-                             origin_node = OriginNode,
-                             socket = Socket,
-                             buffer = Buffer,
-                             transport = Transport} =
+                      #state{
+                             buffer = Buffer} =
                         State) ->
   ConcatBuffer = <<Buffer/binary, BinData/binary>>,
-  Decoded =
-    try binary_to_term(ConcatBuffer, [safe, used]) of
+    case bbsvx_asn1_codec:decode_message_used(ConcatBuffer) of
       {DecodedTerm, Index} when is_integer(Index) ->
         <<_:Index/binary, Rest/binary>> = ConcatBuffer,
-        {ok, DecodedTerm, Rest}
-    catch
-      _:_ ->
+        process_subscription_header(DecodedTerm, State#state{buffer = Rest});
+
+      error ->
         logger:error("Failed to decode binary data: ~p", [BinData]),
-        {error, "Failed to decode binary data"}
-    end,
-  case Decoded of
-    {ok, #header_register{ulid = Ulid, lock = Lock}, NewBuffer} ->
-      %% Register this arc. If collision, this process will crash
-      %% with the incoming connection on ther side. At least
-      %% it keeps arcs consistent.
-      gproc:reg({n, l, {arc, in, Ulid}}, Lock),
-
-      %% Notify spray agent to add to inview
-      arc_event(NameSpace,
-                Ulid,
-                #evt_arc_connected_in{ulid = Ulid,
-                                      lock = Lock,
-                                      source = OriginNode,
-                                      spread = {true, Lock}}),
-      %% Acknledge the registration and activate socket
-      %% TODO : Fix leader initialisation, it should be requested
-      %% from the ontology
-      Transport:send(Socket,
-                     term_to_binary(#header_register_ack{result = ok,
-                                                         leader = OriginNode#node_entry.node_id,
-                                                         current_index = 0})),
-      Transport:setopts(State#state.socket, [{active, true}]),
-      {next_state, connected, State#state{my_ulid = Ulid, buffer = NewBuffer}};
-    {ok, #header_forward_join{ulid = Ulid, lock = Lock}, NewBuffer} ->
-      %% TOO: There is no security here. Lock should be checked against the
-      %% registration lock as an exemple.
-      %% There shouldn't be any arc registered for this ulid, here, as, like in register,
-      %% a new arc is created.
-      gproc:reg({n, l, {arc, in, Ulid}}, Lock),
-      %% Notify spray agent to add this new arc to inview
-      arc_event(NameSpace,
-                Ulid,
-                #evt_arc_connected_in{ulid = Ulid,
-                                      lock = Lock,
-                                      source = OriginNode}),
-      %% Acknledge the registration and activate socket
-      %% TODO: type seems unused
-      Transport:send(Socket,
-                     term_to_binary(#header_forward_join_ack{result = ok, type = forward_join})),
-      Transport:setopts(State#state.socket, [{active, true}]),
-      {next_state,
-       connected,
-       State#state{my_ulid = Ulid,
-                   lock = Lock,
-                   buffer = NewBuffer}};
-    {ok,
-     #header_join{type = mirror = Type,
-                  ulid = Ulid,
-                  options = Options,
-                  current_lock = CurrentLock,
-                  new_lock = NewLock},
-     NewBuffer} ->
-      ?'log-info'("~p Mirror connection ~p   current lock ~p", [?MODULE, Ulid, CurrentLock]),
-      Key = {arc, '_', '_'},
-      GProcKey = {'_', '_', Key},
-      MatchHead = {GProcKey, '_', '_'},
-      Guard = [],
-      Result = ['$$'],
-      GG = gproc:select([{MatchHead, Guard, Result}]),
-      ?'log-info'("GG: ~p", [GG]),
-      case gproc:lookup_value({n, l, {arc, out, Ulid}}) of
-        {gproc_error, Error} ->
-          ?'log-alert'("~p No arc found for ulid ~p", [?MODULE, Ulid]),
-          Transport:send(Socket,
-                         term_to_binary(#header_join_ack{result = {error, Error},
-                                                         type = Type,
-                                                         options = Options})),
-          {stop, normal, State};
-        CurrentLock ->
-          ?'log-info'("~p Locks match ~p", [?MODULE, CurrentLock]),
-          %% Change change the connection attributed to ulid to this one
-          OtherConnectionPid = gproc:where({n, l, {arc, out, Ulid}}),
-          gproc:unreg_other({n, l, {arc, out, Ulid}}, OtherConnectionPid),
-          gproc:reg({n, l, {arc, in, Ulid}}, NewLock),
-          %% Stop the previous connection
-          gen_statem:stop(OtherConnectionPid),
-          arc_event(NameSpace,
-                    Ulid,
-                    #evt_arc_connected_in{ulid = Ulid,
-                                          lock = NewLock,
-                                          source = OriginNode}),
-          %% Notify other side we accepted the connection
-          Transport:send(Socket,
-                         term_to_binary(#header_join_ack{result = ok,
-                                                         type = Type,
-                                                         options = Options})),
-          Transport:setopts(Socket, [{active, true}]),
-          {next_state,
-           connected,
-           State#state{my_ulid = Ulid,
-                       lock = NewLock,
-                       buffer = NewBuffer}};
-        Else ->
-          ?'log-warning'("~p Locks don't match incoming arc lock ~p    stored lock : ~p",
-                         [?MODULE, CurrentLock, Else]),
-          Transport:send(Socket,
-                         term_to_binary(#header_join_ack{result = {error, lock_mismatch},
-                                                         type = Type,
-                                                         options = Options})),
-          {stop, normal, State}
-      end;
-    {ok,
-     #header_join{type = normal = Type,
-                  ulid = Ulid,
-                  current_lock = CurrentLock,
-                  new_lock = NewLock,
-                  options = Options},
-     NewBuffer} ->
-      Key = {arc, '_', '_'},
-      GProcKey = {'_', '_', Key},
-      MatchHead = {GProcKey, '_', '_'},
-      Guard = [],
-      Result = ['$$'],
-      GG = gproc:select([{MatchHead, Guard, Result}]),
-      ?'log-info'("GG: ~p", [GG]),
-      ?'log-info'("~p Normal connection ~p   current lock ~p", [?MODULE, Ulid, CurrentLock]),
-      %% This is a swapped connection, so we shoud already have a
-      %% server connection undr this arc ulid.
-      case gproc:lookup_value({n, l, {arc, in, Ulid}}) of
-        {gproc_error, Error} ->
-          ?'log-alert'("~p No arc found for ulid ~p", [?MODULE, Ulid]),
-          Transport:send(Socket,
-                         term_to_binary(#header_join_ack{result = {error, Error},
-                                                         type = Type,
-                                                         options = Options})),
-          {stop, normal, State};
-        CurrentLock ->
-          ?'log-info'("~p Locks match ~p", [?MODULE, CurrentLock]),
-          %% Change change the connection attributed to ulid to this one
-          Key = {arc, '_', '_'},
-          GProcKey = {'_', '_', Key},
-          MatchHead = {GProcKey, '_', '_'},
-          Guard = [],
-          Result = ['$$'],
-          GP = gproc:select([{MatchHead, Guard, Result}]),
-          ?'log-info'("GP: ~p", [GP]),
-          OtherConnectionPid = gproc:where({n, l, {arc, in, Ulid}}),
-          gproc:unreg_other({n, l, {arc, in, Ulid}}, OtherConnectionPid),
-          gproc:reg({n, l, {arc, in, Ulid}}, NewLock),
-          %% Notify other side we accepted the connection
-          Transport:send(Socket,
-                         term_to_binary(#header_join_ack{result = ok,
-                                                         type = Type,
-                                                         options = Options})),
-
-          arc_event(NameSpace,
-                    Ulid,
-                    #evt_arc_connected_in{ulid = Ulid,
-                                          lock = NewLock,
-                                          source = OriginNode}),
-
-          %% Stop the previous connection
-          gen_statem:stop(OtherConnectionPid),
-          Transport:setopts(Socket, [{active, true}]),
-          {next_state,
-           connected,
-           State#state{my_ulid = Ulid,
-                       lock = NewLock,
-                       buffer = NewBuffer}};
-        Else ->
-          ?'log-warning'("~p Locks don't match ~p    incoming lock : ~p",
-                         [?MODULE, CurrentLock, Else]),
-          Transport:send(Socket,
-                         term_to_binary(#header_join_ack{result = {error, lock_mismatch},
-                                                         type = Type,
-                                                         options = Options})),
-          {stop, normal, State}
-      end
-  end;
-%% Cathc all
+        {error, subscription_header_decode_failed}
+    end;
+ 
+%% catch all
 wait_for_subscription(Type, Data, State) ->
   ?'log-warning'("~p Unamaneged event ~p", [?MODULE, {Type, Data}]),
   {keep_state, State}.
@@ -428,16 +288,16 @@ connected(info, {tcp, _Ref, BinData}, #state{buffer = Buffer} = State) ->
 connected(info, #incoming_event{event = #peer_connect_to_sample{} = Msg}, State) ->
   ?'log-info'("~p sending peer connect to sample to  ~p",
               [?MODULE, State#state.origin_node]),
-  ranch_tcp:send(State#state.socket, term_to_binary(Msg)),
+  ranch_tcp:send(State#state.socket, encode_message_helper(Msg)),
   {keep_state, State};
 connected(info, #incoming_event{event = #header_register_ack{} = Header}, State) ->
   ?'log-info'("~p sending register ack to  ~p    header : ~p",
               [?MODULE, State#state.origin_node, Header]),
-  ranch_tcp:send(State#state.socket, term_to_binary(Header)),
+  ranch_tcp:send(State#state.socket, encode_message_helper(Header)),
   {keep_state, State};
 connected({call, From}, {accept_join, #header_join_ack{} = Header}, State) ->
   ?'log-info'("~p sending join ack to  ~p", [?MODULE, State#state.origin_node]),
-  ranch_tcp:send(State#state.socket, term_to_binary(Header)),
+  ranch_tcp:send(State#state.socket, encode_message_helper(Header)),
   gen_statem:reply(From, ok),
   {keep_state, State};
 connected({call, From},
@@ -452,21 +312,21 @@ connected(info,
           #state{} = State) ->
   ?'log-info'("~p sending exchange out to  ~p", [?MODULE, State#state.origin_node]),
   ranch_tcp:send(State#state.socket,
-                 term_to_binary(#exchange_out{proposed_sample = ProposedSample})),
+                 encode_message_helper(#exchange_out{proposed_sample = ProposedSample})),
   {keep_state, State};
 connected(info, {reject, Reason}, #state{namespace = NameSpace} = State) ->
   ?'log-info'("~p sending exchange cancelled to  ~p", [?MODULE, State#state.origin_node]),
   Result =
     ranch_tcp:send(State#state.socket,
-                   term_to_binary(#exchange_cancelled{namespace = NameSpace, reason = Reason})),
+                   encode_message_helper(#exchange_cancelled{namespace = NameSpace, reason = Reason})),
   ?'log-info'("~p Exchange cancelled sent ~p", [?MODULE, Result]),
   {keep_state, State};
 connected(cast, {send_history, #ontology_history{} = History}, State) ->
   ?'log-info'("~p sending history to  ~p", [?MODULE, State#state.origin_node]),
-  ranch_tcp:send(State#state.socket, term_to_binary(History)),
+  ranch_tcp:send(State#state.socket, encode_message_helper(History)),
   {keep_state, State};
 connected(info, {send, Data}, State) ->
-  ranch_tcp:send(State#state.socket, term_to_binary(Data)),
+  ranch_tcp:send(State#state.socket, encode_message_helper(Data)),
   {keep_state, State};
 connected(info,
           {tcp_closed, _Ref},
@@ -495,11 +355,10 @@ parse_packet(Buffer,
                                   node_id = NodeId}} =
                State) ->
   Decoded =
-    try binary_to_term(Buffer, [used]) of
+    case bbsvx_asn1_codec:decode_message_used(Buffer) of
       {DecodedEvent, NbBytesUsed} when is_number(NbBytesUsed) ->
-        {complete, DecodedEvent, NbBytesUsed}
-    catch
-      _Error:_Reason ->
+        {complete, DecodedEvent, NbBytesUsed};
+      error ->
         {incomplete, Buffer}
     end,
 
@@ -570,6 +429,203 @@ parse_packet(Buffer,
 %%% Internal functions
 %%%=============================================================================
 
+
+%%------------------------------------------------------------------------------
+%% @doc
+%% process_subscription_header/2
+%% Process the subscription header received from the client. Subscription means
+%% the client wants to join the ontology mesh. Thiq is the second step of the
+%% connection process.
+%% @end
+%% %%------------------------------------------------------------------------------
+-spec process_subscription_header(term(), state()) ->
+  {next_state, atom(), state()} | {stop, any(), state()}.
+
+%% Process new node joining the ontology mesh
+process_subscription_header(#header_register{ulid = Ulid, lock = Lock, namespace = NameSpace},  #state{namespace = NameSpace, transport = Transport, socket = Socket, origin_node = OriginNode} = State)  when OriginNode =/= undefined->
+      %% Register this arc. If collision ( never happened up to now), this process will crash
+      %% with the incoming connection on ther side. At least
+      %% it keeps arcs consistent.
+      gproc:reg({n, l, {arc, in, Ulid}}, {Lock, OriginNode}),
+
+      %% Notify spray agent to add to inview
+      arc_event(NameSpace,
+                Ulid,
+                #evt_arc_connected_in{ulid = Ulid,
+                                      lock = Lock,
+                                      source = OriginNode,
+                                      spread = {true, Lock}}),
+      %% Acknledge the registration and activate socket
+      %% TODO : Fix leader initialisation, it should be requested
+      %% from the ontology
+      Transport:send(Socket,
+                     encode_message_helper(#header_register_ack{result = ok,
+                                                         leader = OriginNode#node_entry.node_id,
+                                                         current_index = 0})),
+      Transport:setopts(Socket, [{active, true}]),
+
+      {next_state, connected, State#state{my_ulid = Ulid}};
+
+
+
+
+process_subscription_header(#header_forward_join{ulid = Ulid, lock = Lock},  #state{namespace = NameSpace, transport = Transport, socket = Socket, origin_node = OriginNode} = State)  when NameSpace =/= undefined  andalso OriginNode =/= undefined ->
+      %% TOO: There is no security here. Lock should be checked against the
+      %% registration lock as an exemple.
+      %% There shouldn't be any arc registered for this ulid, here, as, like in register,
+      %% a new arc is created.
+      gproc:reg({n, l, {arc, in, Ulid}}, {Lock, OriginNode}),
+      %% Notify spray agent to add this new arc to inview
+      arc_event(NameSpace,
+                Ulid,
+                #evt_arc_connected_in{ulid = Ulid,
+                                      lock = Lock,
+                                      source = OriginNode}),
+      %% Acknledge the registration and activate socket
+      %% TODO: type seems unused
+      Transport:send(Socket,
+                     encode_message_helper(#header_forward_join_ack{result = ok, type = forward_join})),
+      Transport:setopts(State#state.socket, [{active, true}]),
+      {next_state,
+       connected,
+       State#state{my_ulid = Ulid,
+                   lock = Lock}};
+
+
+
+process_subscription_header(#header_join{type = mirror = Type,
+                                           ulid = Ulid,
+                                           current_lock = CurrentLock,
+                                           new_lock = NewLock,
+                                           options = Options},
+                            #state{namespace = NameSpace, transport = Transport, socket = Socket, origin_node = OriginNode} = State)  when NameSpace =/= undefined  andalso OriginNode =/= undefined ->
+    ?'log-info'("Mirror connection exchange  ~p   current lock ~p", [Ulid, CurrentLock]),
+    %% This is a mirror connection, so we should already have a
+    %% server connection under this arc ulid. 
+    %% Mirror connections is a corner case of swapping :
+    %% in spay the initiator of and exchange, will see the arc
+    %% on which it emitted the exchange request, be reverser 
+    %% (destination becomes source and source becomes destination).
+
+    %% Debug: we dump all the arcs to console    
+    Key = {arc, '_', '_'},
+    GProcKey = {'_', '_', Key},
+    MatchHead = {GProcKey, '_', '_'},
+    Guard = [],
+    Result = ['$$'],
+
+    GG = gproc:select([{MatchHead, Guard, Result}]),
+    ?'log-info'("GG: ~p", [GG]),
+
+    %% We look for the mirrored arc lock upon the Ulid
+    %% and validate it.
+
+    case gproc:lookup_value({n, l, {arc, out, Ulid}}) of
+        {gproc_error, Error} ->
+          ?'log-alert'("~p No arc found for ulid ~p", [?MODULE, Ulid]),
+          Transport:send(Socket,
+                         encode_message_helper(#header_join_ack{result = {error, Error},
+                                                         type = Type,
+                                                         options = Options})),
+          {stop, normal, State};
+        {CurrentLock, _PreviousOriginNode} ->
+          ?'log-info'("~p Locks match ~p", [?MODULE, CurrentLock]),
+          %% Change change the connection attributed to ulid to this one
+          OtherConnectionPid = gproc:where({n, l, {arc, out, Ulid}}),
+          gproc:unreg_other({n, l, {arc, out, Ulid}}, OtherConnectionPid),
+          gproc:reg({n, l, {arc, in, Ulid}}, {NewLock, OriginNode}),
+          %% Stop the previous connection
+          gen_statem:stop(OtherConnectionPid, {shutdown, mirror}, infinity),
+          arc_event(NameSpace,
+                     Ulid,
+                     #evt_arc_connected_in{ulid = Ulid,
+                                           lock = NewLock,
+                                           source = OriginNode}),
+          
+          %% Notify other side we accepted the connection
+          Transport:send(Socket,
+                         encode_message_helper(#header_join_ack{result = ok,
+                                                         type = Type,
+                                                         options = Options})),
+          Transport:setopts(Socket, [{active, true}]),
+          {next_state,
+           connected,
+           State#state{my_ulid = Ulid,
+                       lock = NewLock}};
+        Else ->
+          ?'log-warning'("~p Locks don't match incoming arc lock ~p    stored locky lock : ~p",
+                         [?MODULE, CurrentLock, Else]),
+          Transport:send(Socket,
+                         encode_message_helper(#header_join_ack{result = {error, lock_mismatch},
+                                                         type = Type,
+                                                         options = Options})),
+          {stop, normal, State}
+
+    end;
+
+  process_subscription_header(#header_join{type = normal = Type,
+                  ulid = Ulid,
+                  current_lock = CurrentLock,
+                  new_lock = NewLock,
+                  options = Options}, 
+                 #state{namespace = NameSpace, transport = Transport, socket = Socket, origin_node = OriginNode} = State)  when NameSpace =/= undefined  andalso OriginNode =/= undefined ->
+      Key = {arc, '_', '_'},
+      GProcKey = {'_', '_', Key},
+      MatchHead = {GProcKey, '_', '_'},
+      Guard = [],
+      Result = ['$$'],
+      GG = gproc:select([{MatchHead, Guard, Result}]),
+      ?'log-info'("GG: ~p", [GG]),
+      ?'log-info'("~p Normal connection ~p   current lock ~p", [?MODULE, Ulid, CurrentLock]),
+      %% This is a swapped connection, so we shoud already have a
+      %% server connection undr this arc ulid.
+      case gproc:lookup_value({n, l, {arc, in, Ulid}}) of
+        {gproc_error, Error} ->
+          ?'log-alert'("~p No arc found for ulid ~p", [?MODULE, Ulid]),
+          Transport:send(Socket,
+                         encode_message_helper(#header_join_ack{result = {error, Error},
+                                                         type = Type,
+                                                         options = Options})),
+          {stop, normal, State};
+        {CurrentLock, PreviousOriginNode} ->
+          ?'log-info'("~p Locks match ~p", [?MODULE, CurrentLock]),
+          %% Change change the connection attributed to ulid to this one
+          Key = {arc, '_', '_'},
+          GProcKey = {'_', '_', Key},
+          MatchHead = {GProcKey, '_', '_'},
+          Guard = [],
+          Result = ['$$'],
+          GP = gproc:select([{MatchHead, Guard, Result}]),
+          ?'log-info'("GP: ~p", [GP]),
+          OtherConnectionPid = gproc:where({n, l, {arc, in, Ulid}}),
+          gproc:unreg_other({n, l, {arc, in, Ulid}}, OtherConnectionPid),
+          gproc:reg({n, l, {arc, in, Ulid}}, {NewLock, OriginNode}),
+          %% Notify other side we accepted the connection
+          Transport:send(Socket,
+                         encode_message_helper(#header_join_ack{result = ok,
+                                                         type = Type,
+                                                         options = Options})),
+
+
+          arc_event(NameSpace, Ulid, #evt_arc_swapped_in{ulid = Ulid, newlock = NewLock, previous_source = PreviousOriginNode, new_source = OriginNode}),
+
+          %% Stop the previous connection
+          gen_statem:stop(OtherConnectionPid, {shutdown, {swap, OriginNode, NewLock}}, infinity),
+          Transport:setopts(Socket, [{active, true}]),
+          {next_state,
+           connected,
+           State#state{my_ulid = Ulid,
+                       lock = NewLock}};
+        Else ->
+          ?'log-warning'("~p Locks don't match ~p    incoming lock : ~p",
+                         [?MODULE, CurrentLock, Else]),
+          Transport:send(Socket,
+                         encode_message_helper(#header_join_ack{result = {error, lock_mismatch},
+                                                         type = Type,
+                                                         options = Options})),
+          {stop, normal, State}
+      end.
+  
 %%-----------------------------------------------------------------------------
 %% @doc
 %% ontology_arc_event/3

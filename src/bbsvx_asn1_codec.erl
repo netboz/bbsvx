@@ -11,31 +11,18 @@
 -compile({no_auto_import,[atom_to_binary/1, binary_to_atom/1]}).
 
 -include("bbsvx.hrl").
+-include("BBSVXProtocol.hrl").
 -include_lib("logjam/include/logjam.hrl").
 
 %% External API
 -export([encode_message/1, decode_message/1, start_pools/0, stop_pools/0]).
 
-%% Performance optimization exports
--export([encode_fast/1, decode_fast/1, get_message_type/1]).
+%% Performance optimization exports (currently unused but may be needed later)
+%% -export([encode_fast/1, decode_fast/1, get_message_type/1]).
 
-%% Message type constants for fast dispatch
--define(MSG_HEADER_CONNECT, 0).
--define(MSG_HEADER_CONNECT_ACK, 1).
--define(MSG_HEADER_REGISTER, 10).
--define(MSG_HEADER_REGISTER_ACK, 11).
--define(MSG_HEADER_JOIN, 20).
--define(MSG_HEADER_JOIN_ACK, 21).
--define(MSG_HEADER_FORWARD_JOIN, 22).
--define(MSG_HEADER_FORWARD_JOIN_ACK, 23).
--define(MSG_EXCHANGE_IN, 30).
--define(MSG_EXCHANGE_OUT, 31).
--define(MSG_EXCHANGE_ACCEPT, 32).
--define(MSG_EXCHANGE_CANCELLED, 33).
--define(MSG_CHANGE_LOCK, 34).
--define(MSG_NODE_QUITTING, 40).
--define(MSG_ONTOLOGY_HISTORY, 50).
--define(MSG_EPTO_MESSAGE, 51).
+%% Simple replacements for term_to_binary/binary_to_term
+-export([encode_field/1, decode_field/1, decode_message_used/1]).
+
 
 %% Memory pools for common message types
 -define(POOL_HEADER_CONNECT, pool_header_connect).
@@ -96,47 +83,54 @@ decode_message(Binary) ->
             {error, {decode_exception, Error, CatchReason}}
     end.
 
-%% @doc Ultra-fast encoding with pre-allocated structures
--spec encode_fast(tuple()) -> binary() | error.
-encode_fast(Message) ->
-    case encode_message(Message) of
-        {ok, Binary} -> Binary;
-        {error, _} -> error
+
+
+%% @doc Encode field data - handles ASN.1 structures and raw data properly
+-spec encode_field(term()) -> binary().
+encode_field([]) -> 
+    <<>>;  % Empty list as empty binary
+encode_field(Data) ->
+    % For complex data, just use term format representation
+    iolist_to_binary(io_lib:format("~p", [Data])).
+
+%% @doc Decode field data - handles both ASN.1 and raw data
+-spec decode_field(binary()) -> term().
+decode_field(<<>>) ->
+    [];  % Empty binary back to empty list
+decode_field(Binary) ->
+    % Try ASN.1 decoding first
+    try
+        case decode_message(Binary) of
+            {ok, Data} -> Data;
+            {error, _} -> 
+                % Try to parse as Erlang term string
+                try
+                    {ok, Tokens, _} = erl_scan:string(binary_to_list(Binary) ++ "."),
+                    {ok, Term} = erl_parse:parse_term(Tokens),
+                    Term
+                catch
+                    _:_ -> Binary  % Return binary if can't parse
+                end
+        end
+    catch
+        _:_ -> Binary  % Return binary if can't decode
     end.
 
-%% @doc Ultra-fast decoding for hot path
--spec decode_fast(binary()) -> tuple() | error.
-decode_fast(Binary) ->
+
+%% @doc Message decoding with byte consumption tracking (like binary_to_term used)
+%% This mimics binary_to_term(Buffer, [used]) behavior by returning {DecodedMessage, BytesUsed}
+-spec decode_message_used(binary()) -> {tuple(), non_neg_integer()} | error.
+decode_message_used(Binary) ->
+    %% For now, assume entire buffer is consumed when decode succeeds
+    %% This is safe but not optimal - for partial message handling we may need
+    %% to improve this later by finding the actual message boundary
     case decode_message(Binary) of
-        {ok, Message} -> Message;
-        {error, _} -> error
+        {ok, ErlangMessage} ->
+            {ErlangMessage, byte_size(Binary)};
+        {error, _} ->
+            error
     end.
 
-%% @doc Fast message type identification without full decode
--spec get_message_type(binary()) -> {ok, atom()} | {error, term()}.
-get_message_type(<<Tag, _/binary>>) ->
-    %% Quick tag-based identification for BER encoding
-    case Tag band 16#1F of  %% Extract tag number
-        ?MSG_HEADER_CONNECT -> {ok, header_connect};
-        ?MSG_HEADER_CONNECT_ACK -> {ok, header_connect_ack};
-        ?MSG_HEADER_REGISTER -> {ok, header_register};
-        ?MSG_HEADER_REGISTER_ACK -> {ok, header_register_ack};
-        ?MSG_HEADER_JOIN -> {ok, header_join};
-        ?MSG_HEADER_JOIN_ACK -> {ok, header_join_ack};
-        ?MSG_HEADER_FORWARD_JOIN -> {ok, header_forward_join};
-        ?MSG_HEADER_FORWARD_JOIN_ACK -> {ok, header_forward_join_ack};
-        ?MSG_EXCHANGE_IN -> {ok, exchange_in};
-        ?MSG_EXCHANGE_OUT -> {ok, exchange_out};
-        ?MSG_EXCHANGE_ACCEPT -> {ok, exchange_accept};
-        ?MSG_EXCHANGE_CANCELLED -> {ok, exchange_cancelled};
-        ?MSG_CHANGE_LOCK -> {ok, change_lock};
-        ?MSG_NODE_QUITTING -> {ok, node_quitting};
-        ?MSG_ONTOLOGY_HISTORY -> {ok, ontology_history};
-        ?MSG_EPTO_MESSAGE -> {ok, epto_message};
-        _ -> {error, unknown_message_type}
-    end;
-get_message_type(_) ->
-    {error, invalid_binary}.
 
 %%%=============================================================================
 %%% Internal Conversion Functions
@@ -147,12 +141,20 @@ get_message_type(_) ->
 
 %% Connection handshake messages
 erlang_to_asn1(#header_connect{version = Version, node_id = NodeId, namespace = Namespace}) ->
-    {headerConnect, {
-        'HeaderConnect',
-        Version,
-        undefined,  %% connectionType optional
-        NodeId,
-        Namespace
+    %% Use ASN.1 record format directly
+    ASN1NodeId = case NodeId of
+        undefined -> asn1_NOVALUE;
+        _ -> NodeId
+    end,
+    ASN1Version = case Version of
+        undefined -> asn1_DEFAULT;
+        _ -> Version
+    end,
+    {headerConnect, #'HeaderConnect'{
+        version = ASN1Version,
+        connectionType = asn1_NOVALUE,
+        nodeId = ASN1NodeId,
+        namespace = Namespace
     }};
 
 erlang_to_asn1(#header_connect_ack{result = Result, node_id = NodeId}) ->
@@ -161,48 +163,44 @@ erlang_to_asn1(#header_connect_ack{result = Result, node_id = NodeId}) ->
         connection_to_self -> 'connection-to-self';
         _ -> 'protocol-error'
     end,
-    {headerConnectAck, {
-        'HeaderConnectAck',
-        ASN1Result,
-        NodeId
-    }};
+    {headerConnectAck, #'HeaderConnectAck'{result = ASN1Result, nodeId = NodeId}};
 
 %% Registration messages
 erlang_to_asn1(#header_register{namespace = Namespace, ulid = Ulid, lock = Lock}) ->
-    {headerRegister, {
-        'HeaderRegister',
-        Namespace,
-        Ulid,
-        Lock
-    }};
+    {headerRegister, #'HeaderRegister'{namespace = Namespace, ulid = Ulid, lock = Lock}};
 
 erlang_to_asn1(#header_register_ack{result = Result, leader = Leader, current_index = Index}) ->
     ASN1Result = case Result of
         ok -> ok;
         _ -> 'namespace-full'  %% Default mapping
     end,
-    {headerRegisterAck, {
-        'HeaderRegisterAck',
-        ASN1Result,
-        Leader,
-        Index
-    }};
+    ASN1Leader = case Leader of
+        undefined -> asn1_NOVALUE;
+        _ -> Leader
+    end,
+    ASN1Index = case Index of
+        undefined -> asn1_NOVALUE;
+        _ -> Index
+    end,
+    {headerRegisterAck, #'HeaderRegisterAck'{result = ASN1Result, leader = ASN1Leader, currentIndex = ASN1Index}};
 
 %% Join operations
 erlang_to_asn1(#header_join{namespace = Namespace, ulid = Ulid, type = Type, 
                            current_lock = CurrentLock, new_lock = NewLock, options = Options}) ->
     SerializedOptions = case Options of
-        undefined -> undefined;
-        Opts -> term_to_binary(Opts)  %% Keep options binary for flexibility
+        undefined -> asn1_NOVALUE;
+        [] -> asn1_NOVALUE;  %% Handle empty list
+        Opts -> 
+            {ok, Binary} = encode_message(Opts),
+            Binary
     end,
-    {headerJoin, {
-        'HeaderJoin',
-        Namespace,
-        Ulid,
-        erlang:atom_to_binary(Type),
-        CurrentLock,
-        NewLock,
-        SerializedOptions
+    {headerJoin, #'HeaderJoin'{
+        namespace = Namespace,
+        ulid = Ulid,
+        joinType = erlang:atom_to_binary(Type),
+        currentLock = CurrentLock,
+        newLock = NewLock,
+        options = SerializedOptions
     }};
 
 erlang_to_asn1(#header_join_ack{result = Result, type = Type, options = Options}) ->
@@ -211,30 +209,34 @@ erlang_to_asn1(#header_join_ack{result = Result, type = Type, options = Options}
         _ -> 'namespace-full'
     end,
     SerializedOptions = case Options of
-        undefined -> undefined;
-        Opts -> term_to_binary(Opts)
+        undefined -> asn1_NOVALUE;
+        [] -> asn1_NOVALUE;  %% Handle empty list
+        Opts -> 
+            {ok, Binary} = encode_message(Opts),
+            Binary
     end,
-    {headerJoinAck, {
-        'HeaderJoinAck',
-        ASN1Result,
-        erlang:atom_to_binary(Type),
-        SerializedOptions
+    {headerJoinAck, #'HeaderJoinAck'{
+        result = ASN1Result,
+        joinType = erlang:atom_to_binary(Type),
+        options = SerializedOptions
     }};
 
 %% Forward join
 erlang_to_asn1(#header_forward_join{namespace = Namespace, ulid = Ulid, type = Type, 
                                    lock = Lock, options = Options}) ->
     SerializedOptions = case Options of
-        undefined -> undefined;
-        Opts -> term_to_binary(Opts)
+        undefined -> asn1_NOVALUE;
+        [] -> asn1_NOVALUE;  %% Handle empty list
+        Opts -> 
+            {ok, Binary} = encode_message(Opts),
+            Binary
     end,
-    {headerForwardJoin, {
-        'HeaderForwardJoin',
-        Namespace,
-        Ulid,
-        erlang:atom_to_binary(Type),
-        Lock,
-        SerializedOptions
+    {headerForwardJoin, #'HeaderForwardJoin'{
+        namespace = Namespace,
+        ulid = Ulid,
+        joinType = erlang:atom_to_binary(Type),
+        lock = Lock,
+        options = SerializedOptions
     }};
 
 erlang_to_asn1(#header_forward_join_ack{result = Result, type = Type}) ->
@@ -242,49 +244,39 @@ erlang_to_asn1(#header_forward_join_ack{result = Result, type = Type}) ->
         ok -> ok;
         _ -> 'namespace-full'
     end,
-    {headerForwardJoinAck, {
-        'HeaderForwardJoinAck',
-        ASN1Result,
-        erlang:atom_to_binary(Type)
+    {headerForwardJoinAck, #'HeaderForwardJoinAck'{
+        result = ASN1Result,
+        joinType = erlang:atom_to_binary(Type)
     }};
 
 %% SPRAY protocol messages
 erlang_to_asn1(#exchange_out{proposed_sample = Sample}) ->
     ASN1Sample = [convert_exchange_entry(Entry) || Entry <- Sample],
-    {exchangeOut, {
-        'ExchangeOut',
-        ASN1Sample
+    {exchangeOut, #'ExchangeOut'{
+        proposedSample = ASN1Sample
     }};
 
 erlang_to_asn1(#exchange_in{proposed_sample = Sample}) ->
     ASN1Sample = [convert_exchange_entry(Entry) || Entry <- Sample],
-    {exchangeIn, {
-        'ExchangeIn',
-        ASN1Sample
+    {exchangeIn, #'ExchangeIn'{
+        proposedSample = ASN1Sample
     }};
 
 erlang_to_asn1(#exchange_accept{}) ->
-    {exchangeAccept, {
-        'ExchangeAccept'
-    }};
+    {exchangeAccept, #'ExchangeAccept'{}};
 
 erlang_to_asn1(#exchange_cancelled{namespace = Namespace, reason = Reason}) ->
     ASN1Reason = case Reason of
         timeout -> timeout;
         _ -> normal
     end,
-    {exchangeCancelled, {
-        'ExchangeCancelled',
-        Namespace,
-        ASN1Reason
+    {exchangeCancelled, #'ExchangeCancelled'{
+        namespace = Namespace,
+        reason = ASN1Reason
     }};
 
 erlang_to_asn1(#change_lock{new_lock = NewLock, current_lock = CurrentLock}) ->
-    {changeLock, {
-        'ChangeLock',
-        NewLock,
-        CurrentLock
-    }};
+    {changeLock, #'ChangeLock'{newLock = NewLock, currentLock = CurrentLock}};
 
 %% Node management
 erlang_to_asn1(#node_quitting{reason = Reason}) ->
@@ -293,48 +285,110 @@ erlang_to_asn1(#node_quitting{reason = Reason}) ->
         timeout -> timeout;
         _ -> 'network-error'
     end,
-    {nodeQuitting, {
-        'NodeQuitting',
-        ASN1Reason
-    }};
+    {nodeQuitting, #'NodeQuitting'{reason = ASN1Reason}};
 
 %% Protocol data - keep as binary for performance
 erlang_to_asn1(#ontology_history{namespace = Namespace, oldest_index = OldestIndex,
                                 younger_index = YoungerIndex, list_tx = ListTx}) ->
-    SerializedTx = term_to_binary(ListTx),
-    {ontologyHistory, {
-        'OntologyHistory',
-        Namespace,
-        OldestIndex,
-        YoungerIndex,
-        SerializedTx
+    SerializedTx = encode_field(ListTx),
+    {ontologyHistory, #'OntologyHistory'{
+        namespace = Namespace,
+        oldestIndex = OldestIndex,
+        youngerIndex = YoungerIndex,
+        transactions = SerializedTx
+    }};
+
+erlang_to_asn1(#ontology_history_request{namespace = Namespace, requester = Requester,
+                                        oldest_index = OldestIndex, younger_index = YoungerIndex}) ->
+    SerializedRequester = case Requester of
+        undefined -> asn1_NOVALUE;
+        _ -> encode_field(Requester)
+    end,
+    {ontologyHistoryRequest, #'OntologyHistoryRequest'{
+        namespace = Namespace,
+        requester = SerializedRequester,
+        oldestIndex = OldestIndex,
+        youngerIndex = YoungerIndex
     }};
 
 erlang_to_asn1(#epto_message{payload = Payload}) ->
-    SerializedPayload = term_to_binary(Payload),
-    {eptoMessage, {
-        'EptoMessage',
-        SerializedPayload
+    SerializedPayload = encode_field(Payload),
+    {eptoMessage, #'EptoMessage'{
+        payload = SerializedPayload
     }};
 
 %% Forward subscription messages
 erlang_to_asn1(#send_forward_subscription{subscriber_node = Node, lock = Lock}) ->
     ASN1Node = convert_node_entry(Node),
-    {sendForwardSubscription, {
-        'SendForwardSubscription',
-        ASN1Node,
-        Lock
+    {sendForwardSubscription, #'SendForwardSubscription'{
+        subscriberNode = ASN1Node,
+        lock = Lock
     }};
 
 erlang_to_asn1(#open_forward_join{subscriber_node = Node, lock = Lock}) ->
     ASN1Node = convert_node_entry(Node),
-    {openForwardJoin, {
-        'OpenForwardJoin',
-        ASN1Node,
-        Lock
+    {openForwardJoin, #'OpenForwardJoin'{
+        subscriberNode = ASN1Node,
+        lock = Lock
     }};
 
+erlang_to_asn1(#leader_election_info{payload = #neighbor{node_id = NodeId,
+                                                       chosen_leader = ChosenLeader,
+                                                       public_key = PublicKey,
+                                                       signed_ts = SignedTs,
+                                                       ts = Ts}}) ->
+    ASN1Neighbor = #'Neighbor'{nodeId = NodeId, chosenLeader = ChosenLeader, publicKey = PublicKey, signedTs = SignedTs, ts = Ts},
+    {leaderElectionInfo, #'LeaderElectionInfo'{payload = ASN1Neighbor}};
+
+%% EPTO protocol specific payloads - direct tuple handling
+erlang_to_asn1({receive_ball, Ball, CurrentIndex}) ->
+    %% Serialize the tuple using Erlang's term_to_binary for now 
+    %% to avoid circular dependency - this is a temporary solution
+    SerializedPayload = term_to_binary({receive_ball, Ball, CurrentIndex}),
+    {eptoMessage, #'EptoMessage'{
+        payload = SerializedPayload
+    }};
+
+%% List encoding - handle lists recursively  
+erlang_to_asn1([]) ->
+    [];
+erlang_to_asn1(List) when is_list(List) ->
+    [erlang_to_asn1(Item) || Item <- List];
+
 %% Fallback
+%% Transaction encoding
+erlang_to_asn1(#transaction{index = Index, type = Type, signature = Signature,
+                           ts_created = TsCreated, ts_posted = TsPosted, 
+                           ts_delivered = TsDelivered, ts_processed = TsProcessed,
+                           source_ontology_id = SourceOntologyId, prev_address = PrevAddress,
+                           prev_hash = PrevHash, current_address = CurrentAddress,
+                           namespace = Namespace, leader = Leader, payload = Payload,
+                           diff = Diff, status = Status}) ->
+    ASN1Type = case Type of
+        creation -> creation;
+        goal -> goal
+    end,
+    ASN1Status = case Status of
+        created -> created;
+        posted -> posted;
+        delivered -> delivered;
+        processed -> processed;
+        _ -> created
+    end,
+    ASN1TsProcessed = case TsProcessed of
+        undefined -> asn1_NOVALUE;
+        _ -> TsProcessed
+    end,
+    ASN1Leader = case Leader of
+        undefined -> asn1_NOVALUE;
+        _ -> Leader
+    end,
+    SerializedPayload = encode_field(Payload),
+    SerializedDiff = encode_field(Diff),
+    {'Transaction', Index, ASN1Type, Signature, TsCreated, TsPosted, TsDelivered,
+     ASN1TsProcessed, SourceOntologyId, PrevAddress, PrevHash, CurrentAddress,
+     Namespace, ASN1Leader, SerializedPayload, SerializedDiff, ASN1Status};
+
 erlang_to_asn1(Other) ->
     ?'log-warning'("Unknown message type for ASN.1 conversion: ~p", [Other]),
     error({unknown_message_type, Other}).
@@ -343,10 +397,42 @@ erlang_to_asn1(Other) ->
 -spec asn1_to_erlang(tuple()) -> tuple().
 
 %% Reverse conversion from ASN.1 to Erlang records
-asn1_to_erlang({headerConnect, {'HeaderConnect', Version, _ConnType, NodeId, Namespace}}) ->
+asn1_to_erlang({headerConnect, {'HeaderConnect', Version, _ConnectionType, NodeId, Namespace}}) ->
+    %% Handle various version formats and convert to binary
+    VersionBinary = case Version of
+        Bin when is_binary(Bin) -> Bin;
+        asn1_DEFAULT -> <<"0.0.1">>;
+        asn1_NOVALUE -> <<"0.0.1">>;
+        Other -> list_to_binary(io_lib:format("~p", [Other]))
+    end,
+    %% Handle node ID
+    NodeIdBinary = case NodeId of
+        asn1_NOVALUE -> undefined;
+        NodeBin when is_binary(NodeBin) -> NodeBin;
+        NodeOther -> list_to_binary(io_lib:format("~p", [NodeOther]))
+    end,
+    #header_connect{version = VersionBinary, node_id = NodeIdBinary, namespace = Namespace};
+
+asn1_to_erlang({headerConnect, Map}) when is_map(Map) ->
+    VersionStr = maps:get(version, Map, "1.0.0"),  %% Default version string
+    %% Convert version string back to integer for Erlang record
+    Version = case VersionStr of
+        "1.0.0" -> 1;  %% Default
+        [C|_] when C >= $0, C =< $9 ->  %% String starting with digit
+            case string:tokens(VersionStr, ".") of
+                [MajorStr|_] -> 
+                    try list_to_integer(MajorStr)
+                    catch _:_ -> 1
+                    end;
+                _ -> 1
+            end;
+        _ -> 1  %% Fallback
+    end,
+    NodeId = maps:get(nodeId, Map, undefined),  %% Default to undefined if not present
+    Namespace = maps:get(namespace, Map),
     #header_connect{version = Version, node_id = NodeId, namespace = Namespace};
 
-asn1_to_erlang({headerConnectAck, {'HeaderConnectAck', Result, NodeId}}) ->
+asn1_to_erlang({headerConnectAck, #'HeaderConnectAck'{result = Result, nodeId = NodeId}}) ->
     ErlResult = case Result of
         ok -> ok;
         'connection-to-self' -> connection_to_self;
@@ -354,49 +440,93 @@ asn1_to_erlang({headerConnectAck, {'HeaderConnectAck', Result, NodeId}}) ->
     end,
     #header_connect_ack{result = ErlResult, node_id = NodeId};
 
-asn1_to_erlang({headerRegister, {'HeaderRegister', Namespace, Ulid, Lock}}) ->
+asn1_to_erlang({headerConnectAck, Map}) when is_map(Map) ->
+    Result = maps:get(result, Map),
+    NodeId = maps:get(nodeId, Map),
+    ErlResult = case Result of
+        ok -> ok;
+        'connection-to-self' -> connection_to_self;
+        _ -> protocol_error
+    end,
+    #header_connect_ack{result = ErlResult, node_id = NodeId};
+
+asn1_to_erlang({headerRegister, #'HeaderRegister'{namespace = Namespace, ulid = Ulid, lock = Lock}}) ->
     #header_register{namespace = Namespace, ulid = Ulid, lock = Lock};
 
-asn1_to_erlang({headerRegisterAck, {'HeaderRegisterAck', Result, Leader, Index}}) ->
+asn1_to_erlang({headerRegister, Map}) when is_map(Map) ->
+    Namespace = maps:get(namespace, Map),
+    Ulid = maps:get(ulid, Map),
+    Lock = maps:get(lock, Map),
+    #header_register{namespace = Namespace, ulid = Ulid, lock = Lock};
+
+asn1_to_erlang({headerRegisterAck, #'HeaderRegisterAck'{result = Result, leader = Leader, currentIndex = Index}}) ->
+    ErlResult = case Result of
+        ok -> ok;
+        _ -> namespace_full
+    end,
+    ErlLeader = case Leader of
+        asn1_NOVALUE -> undefined;
+        _ -> Leader
+    end,
+    ErlIndex = case Index of
+        asn1_NOVALUE -> undefined;
+        _ -> Index
+    end,
+    #header_register_ack{result = ErlResult, leader = ErlLeader, current_index = ErlIndex};
+
+asn1_to_erlang({headerRegisterAck, Map}) when is_map(Map) ->
+    Result = maps:get(result, Map),
+    Leader = maps:get(leader, Map, undefined),
+    Index = maps:get(currentIndex, Map, undefined),
     ErlResult = case Result of
         ok -> ok;
         _ -> namespace_full
     end,
     #header_register_ack{result = ErlResult, leader = Leader, current_index = Index};
 
-asn1_to_erlang({headerJoin, {'HeaderJoin', Namespace, Ulid, Type, CurrentLock, NewLock, Options}}) ->
+asn1_to_erlang({headerJoin, #'HeaderJoin'{namespace = Namespace, ulid = Ulid, joinType = Type, currentLock = CurrentLock, newLock = NewLock, options = Options}}) ->
     ErlOptions = case Options of
+        asn1_NOVALUE -> undefined;
         undefined -> undefined;
-        Bin -> binary_to_term(Bin)
+        Bin -> 
+            {ok, Decoded} = decode_message(Bin),
+            Decoded
     end,
     #header_join{namespace = Namespace, ulid = Ulid, type = erlang:binary_to_atom(Type),
                 current_lock = CurrentLock, new_lock = NewLock, options = ErlOptions};
 
-asn1_to_erlang({headerJoinAck, {'HeaderJoinAck', Result, Type, Options}}) ->
+asn1_to_erlang({headerJoinAck, #'HeaderJoinAck'{result = Result, joinType = Type, options = Options}}) ->
     ErlResult = case Result of
         ok -> ok;
         _ -> namespace_full
     end,
     ErlOptions = case Options of
+        asn1_NOVALUE -> undefined;
         undefined -> undefined;
-        Bin -> binary_to_term(Bin)
+        Bin -> 
+            {ok, Decoded} = decode_message(Bin),
+            Decoded
     end,
     #header_join_ack{result = ErlResult, type = erlang:binary_to_atom(Type), options = ErlOptions};
 
-asn1_to_erlang({headerForwardJoin, {'HeaderForwardJoin', Namespace, Ulid, Type, Lock, Options}}) ->
+asn1_to_erlang({headerForwardJoin, #'HeaderForwardJoin'{namespace = Namespace, ulid = Ulid, joinType = Type, lock = Lock, options = Options}}) ->
     ErlOptions = case Options of
+        asn1_NOVALUE -> undefined;
         undefined -> undefined;
-        Bin -> binary_to_term(Bin)
+        Bin -> 
+            {ok, Decoded} = decode_message(Bin),
+            Decoded
     end,
     #header_forward_join{namespace = Namespace, ulid = Ulid, type = erlang:binary_to_atom(Type),
                         lock = Lock, options = ErlOptions};
 
-asn1_to_erlang({headerForwardJoinAck, {'HeaderForwardJoinAck', Result, Type}}) ->
+asn1_to_erlang({headerForwardJoinAck, #'HeaderForwardJoinAck'{result = Result, joinType = Type}}) ->
     ErlResult = case Result of
         ok -> ok;
         _ -> namespace_full
     end,
     #header_forward_join_ack{result = ErlResult, type = erlang:binary_to_atom(Type)};
+
 
 asn1_to_erlang({exchangeOut, {'ExchangeOut', Sample}}) ->
     ErlSample = [convert_asn1_exchange_entry(Entry) || Entry <- Sample],
@@ -416,7 +546,9 @@ asn1_to_erlang({exchangeCancelled, {'ExchangeCancelled', Namespace, Reason}}) ->
     end,
     #exchange_cancelled{namespace = Namespace, reason = ErlReason};
 
-asn1_to_erlang({changeLock, {'ChangeLock', NewLock, CurrentLock}}) ->
+asn1_to_erlang({changeLock, Map}) when is_map(Map) ->
+    NewLock = maps:get(newLock, Map),
+    CurrentLock = maps:get(currentLock, Map),
     #change_lock{new_lock = NewLock, current_lock = CurrentLock};
 
 asn1_to_erlang({nodeQuitting, {'NodeQuitting', Reason}}) ->
@@ -427,13 +559,31 @@ asn1_to_erlang({nodeQuitting, {'NodeQuitting', Reason}}) ->
     end,
     #node_quitting{reason = ErlReason};
 
+asn1_to_erlang({nodeQuitting, Map}) when is_map(Map) ->
+    Reason = maps:get(reason, Map),
+    ErlReason = case Reason of
+        normal -> normal;
+        timeout -> timeout;
+        _ -> network_error
+    end,
+    #node_quitting{reason = ErlReason};
+
 asn1_to_erlang({ontologyHistory, {'OntologyHistory', Namespace, OldestIndex, YoungerIndex, SerializedTx}}) ->
-    ListTx = binary_to_term(SerializedTx),
+    ListTx = decode_field(SerializedTx),
     #ontology_history{namespace = Namespace, oldest_index = OldestIndex,
                      younger_index = YoungerIndex, list_tx = ListTx};
 
+asn1_to_erlang({ontologyHistoryRequest, {'OntologyHistoryRequest', Namespace, SerializedRequester, OldestIndex, YoungerIndex}}) ->
+    Requester = case SerializedRequester of
+        asn1_NOVALUE -> undefined;
+        undefined -> undefined;
+        Bin -> decode_field(Bin)
+    end,
+    #ontology_history_request{namespace = Namespace, requester = Requester,
+                             oldest_index = OldestIndex, younger_index = YoungerIndex};
+
 asn1_to_erlang({eptoMessage, {'EptoMessage', SerializedPayload}}) ->
-    Payload = binary_to_term(SerializedPayload),
+    Payload = decode_field(SerializedPayload),
     #epto_message{payload = Payload};
 
 asn1_to_erlang({sendForwardSubscription, {'SendForwardSubscription', ASN1Node, Lock}}) ->
@@ -443,6 +593,52 @@ asn1_to_erlang({sendForwardSubscription, {'SendForwardSubscription', ASN1Node, L
 asn1_to_erlang({openForwardJoin, {'OpenForwardJoin', ASN1Node, Lock}}) ->
     Node = convert_asn1_node_entry(ASN1Node),
     #open_forward_join{subscriber_node = Node, lock = Lock};
+
+asn1_to_erlang({leaderElectionInfo, {'LeaderElectionInfo', {'Neighbor', NodeId, ChosenLeader, PublicKey, SignedTs, Ts}}}) ->
+    Neighbor = #neighbor{node_id = NodeId, chosen_leader = ChosenLeader, public_key = PublicKey, signed_ts = SignedTs, ts = Ts},
+    #leader_election_info{payload = Neighbor};
+
+asn1_to_erlang({changeLock, {'ChangeLock', NewLock, CurrentLock}}) ->
+    #change_lock{new_lock = NewLock, current_lock = CurrentLock};
+
+%% List decoding - handle lists recursively
+asn1_to_erlang([]) ->
+    [];
+asn1_to_erlang(List) when is_list(List) ->
+    [asn1_to_erlang(Item) || Item <- List];
+
+%% Transaction decoding
+asn1_to_erlang({'Transaction', Index, ASN1Type, Signature, TsCreated, TsPosted, 
+                TsDelivered, ASN1TsProcessed, SourceOntologyId, PrevAddress, 
+                PrevHash, CurrentAddress, Namespace, ASN1Leader, 
+                SerializedPayload, SerializedDiff, ASN1Status}) ->
+    Type = case ASN1Type of
+        creation -> creation;
+        goal -> goal
+    end,
+    Status = case ASN1Status of
+        created -> created;
+        posted -> posted;
+        delivered -> delivered;
+        processed -> processed
+    end,
+    TsProcessed = case ASN1TsProcessed of
+        asn1_NOVALUE -> undefined;
+        _ -> ASN1TsProcessed
+    end,
+    Leader = case ASN1Leader of
+        asn1_NOVALUE -> undefined;
+        _ -> ASN1Leader
+    end,
+    Payload = decode_field(SerializedPayload),
+    Diff = decode_field(SerializedDiff),
+    #transaction{index = Index, type = Type, signature = Signature,
+                ts_created = TsCreated, ts_posted = TsPosted, 
+                ts_delivered = TsDelivered, ts_processed = TsProcessed,
+                source_ontology_id = SourceOntologyId, prev_address = PrevAddress,
+                prev_hash = PrevHash, current_address = CurrentAddress,
+                namespace = Namespace, leader = Leader, payload = Payload,
+                diff = Diff, status = Status};
 
 asn1_to_erlang(Other) ->
     ?'log-warning'("Unknown ASN.1 message type for Erlang conversion: ~p", [Other]),
@@ -454,6 +650,10 @@ asn1_to_erlang(Other) ->
 
 %% Convert node_entry record to ASN.1
 convert_node_entry(#node_entry{node_id = NodeId, host = Host, port = Port}) ->
+    ASN1NodeId = case NodeId of
+        undefined -> asn1_NOVALUE;
+        _ -> NodeId
+    end,
     ASN1Host = case Host of
         local -> {local, 'NULL'};
         H when is_binary(H) -> {hostname, H};
@@ -462,10 +662,14 @@ convert_node_entry(#node_entry{node_id = NodeId, host = Host, port = Port}) ->
             {ipv6, << <<X:16>> || X <- tuple_to_list(H) >>};  %% IPv6 tuple
         H -> {hostname, list_to_binary(io_lib:format("~p", [H]))}
     end,
-    {'NodeEntry', NodeId, ASN1Host, Port}.
+    {'NodeEntry', ASN1NodeId, ASN1Host, Port}.
 
 %% Convert ASN.1 back to node_entry record
 convert_asn1_node_entry({'NodeEntry', NodeId, ASN1Host, Port}) ->
+    ErlNodeId = case NodeId of
+        asn1_NOVALUE -> undefined;
+        _ -> NodeId
+    end,
     Host = case ASN1Host of
         {local, 'NULL'} -> local;
         {hostname, H} -> H;
@@ -474,28 +678,27 @@ convert_asn1_node_entry({'NodeEntry', NodeId, ASN1Host, Port}) ->
             << <<X:16>> || <<X:16>> <= IPV6Bin >>,
             list_to_tuple([X || <<X:16>> <= IPV6Bin])
     end,
-    #node_entry{node_id = NodeId, host = Host, port = Port}.
+    #node_entry{node_id = ErlNodeId, host = Host, port = Port}.
 
 %% Convert exchange_entry record to ASN.1
 convert_exchange_entry(#exchange_entry{ulid = Ulid, lock = Lock, target = Target, new_lock = NewLock}) ->
     ASN1Target = convert_node_entry(Target),
-    {'ExchangeEntry', Ulid, Lock, ASN1Target, NewLock}.
+    ASN1NewLock = case NewLock of
+        undefined -> asn1_NOVALUE;
+        _ -> NewLock
+    end,
+    {'ExchangeEntry', Ulid, Lock, ASN1Target, ASN1NewLock}.
 
 %% Convert ASN.1 back to exchange_entry record
 convert_asn1_exchange_entry({'ExchangeEntry', Ulid, Lock, ASN1Target, NewLock}) ->
     Target = convert_asn1_node_entry(ASN1Target),
-    #exchange_entry{ulid = Ulid, lock = Lock, target = Target, new_lock = NewLock}.
+    ErlNewLock = case NewLock of
+        asn1_NOVALUE -> undefined;
+        _ -> NewLock
+    end,
+    #exchange_entry{ulid = Ulid, lock = Lock, target = Target, new_lock = ErlNewLock}.
 
 %%%=============================================================================
 %%% Utility Functions
 %%%=============================================================================
 
-atom_to_binary(Atom) when is_atom(Atom) ->
-    atom_to_binary(Atom, utf8);
-atom_to_binary(Binary) when is_binary(Binary) ->
-    Binary.
-
-binary_to_atom(Binary) when is_binary(Binary) ->
-    binary_to_atom(Binary, utf8);
-binary_to_atom(Atom) when is_atom(Atom) ->
-    Atom.

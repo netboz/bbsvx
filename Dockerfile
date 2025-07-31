@@ -26,13 +26,15 @@ ENV BUILD_WITHOUT_QUIC=true
 RUN rebar3 compile
 
 ## Copy needed files and build the release
-FROM build as builded
+FROM build AS builded
 # Set working directory
 WORKDIR /buildroot
 COPY src ./src
 COPY include ./include
 COPY config ./config
 COPY priv ./priv
+COPY asn1 ./asn1
+COPY BBSVXProtocol.hrl ./BBSVXProtocol.hrl
 
 # Build the release
 ENV BUILD_WITHOUT_QUIC=true

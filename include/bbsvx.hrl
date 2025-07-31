@@ -164,11 +164,17 @@
     lock :: binary(),
     spread :: {boolean(), binary()} | undefined
 }).
--record(evt_arc_swapped_in, {ulid :: binary(), newlock :: binary(), new_source :: node_entry()}).
+-record(evt_arc_swapped_in, {ulid :: binary(), newlock :: binary(), previous_source :: node_entry(), new_source :: node_entry()}).
+-record(evt_arc_swapped_mirror, {
+    ulid :: binary(),
+    newlock :: binary(),
+    source :: node_entry(),
+    me :: node_entry()
+}).
 -record(evt_connection_error, {
     ulid :: binary(), direction :: in | out, reason :: term(), node :: node_entry()
 }).
--record(evt_arc_disconnected, {ulid :: binary(), direction :: in | out}).
+-record(evt_arc_disconnected, {ulid :: binary(), direction :: in | out, origin_node :: node_entry()}).
 -record(evt_end_exchange, {exchanged_ulids :: [binary()]}).
 -record(evt_node_quitted, {
     reason :: atom(),
@@ -185,7 +191,6 @@
 %% Opens the connection to another node
 -record(header_connect, {
     version = ?PROTOCOL_VERSION :: binary(),
-    connection_type :: atom(),
     node_id :: binary(),
     namespace :: binary()
 }).

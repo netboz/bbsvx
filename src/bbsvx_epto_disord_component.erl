@@ -134,6 +134,36 @@ syncing({call, From}, {epto_broadcast, Payload}, #state{next_ball = NextBall} = 
     gen_statem:reply(From, ok),
     {keep_state, State#state{next_ball = maps:put(EvtId, Event, NextBall)}};
 syncing(info,
+        {incoming_event, {epto_message, {receive_ball, Ball, CurrentIndex}}},
+        #state{namespace = Namespace} = State) ->
+    gproc:send({n, l, {bbsvx_actor_ontology, Namespace}}, {registered, CurrentIndex}),
+    %% This means we are getting connected to the network
+    %% We process the ball and update the index accordingliy
+    UpdatedNextBall =
+        maps:fold(fun (EvtId, #epto_event{ttl = EvtTtl, ts = EvtTs} = Evt, Acc)
+                          when EvtTtl < State#state.ttl ->
+                          NewAcc =
+                              case maps:get(EvtId, Acc, undefined) of
+                                  undefined ->
+                                      maps:put(EvtId, Evt, Acc);
+                                  #epto_event{ttl = EvtBallTtl} = EvtBall
+                                      when EvtBallTtl < EvtTtl ->
+                                      maps:put(EvtId, EvtBall#epto_event{ttl = EvtTtl}, Acc);
+                                  _ ->
+                                      Acc
+                              end,
+                          gen_server:call(State#state.logical_clock_pid, {update_clock, EvtTs}),
+                          NewAcc;
+                      (_EvtId, #epto_event{ts = EvtTs}, Acc) ->
+                          gen_server:call(State#state.logical_clock_pid, {update_clock, EvtTs}),
+                          Acc
+                  end,
+                  State#state.next_ball,
+                  Ball),
+    {next_state,
+     running,
+     State#state{next_ball = UpdatedNextBall, current_index = CurrentIndex}};
+syncing(info,
         {incoming_event, {receive_ball, Ball, CurrentIndex}},
         #state{namespace = Namespace} = State) ->
     gproc:send({n, l, {bbsvx_actor_ontology, Namespace}}, {registered, CurrentIndex}),
@@ -251,6 +281,33 @@ running(cast,
                  received = NewReceived,
                  current_index = NewIndex,
                  last_delivered_ts = NewLastDeliveredTs}};
+running(info,
+        {incoming_event, {epto_message, {receive_ball, Ball, _CurrentIndex}}},
+        #state{namespace = _Namespace} = State) ->
+    %% @TODO: next event could considerably slow down the ball processing, should be made async ?
+    % gproc:send({p, l, {epto_event, State#state.ontology}}, {received_ball, Ball}),
+    UpdatedNextBall =
+        maps:fold(fun (EvtId, #epto_event{ttl = EvtTtl, ts = EvtTs} = Evt, Acc)
+                          when EvtTtl < State#state.ttl ->
+                          NewAcc =
+                              case maps:get(EvtId, Acc, undefined) of
+                                  undefined ->
+                                      maps:put(EvtId, Evt, Acc);
+                                  #epto_event{ttl = EvtBallTtl} = EvtBall
+                                      when EvtBallTtl < EvtTtl ->
+                                      maps:put(EvtId, EvtBall#epto_event{ttl = EvtTtl}, Acc);
+                                  _ ->
+                                      Acc
+                              end,
+                          gen_server:call(State#state.logical_clock_pid, {update_clock, EvtTs}),
+                          NewAcc;
+                      (_EvtId, #epto_event{ts = EvtTs}, Acc) ->
+                          gen_server:call(State#state.logical_clock_pid, {update_clock, EvtTs}),
+                          Acc
+                  end,
+                  State#state.next_ball,
+                  Ball),
+    {keep_state, State#state{next_ball = UpdatedNextBall}};
 running(info,
         {incoming_event, {receive_ball, Ball, _CurrentIndex}},
         #state{namespace = _Namespace} = State) ->

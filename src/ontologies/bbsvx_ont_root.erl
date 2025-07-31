@@ -44,7 +44,7 @@ external_predicates() ->
 %% @end
 %% ------------------------------------------------------------------------------
 
-pred_new_ontology({_Atom, Namespace}, Next0, #est{bs = Bs} = St) ->
+pred_new_ontology({_Atom, _Namespace}, Next0, #est{bs = _Bs} = St) ->
     erlog_int:prove_body(Next0, St).
     % case bbs_agents_backend:register_bubble(get(agent_name), DNodeName) of
     %     ok ->

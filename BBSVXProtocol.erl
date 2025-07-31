@@ -12,9 +12,8 @@
  warnings,ber,errors,
  {cwd,"/home/yan/src/bbsvx"},
  {outdir,"/home/yan/src/bbsvx"},
- {i,"/home/yan/src/bbsvx/src"},
- {i,"."},
- {i,"/home/yan/src/bbsvx/asn1"}]}]).
+ {i,"/home/yan/src/bbsvx/asn1"},
+ {i,"."}]}]).
 
 -export([encoding_rule/0,maps/0,bit_string_format/0,
          legacy_erlang_types/0]).

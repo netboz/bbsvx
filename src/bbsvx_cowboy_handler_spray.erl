@@ -59,11 +59,9 @@ malformed_request(Req, State) ->
                 {true, Req2, State}
         end
     catch
-        A:B ->
+        _A:_B ->
             {false, Req, State#{namespace => <<"bbsvx:root">>}}
-    end;
-malformed_request(Req, State) ->
-    {false, Req, State#{namespace => <<"bbsvx:root">>}}.
+    end.
 
 resource_exists(Req, #{namespace := Namespace} = State) ->
     ?'log-info'("Resource Exists: ~p", [Req]),
