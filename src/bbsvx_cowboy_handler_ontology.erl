@@ -19,8 +19,16 @@
 
 -include_lib("logjam/include/logjam.hrl").
 
--export([init/2, allowed_methods/2, content_types_accepted/2, content_types_provided/2,
-         delete_resource/2, delete_completed/2, resource_exists/2, malformed_request/2]).
+-export([
+    init/2,
+    allowed_methods/2,
+    content_types_accepted/2,
+    content_types_provided/2,
+    delete_resource/2,
+    delete_completed/2,
+    resource_exists/2,
+    malformed_request/2
+]).
 -export([provide_onto/2, accept_onto/2, accept_goal/2, options/2]).
 
 %%%=============================================================================
@@ -35,13 +43,17 @@ init(Req0, State) ->
 options(Req, State) ->
     ?'log-info'("Options: ~p", [Req]),
     Resp =
-        cowboy_req:reply(204,
-                         #{<<"access-control-allow-origin">> => <<"*">>,
-                           <<"access-control-allow-methods">> =>
-                               <<"GET, POST, PUT, DELETE, OPTIONS">>,
-                           <<"access-control-allow-headers">> => <<"*">>},
-                         <<>>,
-                         Req),
+        cowboy_req:reply(
+            204,
+            #{
+                <<"access-control-allow-origin">> => <<"*">>,
+                <<"access-control-allow-methods">> =>
+                    <<"GET, POST, PUT, DELETE, OPTIONS">>,
+                <<"access-control-allow-headers">> => <<"*">>
+            },
+            <<>>,
+            Req
+        ),
     {stop, Resp, State}.
 
 allowed_methods(Req, State) ->
@@ -58,7 +70,8 @@ malformed_request(#{path := <<"/ontologies/prove">>, method := <<"PUT">>} = Req,
             _ ->
                 Req2 =
                     cowboy_req:set_resp_body(
-                        jiffy:encode([#{error => <<"missing_namespace">>}]), Req1),
+                        jiffy:encode([#{error => <<"missing_namespace">>}]), Req1
+                    ),
                 {true, Req2, State}
         end
     catch
@@ -66,12 +79,15 @@ malformed_request(#{path := <<"/ontologies/prove">>, method := <<"PUT">>} = Req,
             ?'log-warning'("Malformed request ~p:~p", [A, B]),
             Req3 =
                 cowboy_req:set_resp_body(
-                    jiffy:encode([#{error => <<"invalid_json">>}]), Req),
+                    jiffy:encode([#{error => <<"invalid_json">>}]), Req
+                ),
             {true, Req3, State}
     end;
-malformed_request(#{path := <<"/ontologies/", _Namespace/binary>>, method := <<"PUT">>} =
-                      Req,
-                  State) ->
+malformed_request(
+    #{path := <<"/ontologies/", _Namespace/binary>>, method := <<"PUT">>} =
+        Req,
+    State
+) ->
     try
         {ok, Body, Req1} = cowboy_req:read_body(Req),
         DBody = jiffy:decode(Body, [return_maps]),
@@ -79,7 +95,8 @@ malformed_request(#{path := <<"/ontologies/", _Namespace/binary>>, method := <<"
             undefined ->
                 Req2 =
                     cowboy_req:set_resp_body(
-                        jiffy:encode([#{error => <<"missing_namespace">>}]), Req1),
+                        jiffy:encode([#{error => <<"missing_namespace">>}]), Req1
+                    ),
                 {true, Req2, State};
             _ ->
                 {false, Req1, State#{body => DBody}}
@@ -89,12 +106,15 @@ malformed_request(#{path := <<"/ontologies/", _Namespace/binary>>, method := <<"
             ?'log-warning'("Malformed request ~p:~p", [A, B]),
             Req3 =
                 cowboy_req:set_resp_body(
-                    jiffy:encode([#{error => <<"invalid_json">>}]), Req),
+                    jiffy:encode([#{error => <<"invalid_json">>}]), Req
+                ),
             {true, Req3, State}
     end;
-malformed_request(#{path := <<"/ontologies/", _Namespace/binary>>, method := <<"GET">>} =
-                      Req,
-                  State) ->
+malformed_request(
+    #{path := <<"/ontologies/", _Namespace/binary>>, method := <<"GET">>} =
+        Req,
+    State
+) ->
     try
         {ok, Body, Req1} = cowboy_req:read_body(Req),
         DBody = jiffy:decode(Body, [return_maps]),
@@ -103,7 +123,8 @@ malformed_request(#{path := <<"/ontologies/", _Namespace/binary>>, method := <<"
                 ?'log-info'("Malformed request ~p:~p", [Req, State]),
                 Req2 =
                     cowboy_req:set_resp_body(
-                        jiffy:encode([#{error => <<"missing_namespace">>}]), Req1),
+                        jiffy:encode([#{error => <<"missing_namespace">>}]), Req1
+                    ),
                 {true, Req2, State};
             _ ->
                 ?'log-info'("request accepted"),
@@ -119,15 +140,18 @@ malformed_request(Req, State) ->
     ?'log-warning'("Malformed Request ~p", [Req]),
     {false, Req, State}.
 
-resource_exists(#{path := <<"/ontologies/prove">>} = Req,
-                #{namespace := Namespace} = State) ->
+resource_exists(
+    #{path := <<"/ontologies/prove">>} = Req,
+    #{namespace := Namespace} = State
+) ->
     case bbsvx_ont_service:get_ontology(Namespace) of
         {ok, #ontology{}} ->
             {true, Req, State};
         _ ->
             Req1 =
                 cowboy_req:set_resp_body(
-                    jiffy:encode([#{error => <<"namespace_mismatch">>}]), Req),
+                    jiffy:encode([#{error => <<"namespace_mismatch">>}]), Req
+                ),
             {false, Req1, State}
     end;
 resource_exists(#{path := <<"/ontologies/", Namespace/binary>>} = Req, State) ->
@@ -165,13 +189,17 @@ content_types_accepted(#{path := Path} = Req, State) ->
     Explo = explode_path(Path),
     do_content_types_accepted(Explo, Req, State).
 
-do_content_types_accepted([<<"ontologies">>, <<"prove">>],
-                          #{method := <<"PUT">>} = Req,
-                          State) ->
+do_content_types_accepted(
+    [<<"ontologies">>, <<"prove">>],
+    #{method := <<"PUT">>} = Req,
+    State
+) ->
     {[{{<<"application">>, <<"json">>, []}, accept_goal}], Req, State};
-do_content_types_accepted([<<"ontologies">>, _Namespace],
-                          #{method := <<"PUT">>} = Req,
-                          State) ->
+do_content_types_accepted(
+    [<<"ontologies">>, _Namespace],
+    #{method := <<"PUT">>} = Req,
+    State
+) ->
     {[{{<<"application">>, <<"json">>, []}, accept_onto}], Req, State}.
 
 %%=============================================================================
@@ -209,31 +237,40 @@ accept_onto(Req0, #{onto := PreviousOntState, body := Body} = State) ->
     case Body of
         #{<<"namespace">> := Namespace} when Type == local orelse Type == shared ->
             ProposedOnt =
-                #ontology{namespace = Namespace,
-                          version = maps:get(<<"version">>, Body, <<"0.0.1">>),
-                          contact_nodes =
-                              [#node_entry{host = Hst, port = Prt}
-                               || #{<<"host">> := Hst, <<"port">> := Prt}
-                                      <- maps:get(<<"contact_nodes">>, Body, [])],
-                          type = Type},
+                #ontology{
+                    namespace = Namespace,
+                    version = maps:get(<<"version">>, Body, <<"0.0.1">>),
+                    contact_nodes =
+                        [
+                            #node_entry{host = Hst, port = Prt}
+                         || #{<<"host">> := Hst, <<"port">> := Prt} <-
+                                maps:get(<<"contact_nodes">>, Body, [])
+                        ],
+                    type = Type
+                },
             case {ProposedOnt, PreviousOntState} of
                 {#ontology{type = Type}, #ontology{type = Type}} ->
                     %% Identical REST request, return 3
                     %NewReq = cowboy_req:reply(304, Req1),
                     Req2 =
                         cowboy_req:set_resp_body(
-                            jiffy:encode([#{info => <<"already_exists">>}]), Req0),
+                            jiffy:encode([#{info => <<"already_exists">>}]), Req0
+                        ),
 
                     {true, Req2, State};
                 {#ontology{}, undefined} ->
                     bbsvx_ont_service:new_ontology(ProposedOnt),
                     {true, Req0, State};
-                {#ontology{type = shared} = ProposedOnt,
-                 #ontology{type = local} = PreviousOntState} ->
+                {
+                    #ontology{type = shared} = ProposedOnt,
+                    #ontology{type = local} = PreviousOntState
+                } ->
                     bbsvx_ont_service:connect_ontology(Namespace),
                     {true, Req0, State};
-                {#ontology{type = local} = ProposedOnt,
-                 #ontology{type = shared} = PreviousOntState} ->
+                {
+                    #ontology{type = local} = ProposedOnt,
+                    #ontology{type = shared} = PreviousOntState
+                } ->
                     bbsvx_ont_service:disconnect_ontology(Namespace),
                     {true, Req0, State}
             end;
@@ -241,7 +278,8 @@ accept_onto(Req0, #{onto := PreviousOntState, body := Body} = State) ->
             ?'log-error'("Cowboy Handler : Missing namespace in body ~p", [Body]),
             Req2 =
                 cowboy_req:set_resp_body(
-                    jiffy:encode([#{error => <<"missing_namespace">>}]), Req0),
+                    jiffy:encode([#{error => <<"missing_namespace">>}]), Req0
+                ),
             {false, Req2, State}
     end.
 
@@ -277,22 +315,28 @@ get_ulid() ->
     Ulid.
 
 state_entry_to_map({{Functor, Arity}, built_in}) ->
-    #{functor => Functor,
-      arity => Arity,
-      type => built_in};
+    #{
+        functor => Functor,
+        arity => Arity,
+        type => built_in
+    };
 state_entry_to_map({{Functor, Arity}, clauses, NumberOfClauses, ListOfClauses}) ->
-    #{functor => Functor,
-      arity => Arity,
-      type => clauses,
-      number_of_clauses => NumberOfClauses,
-      clauses => lists:map(fun clause_to_map/1, ListOfClauses)}.
+    #{
+        functor => Functor,
+        arity => Arity,
+        type => clauses,
+        number_of_clauses => NumberOfClauses,
+        clauses => lists:map(fun clause_to_map/1, ListOfClauses)
+    }.
 
 clause_to_map({ClauseNum, Head, {_Bodies, false}}) ->
     [Functor | Params] = tuple_to_list(Head),
     JsonableParams = lists:map(fun param_to_json/1, Params),
-    #{clause_num => ClauseNum,
-      functor => Functor,
-      arguments => JsonableParams}.
+    #{
+        clause_num => ClauseNum,
+        functor => Functor,
+        arguments => JsonableParams
+    }.
 
 param_to_json({VarNum}) ->
     VarNumBin = integer_to_binary(VarNum),

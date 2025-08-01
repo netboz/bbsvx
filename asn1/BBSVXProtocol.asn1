@@ -60,7 +60,8 @@ DisconnectReason ::= ENUMERATED {
     timeout         (2),
     resource-limit  (3),
     network-error   (4),
-    shutdown        (5)
+    shutdown        (5),
+    swapped         (6)
 }
 
 -- Connection handshake messages
@@ -74,6 +75,13 @@ HeaderConnect ::= SEQUENCE {
 HeaderConnectAck ::= SEQUENCE {
     result          [0] ConnectionResult,
     nodeId          [1] NodeId
+}
+
+-- Connection closure notification
+HeaderConnectionClosed ::= SEQUENCE {
+    namespace       [0] Namespace,
+    ulid            [1] ULId,
+    reason          [2] DisconnectReason
 }
 
 -- Registration messages
@@ -230,6 +238,7 @@ BBSVXMessage ::= CHOICE {
     -- Connection handshake (tags 0-9)
     headerConnect           [0] HeaderConnect,
     headerConnectAck        [1] HeaderConnectAck,
+    headerConnectionClosed  [2] HeaderConnectionClosed,
     
     -- Registration (tags 10-19)  
     headerRegister          [10] HeaderRegister,

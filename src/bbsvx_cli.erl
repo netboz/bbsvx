@@ -17,8 +17,14 @@
 
 -behaviour(clique_handler).
 
--export([register_cli/0, command/1, command/2, set_config_boot/2, 
-         set_config_network/2, set_config_paths/2, get_config/2]).
+-export([
+    register_cli/0,
+    command/1, command/2,
+    set_config_boot/2,
+    set_config_network/2,
+    set_config_paths/2,
+    get_config/2
+]).
 
 command(Command) ->
     logger:info("Command: ~p", [Command]),
@@ -31,15 +37,15 @@ command(Command, Other) ->
 register_cli() ->
     %% Load schema first
     load_cuttlefish_schema(),
-    
+
     %% Register unified bbsvx commands
     register_config_commands(),
     register_command_status(),
     register_command_ontology(),
     register_command_config(),
     register_command_test(),
-    
-    %% Register configuration callbacks  
+
+    %% Register configuration callbacks
     register_config_boot(),
     register_config_network(),
     register_config_paths().
@@ -52,11 +58,10 @@ register_command_test() ->
     ],
     Callback =
         fun(_Cmd, _Keys, _Flags) ->
-           Text = clique_status:text("BBSvx test command executed successfully"),
-           [clique_status:alert([Text])]
+            Text = clique_status:text("BBSvx test command executed successfully"),
+            [clique_status:alert([Text])]
         end,
     clique:register_command(Cmd, KeySpecs, Flagspecs, Callback).
-
 
 %% Config file management commands
 register_config_commands() ->
@@ -67,17 +72,18 @@ register_config_commands() ->
         {force, [{shortname, "f"}, {longname, "force"}]}
     ],
     InitCallback = fun(_, _, Flags) ->
-        ConfigPath = case proplists:get_value(path, Flags) of
-            undefined -> find_user_config_path();
-            {path, P} -> P
-        end,
+        ConfigPath =
+            case proplists:get_value(path, Flags) of
+                undefined -> find_user_config_path();
+                {path, P} -> P
+            end,
         IsForce = lists:keymember(force, 1, Flags),
         Result = init_user_config(ConfigPath, IsForce),
         [clique_status:text(Result)]
     end,
     clique:register_command(InitCmd, [], InitFlagspecs, InitCallback),
 
-    %% bbsvx config locate - show config file location  
+    %% bbsvx config locate - show config file location
     LocateCmd = ["bbsvx", "config", "locate"],
     LocateCallback = fun(_, _, _) ->
         ConfigPath = find_config_file(),
@@ -110,7 +116,7 @@ register_command_ontology() ->
         [clique_status:text(Ontologies)]
     end,
     clique:register_command(ListCmd, [], [], ListCallback),
-    
+
     %% bbsvx ontology create <namespace>
     CreateCmd = ["bbsvx", "ontology", "create"],
     CreateKeySpecs = [
@@ -139,7 +145,7 @@ register_command_config() ->
         end
     end,
     clique:register_command(ShowCmd, ShowKeySpecs, [], ShowCallback),
-    
+
     %% bbsvx set key=value - set configuration
     SetCmd = ["bbsvx", "set"],
     SetKeySpecs = [
@@ -162,18 +168,24 @@ register_config_boot() ->
 register_config_network() ->
     %% Register network configuration options
     Keys = [["network", "p2p_port"], ["network", "http_port"], ["network", "contact_nodes"]],
-    lists:foreach(fun(Key) ->
-        clique:register_config(Key, fun set_config_network/2),
-        clique:register_config_whitelist(Key)
-    end, Keys).
+    lists:foreach(
+        fun(Key) ->
+            clique:register_config(Key, fun set_config_network/2),
+            clique:register_config_whitelist(Key)
+        end,
+        Keys
+    ).
 
 register_config_paths() ->
-    %% Register path configuration options  
+    %% Register path configuration options
     Keys = [["paths", "kb_path"], ["paths", "data_dir"], ["paths", "log_dir"]],
-    lists:foreach(fun(Key) ->
-        clique:register_config(Key, fun set_config_paths/2),
-        clique:register_config_whitelist(Key)
-    end, Keys).
+    lists:foreach(
+        fun(Key) ->
+            clique:register_config(Key, fun set_config_paths/2),
+            clique:register_config_whitelist(Key)
+        end,
+        Keys
+    ).
 
 %% Configuration setters
 -spec set_config_boot(Key :: [string()], Val :: string()) -> Result :: string().
@@ -226,21 +238,23 @@ get_system_status(IsVerbose, IsJson) ->
             {node, node()},
             {uptime, get_uptime()}
         ],
-        
-        NetworkInfo = case IsVerbose of
-            true -> get_network_info();
-            false -> []
-        end,
-        
-        OntologyInfo = case IsVerbose of
-            true -> get_ontology_info();
-            false -> []
-        end,
-        
+
+        NetworkInfo =
+            case IsVerbose of
+                true -> get_network_info();
+                false -> []
+            end,
+
+        OntologyInfo =
+            case IsVerbose of
+                true -> get_ontology_info();
+                false -> []
+            end,
+
         AllInfo = BasicInfo ++ NetworkInfo ++ OntologyInfo,
-        
+
         case IsJson of
-            true -> 
+            true ->
                 jiffy:encode(maps:from_list(AllInfo));
             false ->
                 format_status_text(AllInfo)
@@ -261,14 +275,16 @@ get_uptime() ->
     UpTime.
 
 get_network_info() ->
-    P2PPort = case application:get_env(bbsvx, p2p_port) of
-        {ok, Port} -> Port;
-        undefined -> 2304
-    end,
-    HTTPPort = case application:get_env(bbsvx, http_port) of
-        {ok, HPort} -> HPort;
-        undefined -> 8085
-    end,
+    P2PPort =
+        case application:get_env(bbsvx, p2p_port) of
+            {ok, Port} -> Port;
+            undefined -> 2304
+        end,
+    HTTPPort =
+        case application:get_env(bbsvx, http_port) of
+            {ok, HPort} -> HPort;
+            undefined -> 8085
+        end,
     [
         {p2p_port, P2PPort},
         {http_port, HTTPPort},
@@ -304,8 +320,9 @@ get_ontology_list() ->
             [] ->
                 "No ontologies found";
             _ ->
-                Lines = ["Ontologies:"] ++ 
-                       [io_lib:format("  ~s", [Ns]) || Ns <- Ontologies],
+                Lines =
+                    ["Ontologies:"] ++
+                        [io_lib:format("  ~s", [Ns]) || Ns <- Ontologies],
                 string:join(Lines, "\n")
         end
     catch
@@ -348,7 +365,8 @@ is_ontology_table(TableName) when is_atom(TableName) ->
         nomatch -> false;
         _ -> true
     end;
-is_ontology_table(_) -> false.
+is_ontology_table(_) ->
+    false.
 
 %% Safe atom conversion - only converts known configuration keys
 safe_to_atom(String) when is_list(String) ->
@@ -373,7 +391,8 @@ load_cuttlefish_schema() ->
         SchemaDir = code:priv_dir(bbsvx),
         clique_config:load_schema([SchemaDir])
     catch
-        _:_ -> ok  % Schema already loaded or not available
+        % Schema already loaded or not available
+        _:_ -> ok
     end.
 
 parse_assignment(String) ->
@@ -391,20 +410,22 @@ show_all_config() ->
         {"paths.data_dir", application:get_env(bbsvx, data_dir, "./data")},
         {"paths.log_dir", application:get_env(bbsvx, log_dir, "./logs")}
     ],
-    Lines = ["Current Configuration:"] ++
-           [io_lib:format("  ~s = ~p", [Key, Value]) || {Key, Value} <- Config],
+    Lines =
+        ["Current Configuration:"] ++
+            [io_lib:format("  ~s = ~p", [Key, Value]) || {Key, Value} <- Config],
     [clique_status:text(string:join(Lines, "\n"))].
 
 show_config_key(Key) ->
-    ConfigKey = case Key of
-        "boot" -> boot;
-        "network.p2p_port" -> p2p_port;
-        "network.http_port" -> http_port;
-        "paths.kb_path" -> kb_path;
-        "paths.data_dir" -> data_dir;
-        "paths.log_dir" -> log_dir;
-        _ -> safe_to_atom(Key)
-    end,
+    ConfigKey =
+        case Key of
+            "boot" -> boot;
+            "network.p2p_port" -> p2p_port;
+            "network.http_port" -> http_port;
+            "paths.kb_path" -> kb_path;
+            "paths.data_dir" -> data_dir;
+            "paths.log_dir" -> log_dir;
+            _ -> safe_to_atom(Key)
+        end,
     case application:get_env(bbsvx, ConfigKey) of
         {ok, Value} ->
             Text = io_lib:format("~s = ~p", [Key, Value]),
@@ -446,18 +467,24 @@ convert_config_value(Key, Value) ->
 find_config_file() ->
     %% Search order for config files
     ConfigPaths = [
-        os:getenv("BBSVX_CONFIG_FILE"),  % Environment variable
-        find_user_config_path(),         % ~/.bbsvx/bbsvx.conf
-        "./bbsvx.conf",                  % Current directory
-        "etc/bbsvx.conf"                 % Release default
+        % Environment variable
+        os:getenv("BBSVX_CONFIG_FILE"),
+        % ~/.bbsvx/bbsvx.conf
+        find_user_config_path(),
+        % Current directory
+        "./bbsvx.conf",
+        % Release default
+        "etc/bbsvx.conf"
     ],
     find_first_existing_file(ConfigPaths).
 
 find_user_config_path() ->
-    HomeDir = case os:getenv("HOME") of
-        false -> ".";  % Fallback for Windows without HOME
-        Home -> Home
-    end,
+    HomeDir =
+        case os:getenv("HOME") of
+            % Fallback for Windows without HOME
+            false -> ".";
+            Home -> Home
+        end,
     filename:join([HomeDir, ".bbsvx", "bbsvx.conf"]).
 
 find_first_existing_file([false | Rest]) ->
@@ -468,13 +495,16 @@ find_first_existing_file([Path | Rest]) when is_list(Path) ->
         false -> find_first_existing_file(Rest)
     end;
 find_first_existing_file([]) ->
-    "etc/bbsvx.conf".  % Default fallback
+    % Default fallback
+    "etc/bbsvx.conf".
 
 init_user_config(ConfigPath, IsForce) ->
     try
         case filelib:is_file(ConfigPath) of
             true when not IsForce ->
-                io_lib:format("Config file already exists: ~s~nUse --force to overwrite", [ConfigPath]);
+                io_lib:format("Config file already exists: ~s~nUse --force to overwrite", [
+                    ConfigPath
+                ]);
             _ ->
                 %% Ensure directory exists
                 ConfigDir = filename:dirname(ConfigPath),

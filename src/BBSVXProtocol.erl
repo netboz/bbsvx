@@ -6,104 +6,114 @@
 -dialyzer(no_improper_lists).
 -dialyzer(no_match).
 -include("BBSVXProtocol.hrl").
--asn1_info([{vsn,'5.2.1'},
-            {module,'BBSVXProtocol'},
-            {options,[{i,"/home/yan/src/bbsvx"},
- warnings,ber,errors,
- {cwd,"/home/yan/src/bbsvx"},
- {outdir,"/home/yan/src/bbsvx"},
- {i,"/home/yan/src/bbsvx/src"},
- {i,"."},
- {i,"/home/yan/src/bbsvx/asn1"}]}]).
-
--export([encoding_rule/0,maps/0,bit_string_format/0,
-         legacy_erlang_types/0]).
--export(['dialyzer-suppressions'/1]).
--export([
-enc_ProtocolVersion/2,
-enc_NodeId/2,
-enc_ULId/2,
-enc_Lock/2,
-enc_Namespace/2,
-enc_Timestamp/2,
-enc_PortNumber/2,
-enc_HostAddress/2,
-enc_NodeEntry/2,
-enc_ExchangeEntry/2,
-enc_ConnectionResult/2,
-enc_RegistrationResult/2,
-enc_DisconnectReason/2,
-enc_HeaderConnect/2,
-enc_HeaderConnectAck/2,
-enc_HeaderRegister/2,
-enc_HeaderRegisterAck/2,
-enc_HeaderJoin/2,
-enc_HeaderJoinAck/2,
-enc_HeaderForwardJoin/2,
-enc_HeaderForwardJoinAck/2,
-enc_ExchangeIn/2,
-enc_ExchangeOut/2,
-enc_ExchangeAccept/2,
-enc_ExchangeCancelled/2,
-enc_NodeQuitting/2,
-enc_ChangeLock/2,
-enc_OntologyHistory/2,
-enc_OntologyHistoryRequest/2,
-enc_TransactionType/2,
-enc_TransactionStatus/2,
-enc_Transaction/2,
-enc_EptoMessage/2,
-enc_Neighbor/2,
-enc_LeaderElectionInfo/2,
-enc_SendForwardSubscription/2,
-enc_OpenForwardJoin/2,
-enc_BBSVXMessage/2
+-asn1_info([
+    {vsn, '5.2.1'},
+    {module, 'BBSVXProtocol'},
+    {options, [
+        {i, "/home/yan/src/bbsvx"},
+        warnings,
+        ber,
+        errors,
+        {cwd, "/home/yan/src/bbsvx"},
+        {outdir, "/home/yan/src/bbsvx"},
+        {i, "/home/yan/src/bbsvx/src"},
+        {i, "."},
+        {i, "/home/yan/src/bbsvx/asn1"}
+    ]}
 ]).
 
 -export([
-dec_ProtocolVersion/2,
-dec_NodeId/2,
-dec_ULId/2,
-dec_Lock/2,
-dec_Namespace/2,
-dec_Timestamp/2,
-dec_PortNumber/2,
-dec_HostAddress/2,
-dec_NodeEntry/2,
-dec_ExchangeEntry/2,
-dec_ConnectionResult/2,
-dec_RegistrationResult/2,
-dec_DisconnectReason/2,
-dec_HeaderConnect/2,
-dec_HeaderConnectAck/2,
-dec_HeaderRegister/2,
-dec_HeaderRegisterAck/2,
-dec_HeaderJoin/2,
-dec_HeaderJoinAck/2,
-dec_HeaderForwardJoin/2,
-dec_HeaderForwardJoinAck/2,
-dec_ExchangeIn/2,
-dec_ExchangeOut/2,
-dec_ExchangeAccept/2,
-dec_ExchangeCancelled/2,
-dec_NodeQuitting/2,
-dec_ChangeLock/2,
-dec_OntologyHistory/2,
-dec_OntologyHistoryRequest/2,
-dec_TransactionType/2,
-dec_TransactionStatus/2,
-dec_Transaction/2,
-dec_EptoMessage/2,
-dec_Neighbor/2,
-dec_LeaderElectionInfo/2,
-dec_SendForwardSubscription/2,
-dec_OpenForwardJoin/2,
-dec_BBSVXMessage/2
+    encoding_rule/0,
+    maps/0,
+    bit_string_format/0,
+    legacy_erlang_types/0
+]).
+-export(['dialyzer-suppressions'/1]).
+-export([
+    enc_ProtocolVersion/2,
+    enc_NodeId/2,
+    enc_ULId/2,
+    enc_Lock/2,
+    enc_Namespace/2,
+    enc_Timestamp/2,
+    enc_PortNumber/2,
+    enc_HostAddress/2,
+    enc_NodeEntry/2,
+    enc_ExchangeEntry/2,
+    enc_ConnectionResult/2,
+    enc_RegistrationResult/2,
+    enc_DisconnectReason/2,
+    enc_HeaderConnect/2,
+    enc_HeaderConnectAck/2,
+    enc_HeaderRegister/2,
+    enc_HeaderRegisterAck/2,
+    enc_HeaderJoin/2,
+    enc_HeaderJoinAck/2,
+    enc_HeaderForwardJoin/2,
+    enc_HeaderForwardJoinAck/2,
+    enc_ExchangeIn/2,
+    enc_ExchangeOut/2,
+    enc_ExchangeAccept/2,
+    enc_ExchangeCancelled/2,
+    enc_NodeQuitting/2,
+    enc_ChangeLock/2,
+    enc_OntologyHistory/2,
+    enc_OntologyHistoryRequest/2,
+    enc_TransactionType/2,
+    enc_TransactionStatus/2,
+    enc_Transaction/2,
+    enc_EptoMessage/2,
+    enc_Neighbor/2,
+    enc_LeaderElectionInfo/2,
+    enc_SendForwardSubscription/2,
+    enc_OpenForwardJoin/2,
+    enc_BBSVXMessage/2
+]).
+
+-export([
+    dec_ProtocolVersion/2,
+    dec_NodeId/2,
+    dec_ULId/2,
+    dec_Lock/2,
+    dec_Namespace/2,
+    dec_Timestamp/2,
+    dec_PortNumber/2,
+    dec_HostAddress/2,
+    dec_NodeEntry/2,
+    dec_ExchangeEntry/2,
+    dec_ConnectionResult/2,
+    dec_RegistrationResult/2,
+    dec_DisconnectReason/2,
+    dec_HeaderConnect/2,
+    dec_HeaderConnectAck/2,
+    dec_HeaderRegister/2,
+    dec_HeaderRegisterAck/2,
+    dec_HeaderJoin/2,
+    dec_HeaderJoinAck/2,
+    dec_HeaderForwardJoin/2,
+    dec_HeaderForwardJoinAck/2,
+    dec_ExchangeIn/2,
+    dec_ExchangeOut/2,
+    dec_ExchangeAccept/2,
+    dec_ExchangeCancelled/2,
+    dec_NodeQuitting/2,
+    dec_ChangeLock/2,
+    dec_OntologyHistory/2,
+    dec_OntologyHistoryRequest/2,
+    dec_TransactionType/2,
+    dec_TransactionStatus/2,
+    dec_Transaction/2,
+    dec_EptoMessage/2,
+    dec_Neighbor/2,
+    dec_LeaderElectionInfo/2,
+    dec_SendForwardSubscription/2,
+    dec_OpenForwardJoin/2,
+    dec_BBSVXMessage/2
 ]).
 
 -export([info/0]).
 
--export([encode/2,decode/2]).
+-export([encode/2, decode/2]).
 
 encoding_rule() -> ber.
 
@@ -114,32 +124,32 @@ bit_string_format() -> bitstring.
 legacy_erlang_types() -> false.
 
 encode(Type, Data) ->
-try iolist_to_binary(element(1, encode_disp(Type, Data))) of
-  Bytes ->
-    {ok,Bytes}
-  catch
-    Class:Exception:Stk when Class =:= error; Class =:= exit ->
-      case Exception of
-        {error,{asn1,Reason}} ->
-          {error,{asn1,{Reason,Stk}}};
-        Reason ->
-         {error,{asn1,{Reason,Stk}}}
-      end
-end.
+    try iolist_to_binary(element(1, encode_disp(Type, Data))) of
+        Bytes ->
+            {ok, Bytes}
+    catch
+        Class:Exception:Stk when Class =:= error; Class =:= exit ->
+            case Exception of
+                {error, {asn1, Reason}} ->
+                    {error, {asn1, {Reason, Stk}}};
+                Reason ->
+                    {error, {asn1, {Reason, Stk}}}
+            end
+    end.
 
 decode(Type, Data) ->
-try
-   Result = decode_disp(Type, element(1, ber_decode_nif(Data))),
-   {ok,Result}
-  catch
-    Class:Exception:Stk when Class =:= error; Class =:= exit ->
-      case Exception of
-        {error,{asn1,Reason}} ->
-          {error,{asn1,{Reason,Stk}}};
-        Reason ->
-         {error,{asn1,{Reason,Stk}}}
-      end
-end.
+    try
+        Result = decode_disp(Type, element(1, ber_decode_nif(Data))),
+        {ok, Result}
+    catch
+        Class:Exception:Stk when Class =:= error; Class =:= exit ->
+            case Exception of
+                {error, {asn1, Reason}} ->
+                    {error, {asn1, {Reason, Stk}}};
+                Reason ->
+                    {error, {asn1, {Reason, Stk}}}
+            end
+    end.
 
 encode_disp('ProtocolVersion', Data) -> enc_ProtocolVersion(Data);
 encode_disp('NodeId', Data) -> enc_NodeId(Data);
@@ -179,7 +189,7 @@ encode_disp('LeaderElectionInfo', Data) -> enc_LeaderElectionInfo(Data);
 encode_disp('SendForwardSubscription', Data) -> enc_SendForwardSubscription(Data);
 encode_disp('OpenForwardJoin', Data) -> enc_OpenForwardJoin(Data);
 encode_disp('BBSVXMessage', Data) -> enc_BBSVXMessage(Data);
-encode_disp(Type, _Data) -> exit({error,{asn1,{undefined_type,Type}}}).
+encode_disp(Type, _Data) -> exit({error, {asn1, {undefined_type, Type}}}).
 
 decode_disp('ProtocolVersion', Data) -> dec_ProtocolVersion(Data);
 decode_disp('NodeId', Data) -> dec_NodeId(Data);
@@ -219,21 +229,20 @@ decode_disp('LeaderElectionInfo', Data) -> dec_LeaderElectionInfo(Data);
 decode_disp('SendForwardSubscription', Data) -> dec_SendForwardSubscription(Data);
 decode_disp('OpenForwardJoin', Data) -> dec_OpenForwardJoin(Data);
 decode_disp('BBSVXMessage', Data) -> dec_BBSVXMessage(Data);
-decode_disp(Type, _Data) -> exit({error,{asn1,{undefined_type,Type}}}).
+decode_disp(Type, _Data) -> exit({error, {asn1, {undefined_type, Type}}}).
 
 info() ->
-   case ?MODULE:module_info(attributes) of
-     Attributes when is_list(Attributes) ->
-       case lists:keyfind(asn1_info, 1, Attributes) of
-         {_,Info} when is_list(Info) ->
-           Info;
-         _ ->
-           []
-       end;
-     _ ->
-       []
-   end.
-
+    case ?MODULE:module_info(attributes) of
+        Attributes when is_list(Attributes) ->
+            case lists:keyfind(asn1_info, 1, Attributes) of
+                {_, Info} when is_list(Info) ->
+                    Info;
+                _ ->
+                    []
+            end;
+        _ ->
+            []
+    end.
 
 %%================================
 %%  ProtocolVersion
@@ -242,16 +251,13 @@ enc_ProtocolVersion(Val) ->
     enc_ProtocolVersion(Val, [<<12>>]).
 
 enc_ProtocolVersion(Val, TagIn) ->
-encode_UTF8_string(Val, TagIn).
-
+    encode_UTF8_string(Val, TagIn).
 
 dec_ProtocolVersion(Tlv) ->
-   dec_ProtocolVersion(Tlv, [12]).
+    dec_ProtocolVersion(Tlv, [12]).
 
 dec_ProtocolVersion(Tlv, TagIn) ->
-decode_UTF8_string(Tlv, TagIn).
-
-
+    decode_UTF8_string(Tlv, TagIn).
 
 %%================================
 %%  NodeId
@@ -260,24 +266,22 @@ enc_NodeId(Val) ->
     enc_NodeId(Val, [<<4>>]).
 
 enc_NodeId(Val, TagIn) ->
-encode_restricted_string(Val, TagIn).
-
+    encode_restricted_string(Val, TagIn).
 
 dec_NodeId(Tlv) ->
-   dec_NodeId(Tlv, [4]).
+    dec_NodeId(Tlv, [4]).
 
 dec_NodeId(Tlv, TagIn) ->
-begin
-Val1 = decode_octet_string(Tlv, TagIn),
-C1 = byte_size(Val1),
-if 32 =< C1, C1 =< 64 ->
-Val1;
-true ->
-exit({error,{asn1,bad_range}})
-end
-end.
-
-
+    begin
+        Val1 = decode_octet_string(Tlv, TagIn),
+        C1 = byte_size(Val1),
+        if
+            32 =< C1, C1 =< 64 ->
+                Val1;
+            true ->
+                exit({error, {asn1, bad_range}})
+        end
+    end.
 
 %%================================
 %%  ULId
@@ -286,24 +290,22 @@ enc_ULId(Val) ->
     enc_ULId(Val, [<<4>>]).
 
 enc_ULId(Val, TagIn) ->
-encode_restricted_string(Val, TagIn).
-
+    encode_restricted_string(Val, TagIn).
 
 dec_ULId(Tlv) ->
-   dec_ULId(Tlv, [4]).
+    dec_ULId(Tlv, [4]).
 
 dec_ULId(Tlv, TagIn) ->
-begin
-Val1 = decode_octet_string(Tlv, TagIn),
-C1 = byte_size(Val1),
-if C1 =:= 26 ->
-Val1;
-true ->
-exit({error,{asn1,bad_range}})
-end
-end.
-
-
+    begin
+        Val1 = decode_octet_string(Tlv, TagIn),
+        C1 = byte_size(Val1),
+        if
+            C1 =:= 26 ->
+                Val1;
+            true ->
+                exit({error, {asn1, bad_range}})
+        end
+    end.
 
 %%================================
 %%  Lock
@@ -312,24 +314,22 @@ enc_Lock(Val) ->
     enc_Lock(Val, [<<4>>]).
 
 enc_Lock(Val, TagIn) ->
-encode_restricted_string(Val, TagIn).
-
+    encode_restricted_string(Val, TagIn).
 
 dec_Lock(Tlv) ->
-   dec_Lock(Tlv, [4]).
+    dec_Lock(Tlv, [4]).
 
 dec_Lock(Tlv, TagIn) ->
-begin
-Val1 = decode_octet_string(Tlv, TagIn),
-C1 = byte_size(Val1),
-if C1 =:= 24 ->
-Val1;
-true ->
-exit({error,{asn1,bad_range}})
-end
-end.
-
-
+    begin
+        Val1 = decode_octet_string(Tlv, TagIn),
+        C1 = byte_size(Val1),
+        if
+            C1 =:= 24 ->
+                Val1;
+            true ->
+                exit({error, {asn1, bad_range}})
+        end
+    end.
 
 %%================================
 %%  Namespace
@@ -338,16 +338,13 @@ enc_Namespace(Val) ->
     enc_Namespace(Val, [<<12>>]).
 
 enc_Namespace(Val, TagIn) ->
-encode_UTF8_string(Val, TagIn).
-
+    encode_UTF8_string(Val, TagIn).
 
 dec_Namespace(Tlv) ->
-   dec_Namespace(Tlv, [12]).
+    dec_Namespace(Tlv, [12]).
 
 dec_Namespace(Tlv, TagIn) ->
-decode_UTF8_string(Tlv, TagIn).
-
-
+    decode_UTF8_string(Tlv, TagIn).
 
 %%================================
 %%  Timestamp
@@ -356,23 +353,21 @@ enc_Timestamp(Val) ->
     enc_Timestamp(Val, [<<2>>]).
 
 enc_Timestamp(Val, TagIn) ->
-encode_integer(Val, TagIn).
-
+    encode_integer(Val, TagIn).
 
 dec_Timestamp(Tlv) ->
-   dec_Timestamp(Tlv, [2]).
+    dec_Timestamp(Tlv, [2]).
 
 dec_Timestamp(Tlv, TagIn) ->
-begin
-Val1 = decode_integer(Tlv, TagIn),
-if 0 =< Val1, Val1 =< 'MAX' ->
-Val1;
-true ->
-exit({error,{asn1,bad_range}})
-end
-end.
-
-
+    begin
+        Val1 = decode_integer(Tlv, TagIn),
+        if
+            0 =< Val1, Val1 =< 'MAX' ->
+                Val1;
+            true ->
+                exit({error, {asn1, bad_range}})
+        end
+    end.
 
 %%================================
 %%  PortNumber
@@ -381,23 +376,21 @@ enc_PortNumber(Val) ->
     enc_PortNumber(Val, [<<2>>]).
 
 enc_PortNumber(Val, TagIn) ->
-encode_integer(Val, TagIn).
-
+    encode_integer(Val, TagIn).
 
 dec_PortNumber(Tlv) ->
-   dec_PortNumber(Tlv, [2]).
+    dec_PortNumber(Tlv, [2]).
 
 dec_PortNumber(Tlv, TagIn) ->
-begin
-Val1 = decode_integer(Tlv, TagIn),
-if 1 =< Val1, Val1 =< 65535 ->
-Val1;
-true ->
-exit({error,{asn1,bad_range}})
-end
-end.
-
-
+    begin
+        Val1 = decode_integer(Tlv, TagIn),
+        if
+            1 =< Val1, Val1 =< 65535 ->
+                Val1;
+            true ->
+                exit({error, {asn1, bad_range}})
+        end
+    end.
 
 %%================================
 %%  HostAddress
@@ -406,71 +399,66 @@ enc_HostAddress(Val) ->
     enc_HostAddress(Val, []).
 
 enc_HostAddress(Val, TagIn) ->
-   {EncBytes,EncLen} = case element(1,Val) of
-      ipv4 ->
-         encode_restricted_string(element(2,Val), [<<128>>]);
-      ipv6 ->
-         encode_restricted_string(element(2,Val), [<<129>>]);
-      hostname ->
-         encode_UTF8_string(element(2,Val), [<<130>>]);
-      local ->
-         encode_null(element(2,Val), [<<131>>]);
-      Else -> 
-         exit({error,{asn1,{invalid_choice_type,Else}}})
-   end,
+    {EncBytes, EncLen} =
+        case element(1, Val) of
+            ipv4 ->
+                encode_restricted_string(element(2, Val), [<<128>>]);
+            ipv6 ->
+                encode_restricted_string(element(2, Val), [<<129>>]);
+            hostname ->
+                encode_UTF8_string(element(2, Val), [<<130>>]);
+            local ->
+                encode_null(element(2, Val), [<<131>>]);
+            Else ->
+                exit({error, {asn1, {invalid_choice_type, Else}}})
+        end,
 
-encode_tags(TagIn, EncBytes, EncLen).
-
-
-
+    encode_tags(TagIn, EncBytes, EncLen).
 
 dec_HostAddress(Tlv) ->
-   dec_HostAddress(Tlv, []).
+    dec_HostAddress(Tlv, []).
 
 dec_HostAddress(Tlv, TagIn) ->
-Tlv1 = match_tags(Tlv, TagIn),
-case (case Tlv1 of [CtempTlv1] -> CtempTlv1; _ -> Tlv1 end) of
-
-%% 'ipv4'
-    {131072, V1} -> 
-        {ipv4, begin
-Val1 = decode_octet_string(V1, []),
-C1 = byte_size(Val1),
-if C1 =:= 4 ->
-Val1;
-true ->
-exit({error,{asn1,bad_range}})
-end
-end};
-
-
-%% 'ipv6'
-    {131073, V1} -> 
-        {ipv6, begin
-Val2 = decode_octet_string(V1, []),
-C2 = byte_size(Val2),
-if C2 =:= 16 ->
-Val2;
-true ->
-exit({error,{asn1,bad_range}})
-end
-end};
-
-
-%% 'hostname'
-    {131074, V1} -> 
-        {hostname, decode_UTF8_string(V1, [])};
-
-
-%% 'local'
-    {131075, V1} -> 
-        {local, decode_null(V1, [])};
-
-      Else -> 
-         exit({error,{asn1,{invalid_choice_tag,Else}}})
-   end
-.
-
+    Tlv1 = match_tags(Tlv, TagIn),
+    case
+        (case Tlv1 of
+            [CtempTlv1] -> CtempTlv1;
+            _ -> Tlv1
+        end)
+    of
+        %% 'ipv4'
+        {131072, V1} ->
+            {ipv4, begin
+                Val1 = decode_octet_string(V1, []),
+                C1 = byte_size(Val1),
+                if
+                    C1 =:= 4 ->
+                        Val1;
+                    true ->
+                        exit({error, {asn1, bad_range}})
+                end
+            end};
+        %% 'ipv6'
+        {131073, V1} ->
+            {ipv6, begin
+                Val2 = decode_octet_string(V1, []),
+                C2 = byte_size(Val2),
+                if
+                    C2 =:= 16 ->
+                        Val2;
+                    true ->
+                        exit({error, {asn1, bad_range}})
+                end
+            end};
+        %% 'hostname'
+        {131074, V1} ->
+            {hostname, decode_UTF8_string(V1, [])};
+        %% 'local'
+        {131075, V1} ->
+            {local, decode_null(V1, [])};
+        Else ->
+            exit({error, {asn1, {invalid_choice_tag, Else}}})
+    end.
 
 %%================================
 %%  NodeEntry
@@ -479,95 +467,106 @@ enc_NodeEntry(Val) ->
     enc_NodeEntry(Val, [<<48>>]).
 
 enc_NodeEntry(Val, TagIn) ->
-{_,Cindex1,Cindex2,Cindex3} = Val,
+    {_, Cindex1, Cindex2, Cindex3} = Val,
 
-%%-------------------------------------------------
-%% attribute nodeId(1) with type OCTET STRING OPTIONAL
-%%-------------------------------------------------
-   {EncBytes1,EncLen1} =  case Cindex1 of
-         asn1_NOVALUE -> {<<>>,0};
-         _ ->
-            encode_restricted_string(Cindex1, [<<128>>])
-       end,
+    %%-------------------------------------------------
+    %% attribute nodeId(1) with type OCTET STRING OPTIONAL
+    %%-------------------------------------------------
+    {EncBytes1, EncLen1} =
+        case Cindex1 of
+            asn1_NOVALUE -> {<<>>, 0};
+            _ -> encode_restricted_string(Cindex1, [<<128>>])
+        end,
 
-%%-------------------------------------------------
-%% attribute host(2)   External BBSVXProtocol:HostAddress
-%%-------------------------------------------------
-   {EncBytes2,EncLen2} = 'enc_HostAddress'(Cindex2, [<<161>>]),
+    %%-------------------------------------------------
+    %% attribute host(2)   External BBSVXProtocol:HostAddress
+    %%-------------------------------------------------
+    {EncBytes2, EncLen2} = 'enc_HostAddress'(Cindex2, [<<161>>]),
 
-%%-------------------------------------------------
-%% attribute port(3) with type INTEGER DEFAULT = 2304
-%%-------------------------------------------------
-   {EncBytes3,EncLen3} =  case Cindex3 of
-         asn1_DEFAULT ->
-            {<<>>,0};
-         _ when Cindex3 =:= 2304 ->
-            {<<>>,0};
-         _ ->
-            encode_integer(Cindex3, [<<130>>])
-       end,
+    %%-------------------------------------------------
+    %% attribute port(3) with type INTEGER DEFAULT = 2304
+    %%-------------------------------------------------
+    {EncBytes3, EncLen3} =
+        case Cindex3 of
+            asn1_DEFAULT ->
+                {<<>>, 0};
+            _ when Cindex3 =:= 2304 ->
+                {<<>>, 0};
+            _ ->
+                encode_integer(Cindex3, [<<130>>])
+        end,
 
-   BytesSoFar = [EncBytes1, EncBytes2, EncBytes3],
-LenSoFar = EncLen1 + EncLen2 + EncLen3,
-encode_tags(TagIn, BytesSoFar, LenSoFar).
-
+    BytesSoFar = [EncBytes1, EncBytes2, EncBytes3],
+    LenSoFar = EncLen1 + EncLen2 + EncLen3,
+    encode_tags(TagIn, BytesSoFar, LenSoFar).
 
 dec_NodeEntry(Tlv) ->
-   dec_NodeEntry(Tlv, [16]).
+    dec_NodeEntry(Tlv, [16]).
 
 dec_NodeEntry(Tlv, TagIn) ->
-   %%-------------------------------------------------
-   %% decode tag and length 
-   %%-------------------------------------------------
-Tlv1 = match_tags(Tlv, TagIn),
+    %%-------------------------------------------------
+    %% decode tag and length
+    %%-------------------------------------------------
+    Tlv1 = match_tags(Tlv, TagIn),
 
-%%-------------------------------------------------
-%% attribute nodeId(1) with type OCTET STRING OPTIONAL
-%%-------------------------------------------------
-{Term1,Tlv2} = case Tlv1 of
-[{131072,V1}|TempTlv2] ->
-    {begin
-Val1 = decode_octet_string(V1, []),
-C1 = byte_size(Val1),
-if 32 =< C1, C1 =< 64 ->
-Val1;
-true ->
-exit({error,{asn1,bad_range}})
-end
-end, TempTlv2};
-    _ ->
-        { asn1_NOVALUE, Tlv1}
-end,
+    %%-------------------------------------------------
+    %% attribute nodeId(1) with type OCTET STRING OPTIONAL
+    %%-------------------------------------------------
+    {Term1, Tlv2} =
+        case Tlv1 of
+            [{131072, V1} | TempTlv2] ->
+                {
+                    begin
+                        Val1 = decode_octet_string(V1, []),
+                        C1 = byte_size(Val1),
+                        if
+                            32 =< C1, C1 =< 64 ->
+                                Val1;
+                            true ->
+                                exit({error, {asn1, bad_range}})
+                        end
+                    end,
+                    TempTlv2
+                };
+            _ ->
+                {asn1_NOVALUE, Tlv1}
+        end,
 
-%%-------------------------------------------------
-%% attribute host(2)   External BBSVXProtocol:HostAddress
-%%-------------------------------------------------
-[V2|Tlv3] = Tlv2, 
-Term2 = 'dec_HostAddress'(V2, [131073]),
+    %%-------------------------------------------------
+    %% attribute host(2)   External BBSVXProtocol:HostAddress
+    %%-------------------------------------------------
+    [V2 | Tlv3] = Tlv2,
+    Term2 = 'dec_HostAddress'(V2, [131073]),
 
-%%-------------------------------------------------
-%% attribute port(3) with type INTEGER DEFAULT = 2304
-%%-------------------------------------------------
-{Term3,Tlv4} = case Tlv3 of
-[{131074,V3}|TempTlv4] ->
-    {begin
-Val2 = decode_integer(V3, []),
-if 1 =< Val2, Val2 =< 65535 ->
-Val2;
-true ->
-exit({error,{asn1,bad_range}})
-end
-end, TempTlv4};
-    _ ->
-        {2304,Tlv3}
-end,
+    %%-------------------------------------------------
+    %% attribute port(3) with type INTEGER DEFAULT = 2304
+    %%-------------------------------------------------
+    {Term3, Tlv4} =
+        case Tlv3 of
+            [{131074, V3} | TempTlv4] ->
+                {
+                    begin
+                        Val2 = decode_integer(V3, []),
+                        if
+                            1 =< Val2, Val2 =< 65535 ->
+                                Val2;
+                            true ->
+                                exit({error, {asn1, bad_range}})
+                        end
+                    end,
+                    TempTlv4
+                };
+            _ ->
+                {2304, Tlv3}
+        end,
 
-case Tlv4 of
-[] -> true;_ -> exit({error,{asn1, {unexpected,Tlv4}}}) % extra fields not allowed
-end,
-Res1 = {'NodeEntry',Term1,Term2,Term3},
-Res1.
-
+    case Tlv4 of
+        % extra fields not allowed
+        [] -> true;
+        _ -> exit({error, {asn1, {unexpected, Tlv4}}})
+    end,
+    Res1 = {'NodeEntry', Term1, Term2, Term3},
+    Res1.
 
 %%================================
 %%  ExchangeEntry
@@ -576,104 +575,111 @@ enc_ExchangeEntry(Val) ->
     enc_ExchangeEntry(Val, [<<48>>]).
 
 enc_ExchangeEntry(Val, TagIn) ->
-{_,Cindex1,Cindex2,Cindex3,Cindex4} = Val,
+    {_, Cindex1, Cindex2, Cindex3, Cindex4} = Val,
 
-%%-------------------------------------------------
-%% attribute ulid(1) with type OCTET STRING
-%%-------------------------------------------------
-   {EncBytes1,EncLen1} = encode_restricted_string(Cindex1, [<<128>>]),
+    %%-------------------------------------------------
+    %% attribute ulid(1) with type OCTET STRING
+    %%-------------------------------------------------
+    {EncBytes1, EncLen1} = encode_restricted_string(Cindex1, [<<128>>]),
 
-%%-------------------------------------------------
-%% attribute lock(2) with type OCTET STRING
-%%-------------------------------------------------
-   {EncBytes2,EncLen2} = encode_restricted_string(Cindex2, [<<129>>]),
+    %%-------------------------------------------------
+    %% attribute lock(2) with type OCTET STRING
+    %%-------------------------------------------------
+    {EncBytes2, EncLen2} = encode_restricted_string(Cindex2, [<<129>>]),
 
-%%-------------------------------------------------
-%% attribute target(3)   External BBSVXProtocol:NodeEntry
-%%-------------------------------------------------
-   {EncBytes3,EncLen3} = 'enc_NodeEntry'(Cindex3, [<<162>>]),
+    %%-------------------------------------------------
+    %% attribute target(3)   External BBSVXProtocol:NodeEntry
+    %%-------------------------------------------------
+    {EncBytes3, EncLen3} = 'enc_NodeEntry'(Cindex3, [<<162>>]),
 
-%%-------------------------------------------------
-%% attribute newLock(4) with type OCTET STRING OPTIONAL
-%%-------------------------------------------------
-   {EncBytes4,EncLen4} =  case Cindex4 of
-         asn1_NOVALUE -> {<<>>,0};
-         _ ->
-            encode_restricted_string(Cindex4, [<<131>>])
-       end,
+    %%-------------------------------------------------
+    %% attribute newLock(4) with type OCTET STRING OPTIONAL
+    %%-------------------------------------------------
+    {EncBytes4, EncLen4} =
+        case Cindex4 of
+            asn1_NOVALUE -> {<<>>, 0};
+            _ -> encode_restricted_string(Cindex4, [<<131>>])
+        end,
 
-   BytesSoFar = [EncBytes1, EncBytes2, EncBytes3, EncBytes4],
-LenSoFar = EncLen1 + EncLen2 + EncLen3 + EncLen4,
-encode_tags(TagIn, BytesSoFar, LenSoFar).
-
+    BytesSoFar = [EncBytes1, EncBytes2, EncBytes3, EncBytes4],
+    LenSoFar = EncLen1 + EncLen2 + EncLen3 + EncLen4,
+    encode_tags(TagIn, BytesSoFar, LenSoFar).
 
 dec_ExchangeEntry(Tlv) ->
-   dec_ExchangeEntry(Tlv, [16]).
+    dec_ExchangeEntry(Tlv, [16]).
 
 dec_ExchangeEntry(Tlv, TagIn) ->
-   %%-------------------------------------------------
-   %% decode tag and length 
-   %%-------------------------------------------------
-Tlv1 = match_tags(Tlv, TagIn),
+    %%-------------------------------------------------
+    %% decode tag and length
+    %%-------------------------------------------------
+    Tlv1 = match_tags(Tlv, TagIn),
 
-%%-------------------------------------------------
-%% attribute ulid(1) with type OCTET STRING
-%%-------------------------------------------------
-[V1|Tlv2] = Tlv1, 
-Term1 = begin
-Val1 = decode_octet_string(V1, [131072]),
-C1 = byte_size(Val1),
-if C1 =:= 26 ->
-Val1;
-true ->
-exit({error,{asn1,bad_range}})
-end
-end,
+    %%-------------------------------------------------
+    %% attribute ulid(1) with type OCTET STRING
+    %%-------------------------------------------------
+    [V1 | Tlv2] = Tlv1,
+    Term1 = begin
+        Val1 = decode_octet_string(V1, [131072]),
+        C1 = byte_size(Val1),
+        if
+            C1 =:= 26 ->
+                Val1;
+            true ->
+                exit({error, {asn1, bad_range}})
+        end
+    end,
 
-%%-------------------------------------------------
-%% attribute lock(2) with type OCTET STRING
-%%-------------------------------------------------
-[V2|Tlv3] = Tlv2, 
-Term2 = begin
-Val2 = decode_octet_string(V2, [131073]),
-C2 = byte_size(Val2),
-if C2 =:= 24 ->
-Val2;
-true ->
-exit({error,{asn1,bad_range}})
-end
-end,
+    %%-------------------------------------------------
+    %% attribute lock(2) with type OCTET STRING
+    %%-------------------------------------------------
+    [V2 | Tlv3] = Tlv2,
+    Term2 = begin
+        Val2 = decode_octet_string(V2, [131073]),
+        C2 = byte_size(Val2),
+        if
+            C2 =:= 24 ->
+                Val2;
+            true ->
+                exit({error, {asn1, bad_range}})
+        end
+    end,
 
-%%-------------------------------------------------
-%% attribute target(3)   External BBSVXProtocol:NodeEntry
-%%-------------------------------------------------
-[V3|Tlv4] = Tlv3, 
-Term3 = 'dec_NodeEntry'(V3, [131074]),
+    %%-------------------------------------------------
+    %% attribute target(3)   External BBSVXProtocol:NodeEntry
+    %%-------------------------------------------------
+    [V3 | Tlv4] = Tlv3,
+    Term3 = 'dec_NodeEntry'(V3, [131074]),
 
-%%-------------------------------------------------
-%% attribute newLock(4) with type OCTET STRING OPTIONAL
-%%-------------------------------------------------
-{Term4,Tlv5} = case Tlv4 of
-[{131075,V4}|TempTlv5] ->
-    {begin
-Val3 = decode_octet_string(V4, []),
-C3 = byte_size(Val3),
-if C3 =:= 24 ->
-Val3;
-true ->
-exit({error,{asn1,bad_range}})
-end
-end, TempTlv5};
-    _ ->
-        { asn1_NOVALUE, Tlv4}
-end,
+    %%-------------------------------------------------
+    %% attribute newLock(4) with type OCTET STRING OPTIONAL
+    %%-------------------------------------------------
+    {Term4, Tlv5} =
+        case Tlv4 of
+            [{131075, V4} | TempTlv5] ->
+                {
+                    begin
+                        Val3 = decode_octet_string(V4, []),
+                        C3 = byte_size(Val3),
+                        if
+                            C3 =:= 24 ->
+                                Val3;
+                            true ->
+                                exit({error, {asn1, bad_range}})
+                        end
+                    end,
+                    TempTlv5
+                };
+            _ ->
+                {asn1_NOVALUE, Tlv4}
+        end,
 
-case Tlv5 of
-[] -> true;_ -> exit({error,{asn1, {unexpected,Tlv5}}}) % extra fields not allowed
-end,
-Res1 = {'ExchangeEntry',Term1,Term2,Term3,Term4},
-Res1.
-
+    case Tlv5 of
+        % extra fields not allowed
+        [] -> true;
+        _ -> exit({error, {asn1, {unexpected, Tlv5}}})
+    end,
+    Res1 = {'ExchangeEntry', Term1, Term2, Term3, Term4},
+    Res1.
 
 %%================================
 %%  ConnectionResult
@@ -682,32 +688,29 @@ enc_ConnectionResult(Val) ->
     enc_ConnectionResult(Val, [<<10>>]).
 
 enc_ConnectionResult(Val, TagIn) ->
-case Val of
-ok -> encode_tags(TagIn, [0], 1);
-'connection-to-self' -> encode_tags(TagIn, [1], 1);
-'namespace-mismatch' -> encode_tags(TagIn, [2], 1);
-'protocol-error' -> encode_tags(TagIn, [3], 1);
-timeout -> encode_tags(TagIn, [4], 1);
-'resource-exhausted' -> encode_tags(TagIn, [5], 1);
-Enumval1 -> exit({error,{asn1, {enumerated_not_in_range,Enumval1}}})
-end.
-
+    case Val of
+        ok -> encode_tags(TagIn, [0], 1);
+        'connection-to-self' -> encode_tags(TagIn, [1], 1);
+        'namespace-mismatch' -> encode_tags(TagIn, [2], 1);
+        'protocol-error' -> encode_tags(TagIn, [3], 1);
+        timeout -> encode_tags(TagIn, [4], 1);
+        'resource-exhausted' -> encode_tags(TagIn, [5], 1);
+        Enumval1 -> exit({error, {asn1, {enumerated_not_in_range, Enumval1}}})
+    end.
 
 dec_ConnectionResult(Tlv) ->
-   dec_ConnectionResult(Tlv, [10]).
+    dec_ConnectionResult(Tlv, [10]).
 
 dec_ConnectionResult(Tlv, TagIn) ->
-case decode_integer(Tlv, TagIn) of
-0 -> ok;
-1 -> 'connection-to-self';
-2 -> 'namespace-mismatch';
-3 -> 'protocol-error';
-4 -> timeout;
-5 -> 'resource-exhausted';
-Default1 -> exit({error,{asn1,{illegal_enumerated,Default1}}})
-end.
-
-
+    case decode_integer(Tlv, TagIn) of
+        0 -> ok;
+        1 -> 'connection-to-self';
+        2 -> 'namespace-mismatch';
+        3 -> 'protocol-error';
+        4 -> timeout;
+        5 -> 'resource-exhausted';
+        Default1 -> exit({error, {asn1, {illegal_enumerated, Default1}}})
+    end.
 
 %%================================
 %%  RegistrationResult
@@ -716,30 +719,27 @@ enc_RegistrationResult(Val) ->
     enc_RegistrationResult(Val, [<<10>>]).
 
 enc_RegistrationResult(Val, TagIn) ->
-case Val of
-ok -> encode_tags(TagIn, [0], 1);
-'namespace-full' -> encode_tags(TagIn, [1], 1);
-'duplicate-node' -> encode_tags(TagIn, [2], 1);
-'invalid-lock' -> encode_tags(TagIn, [3], 1);
-'leader-unavailable' -> encode_tags(TagIn, [4], 1);
-Enumval1 -> exit({error,{asn1, {enumerated_not_in_range,Enumval1}}})
-end.
-
+    case Val of
+        ok -> encode_tags(TagIn, [0], 1);
+        'namespace-full' -> encode_tags(TagIn, [1], 1);
+        'duplicate-node' -> encode_tags(TagIn, [2], 1);
+        'invalid-lock' -> encode_tags(TagIn, [3], 1);
+        'leader-unavailable' -> encode_tags(TagIn, [4], 1);
+        Enumval1 -> exit({error, {asn1, {enumerated_not_in_range, Enumval1}}})
+    end.
 
 dec_RegistrationResult(Tlv) ->
-   dec_RegistrationResult(Tlv, [10]).
+    dec_RegistrationResult(Tlv, [10]).
 
 dec_RegistrationResult(Tlv, TagIn) ->
-case decode_integer(Tlv, TagIn) of
-0 -> ok;
-1 -> 'namespace-full';
-2 -> 'duplicate-node';
-3 -> 'invalid-lock';
-4 -> 'leader-unavailable';
-Default1 -> exit({error,{asn1,{illegal_enumerated,Default1}}})
-end.
-
-
+    case decode_integer(Tlv, TagIn) of
+        0 -> ok;
+        1 -> 'namespace-full';
+        2 -> 'duplicate-node';
+        3 -> 'invalid-lock';
+        4 -> 'leader-unavailable';
+        Default1 -> exit({error, {asn1, {illegal_enumerated, Default1}}})
+    end.
 
 %%================================
 %%  DisconnectReason
@@ -748,32 +748,29 @@ enc_DisconnectReason(Val) ->
     enc_DisconnectReason(Val, [<<10>>]).
 
 enc_DisconnectReason(Val, TagIn) ->
-case Val of
-normal -> encode_tags(TagIn, [0], 1);
-'protocol-error' -> encode_tags(TagIn, [1], 1);
-timeout -> encode_tags(TagIn, [2], 1);
-'resource-limit' -> encode_tags(TagIn, [3], 1);
-'network-error' -> encode_tags(TagIn, [4], 1);
-shutdown -> encode_tags(TagIn, [5], 1);
-Enumval1 -> exit({error,{asn1, {enumerated_not_in_range,Enumval1}}})
-end.
-
+    case Val of
+        normal -> encode_tags(TagIn, [0], 1);
+        'protocol-error' -> encode_tags(TagIn, [1], 1);
+        timeout -> encode_tags(TagIn, [2], 1);
+        'resource-limit' -> encode_tags(TagIn, [3], 1);
+        'network-error' -> encode_tags(TagIn, [4], 1);
+        shutdown -> encode_tags(TagIn, [5], 1);
+        Enumval1 -> exit({error, {asn1, {enumerated_not_in_range, Enumval1}}})
+    end.
 
 dec_DisconnectReason(Tlv) ->
-   dec_DisconnectReason(Tlv, [10]).
+    dec_DisconnectReason(Tlv, [10]).
 
 dec_DisconnectReason(Tlv, TagIn) ->
-case decode_integer(Tlv, TagIn) of
-0 -> normal;
-1 -> 'protocol-error';
-2 -> timeout;
-3 -> 'resource-limit';
-4 -> 'network-error';
-5 -> shutdown;
-Default1 -> exit({error,{asn1,{illegal_enumerated,Default1}}})
-end.
-
-
+    case decode_integer(Tlv, TagIn) of
+        0 -> normal;
+        1 -> 'protocol-error';
+        2 -> timeout;
+        3 -> 'resource-limit';
+        4 -> 'network-error';
+        5 -> shutdown;
+        Default1 -> exit({error, {asn1, {illegal_enumerated, Default1}}})
+    end.
 
 %%================================
 %%  HeaderConnect
@@ -782,107 +779,115 @@ enc_HeaderConnect(Val) ->
     enc_HeaderConnect(Val, [<<48>>]).
 
 enc_HeaderConnect(Val, TagIn) ->
-{_,Cindex1,Cindex2,Cindex3,Cindex4} = Val,
+    {_, Cindex1, Cindex2, Cindex3, Cindex4} = Val,
 
-%%-------------------------------------------------
-%% attribute version(1) with type UTF8String DEFAULT = [48,46,49,46,48]
-%%-------------------------------------------------
-   {EncBytes1,EncLen1} =  case Cindex1 of
-         asn1_DEFAULT ->
-            {<<>>,0};
-         _ when Cindex1 =:= [48,46,49,46,48] ->
-            {<<>>,0};
-         _ ->
-            encode_UTF8_string(Cindex1, [<<128>>])
-       end,
+    %%-------------------------------------------------
+    %% attribute version(1) with type UTF8String DEFAULT = [48,46,49,46,48]
+    %%-------------------------------------------------
+    {EncBytes1, EncLen1} =
+        case Cindex1 of
+            asn1_DEFAULT ->
+                {<<>>, 0};
+            _ when Cindex1 =:= [48, 46, 49, 46, 48] ->
+                {<<>>, 0};
+            _ ->
+                encode_UTF8_string(Cindex1, [<<128>>])
+        end,
 
-%%-------------------------------------------------
-%% attribute connectionType(2) with type UTF8String OPTIONAL
-%%-------------------------------------------------
-   {EncBytes2,EncLen2} =  case Cindex2 of
-         asn1_NOVALUE -> {<<>>,0};
-         _ ->
-            encode_UTF8_string(Cindex2, [<<129>>])
-       end,
+    %%-------------------------------------------------
+    %% attribute connectionType(2) with type UTF8String OPTIONAL
+    %%-------------------------------------------------
+    {EncBytes2, EncLen2} =
+        case Cindex2 of
+            asn1_NOVALUE -> {<<>>, 0};
+            _ -> encode_UTF8_string(Cindex2, [<<129>>])
+        end,
 
-%%-------------------------------------------------
-%% attribute nodeId(3) with type OCTET STRING OPTIONAL
-%%-------------------------------------------------
-   {EncBytes3,EncLen3} =  case Cindex3 of
-         asn1_NOVALUE -> {<<>>,0};
-         _ ->
-            encode_restricted_string(Cindex3, [<<130>>])
-       end,
+    %%-------------------------------------------------
+    %% attribute nodeId(3) with type OCTET STRING OPTIONAL
+    %%-------------------------------------------------
+    {EncBytes3, EncLen3} =
+        case Cindex3 of
+            asn1_NOVALUE -> {<<>>, 0};
+            _ -> encode_restricted_string(Cindex3, [<<130>>])
+        end,
 
-%%-------------------------------------------------
-%% attribute namespace(4) with type UTF8String
-%%-------------------------------------------------
-   {EncBytes4,EncLen4} = encode_UTF8_string(Cindex4, [<<131>>]),
+    %%-------------------------------------------------
+    %% attribute namespace(4) with type UTF8String
+    %%-------------------------------------------------
+    {EncBytes4, EncLen4} = encode_UTF8_string(Cindex4, [<<131>>]),
 
-   BytesSoFar = [EncBytes1, EncBytes2, EncBytes3, EncBytes4],
-LenSoFar = EncLen1 + EncLen2 + EncLen3 + EncLen4,
-encode_tags(TagIn, BytesSoFar, LenSoFar).
-
+    BytesSoFar = [EncBytes1, EncBytes2, EncBytes3, EncBytes4],
+    LenSoFar = EncLen1 + EncLen2 + EncLen3 + EncLen4,
+    encode_tags(TagIn, BytesSoFar, LenSoFar).
 
 dec_HeaderConnect(Tlv) ->
-   dec_HeaderConnect(Tlv, [16]).
+    dec_HeaderConnect(Tlv, [16]).
 
 dec_HeaderConnect(Tlv, TagIn) ->
-   %%-------------------------------------------------
-   %% decode tag and length 
-   %%-------------------------------------------------
-Tlv1 = match_tags(Tlv, TagIn),
+    %%-------------------------------------------------
+    %% decode tag and length
+    %%-------------------------------------------------
+    Tlv1 = match_tags(Tlv, TagIn),
 
-%%-------------------------------------------------
-%% attribute version(1) with type UTF8String DEFAULT = [48,46,49,46,48]
-%%-------------------------------------------------
-{Term1,Tlv2} = case Tlv1 of
-[{131072,V1}|TempTlv2] ->
-    {decode_UTF8_string(V1, []), TempTlv2};
-    _ ->
-        {[48,46,49,46,48],Tlv1}
-end,
+    %%-------------------------------------------------
+    %% attribute version(1) with type UTF8String DEFAULT = [48,46,49,46,48]
+    %%-------------------------------------------------
+    {Term1, Tlv2} =
+        case Tlv1 of
+            [{131072, V1} | TempTlv2] ->
+                {decode_UTF8_string(V1, []), TempTlv2};
+            _ ->
+                {[48, 46, 49, 46, 48], Tlv1}
+        end,
 
-%%-------------------------------------------------
-%% attribute connectionType(2) with type UTF8String OPTIONAL
-%%-------------------------------------------------
-{Term2,Tlv3} = case Tlv2 of
-[{131073,V2}|TempTlv3] ->
-    {decode_UTF8_string(V2, []), TempTlv3};
-    _ ->
-        { asn1_NOVALUE, Tlv2}
-end,
+    %%-------------------------------------------------
+    %% attribute connectionType(2) with type UTF8String OPTIONAL
+    %%-------------------------------------------------
+    {Term2, Tlv3} =
+        case Tlv2 of
+            [{131073, V2} | TempTlv3] ->
+                {decode_UTF8_string(V2, []), TempTlv3};
+            _ ->
+                {asn1_NOVALUE, Tlv2}
+        end,
 
-%%-------------------------------------------------
-%% attribute nodeId(3) with type OCTET STRING OPTIONAL
-%%-------------------------------------------------
-{Term3,Tlv4} = case Tlv3 of
-[{131074,V3}|TempTlv4] ->
-    {begin
-Val1 = decode_octet_string(V3, []),
-C1 = byte_size(Val1),
-if 32 =< C1, C1 =< 64 ->
-Val1;
-true ->
-exit({error,{asn1,bad_range}})
-end
-end, TempTlv4};
-    _ ->
-        { asn1_NOVALUE, Tlv3}
-end,
+    %%-------------------------------------------------
+    %% attribute nodeId(3) with type OCTET STRING OPTIONAL
+    %%-------------------------------------------------
+    {Term3, Tlv4} =
+        case Tlv3 of
+            [{131074, V3} | TempTlv4] ->
+                {
+                    begin
+                        Val1 = decode_octet_string(V3, []),
+                        C1 = byte_size(Val1),
+                        if
+                            32 =< C1, C1 =< 64 ->
+                                Val1;
+                            true ->
+                                exit({error, {asn1, bad_range}})
+                        end
+                    end,
+                    TempTlv4
+                };
+            _ ->
+                {asn1_NOVALUE, Tlv3}
+        end,
 
-%%-------------------------------------------------
-%% attribute namespace(4) with type UTF8String
-%%-------------------------------------------------
-[V4|Tlv5] = Tlv4, 
-Term4 = decode_UTF8_string(V4, [131075]),
+    %%-------------------------------------------------
+    %% attribute namespace(4) with type UTF8String
+    %%-------------------------------------------------
+    [V4 | Tlv5] = Tlv4,
+    Term4 = decode_UTF8_string(V4, [131075]),
 
-case Tlv5 of
-[] -> true;_ -> exit({error,{asn1, {unexpected,Tlv5}}}) % extra fields not allowed
-end,
-Res1 = {'HeaderConnect',Term1,Term2,Term3,Term4},
-Res1.
-
+    case Tlv5 of
+        % extra fields not allowed
+        [] -> true;
+        _ -> exit({error, {asn1, {unexpected, Tlv5}}})
+    end,
+    Res1 = {'HeaderConnect', Term1, Term2, Term3, Term4},
+    Res1.
 
 %%================================
 %%  HeaderConnectAck
@@ -891,74 +896,77 @@ enc_HeaderConnectAck(Val) ->
     enc_HeaderConnectAck(Val, [<<48>>]).
 
 enc_HeaderConnectAck(Val, TagIn) ->
-{_,Cindex1,Cindex2} = Val,
+    {_, Cindex1, Cindex2} = Val,
 
-%%-------------------------------------------------
-%% attribute result(1) with type ENUMERATED
-%%-------------------------------------------------
-   {EncBytes1,EncLen1} = case Cindex1 of
-ok -> encode_tags([<<128>>], [0], 1);
-'connection-to-self' -> encode_tags([<<128>>], [1], 1);
-'namespace-mismatch' -> encode_tags([<<128>>], [2], 1);
-'protocol-error' -> encode_tags([<<128>>], [3], 1);
-timeout -> encode_tags([<<128>>], [4], 1);
-'resource-exhausted' -> encode_tags([<<128>>], [5], 1);
-Enumval1 -> exit({error,{asn1, {enumerated_not_in_range,Enumval1}}})
-end,
+    %%-------------------------------------------------
+    %% attribute result(1) with type ENUMERATED
+    %%-------------------------------------------------
+    {EncBytes1, EncLen1} =
+        case Cindex1 of
+            ok -> encode_tags([<<128>>], [0], 1);
+            'connection-to-self' -> encode_tags([<<128>>], [1], 1);
+            'namespace-mismatch' -> encode_tags([<<128>>], [2], 1);
+            'protocol-error' -> encode_tags([<<128>>], [3], 1);
+            timeout -> encode_tags([<<128>>], [4], 1);
+            'resource-exhausted' -> encode_tags([<<128>>], [5], 1);
+            Enumval1 -> exit({error, {asn1, {enumerated_not_in_range, Enumval1}}})
+        end,
 
-%%-------------------------------------------------
-%% attribute nodeId(2) with type OCTET STRING
-%%-------------------------------------------------
-   {EncBytes2,EncLen2} = encode_restricted_string(Cindex2, [<<129>>]),
+    %%-------------------------------------------------
+    %% attribute nodeId(2) with type OCTET STRING
+    %%-------------------------------------------------
+    {EncBytes2, EncLen2} = encode_restricted_string(Cindex2, [<<129>>]),
 
-   BytesSoFar = [EncBytes1, EncBytes2],
-LenSoFar = EncLen1 + EncLen2,
-encode_tags(TagIn, BytesSoFar, LenSoFar).
-
+    BytesSoFar = [EncBytes1, EncBytes2],
+    LenSoFar = EncLen1 + EncLen2,
+    encode_tags(TagIn, BytesSoFar, LenSoFar).
 
 dec_HeaderConnectAck(Tlv) ->
-   dec_HeaderConnectAck(Tlv, [16]).
+    dec_HeaderConnectAck(Tlv, [16]).
 
 dec_HeaderConnectAck(Tlv, TagIn) ->
-   %%-------------------------------------------------
-   %% decode tag and length 
-   %%-------------------------------------------------
-Tlv1 = match_tags(Tlv, TagIn),
+    %%-------------------------------------------------
+    %% decode tag and length
+    %%-------------------------------------------------
+    Tlv1 = match_tags(Tlv, TagIn),
 
-%%-------------------------------------------------
-%% attribute result(1) with type ENUMERATED
-%%-------------------------------------------------
-[V1|Tlv2] = Tlv1, 
-Term1 = case decode_integer(V1, [131072]) of
-0 -> ok;
-1 -> 'connection-to-self';
-2 -> 'namespace-mismatch';
-3 -> 'protocol-error';
-4 -> timeout;
-5 -> 'resource-exhausted';
-Default1 -> exit({error,{asn1,{illegal_enumerated,Default1}}})
-end,
+    %%-------------------------------------------------
+    %% attribute result(1) with type ENUMERATED
+    %%-------------------------------------------------
+    [V1 | Tlv2] = Tlv1,
+    Term1 =
+        case decode_integer(V1, [131072]) of
+            0 -> ok;
+            1 -> 'connection-to-self';
+            2 -> 'namespace-mismatch';
+            3 -> 'protocol-error';
+            4 -> timeout;
+            5 -> 'resource-exhausted';
+            Default1 -> exit({error, {asn1, {illegal_enumerated, Default1}}})
+        end,
 
-%%-------------------------------------------------
-%% attribute nodeId(2) with type OCTET STRING
-%%-------------------------------------------------
-[V2|Tlv3] = Tlv2, 
-Term2 = begin
-Val1 = decode_octet_string(V2, [131073]),
-C1 = byte_size(Val1),
-if 32 =< C1, C1 =< 64 ->
-Val1;
-true ->
-exit({error,{asn1,bad_range}})
-end
-end,
+    %%-------------------------------------------------
+    %% attribute nodeId(2) with type OCTET STRING
+    %%-------------------------------------------------
+    [V2 | Tlv3] = Tlv2,
+    Term2 = begin
+        Val1 = decode_octet_string(V2, [131073]),
+        C1 = byte_size(Val1),
+        if
+            32 =< C1, C1 =< 64 ->
+                Val1;
+            true ->
+                exit({error, {asn1, bad_range}})
+        end
+    end,
 
-case Tlv3 of
-[] -> true;_ -> exit({error,{asn1, {unexpected,Tlv3}}}) % extra fields not allowed
-end,
-Res1 = {'HeaderConnectAck',Term1,Term2},
-Res1.
-
+    case Tlv3 of
+        % extra fields not allowed
+        [] -> true;
+        _ -> exit({error, {asn1, {unexpected, Tlv3}}})
+    end,
+    Res1 = {'HeaderConnectAck', Term1, Term2},
+    Res1.
 
 %%================================
 %%  HeaderRegister
@@ -967,77 +975,79 @@ enc_HeaderRegister(Val) ->
     enc_HeaderRegister(Val, [<<48>>]).
 
 enc_HeaderRegister(Val, TagIn) ->
-{_,Cindex1,Cindex2,Cindex3} = Val,
+    {_, Cindex1, Cindex2, Cindex3} = Val,
 
-%%-------------------------------------------------
-%% attribute namespace(1) with type UTF8String
-%%-------------------------------------------------
-   {EncBytes1,EncLen1} = encode_UTF8_string(Cindex1, [<<128>>]),
+    %%-------------------------------------------------
+    %% attribute namespace(1) with type UTF8String
+    %%-------------------------------------------------
+    {EncBytes1, EncLen1} = encode_UTF8_string(Cindex1, [<<128>>]),
 
-%%-------------------------------------------------
-%% attribute ulid(2) with type OCTET STRING
-%%-------------------------------------------------
-   {EncBytes2,EncLen2} = encode_restricted_string(Cindex2, [<<129>>]),
+    %%-------------------------------------------------
+    %% attribute ulid(2) with type OCTET STRING
+    %%-------------------------------------------------
+    {EncBytes2, EncLen2} = encode_restricted_string(Cindex2, [<<129>>]),
 
-%%-------------------------------------------------
-%% attribute lock(3) with type OCTET STRING
-%%-------------------------------------------------
-   {EncBytes3,EncLen3} = encode_restricted_string(Cindex3, [<<130>>]),
+    %%-------------------------------------------------
+    %% attribute lock(3) with type OCTET STRING
+    %%-------------------------------------------------
+    {EncBytes3, EncLen3} = encode_restricted_string(Cindex3, [<<130>>]),
 
-   BytesSoFar = [EncBytes1, EncBytes2, EncBytes3],
-LenSoFar = EncLen1 + EncLen2 + EncLen3,
-encode_tags(TagIn, BytesSoFar, LenSoFar).
-
+    BytesSoFar = [EncBytes1, EncBytes2, EncBytes3],
+    LenSoFar = EncLen1 + EncLen2 + EncLen3,
+    encode_tags(TagIn, BytesSoFar, LenSoFar).
 
 dec_HeaderRegister(Tlv) ->
-   dec_HeaderRegister(Tlv, [16]).
+    dec_HeaderRegister(Tlv, [16]).
 
 dec_HeaderRegister(Tlv, TagIn) ->
-   %%-------------------------------------------------
-   %% decode tag and length 
-   %%-------------------------------------------------
-Tlv1 = match_tags(Tlv, TagIn),
+    %%-------------------------------------------------
+    %% decode tag and length
+    %%-------------------------------------------------
+    Tlv1 = match_tags(Tlv, TagIn),
 
-%%-------------------------------------------------
-%% attribute namespace(1) with type UTF8String
-%%-------------------------------------------------
-[V1|Tlv2] = Tlv1, 
-Term1 = decode_UTF8_string(V1, [131072]),
+    %%-------------------------------------------------
+    %% attribute namespace(1) with type UTF8String
+    %%-------------------------------------------------
+    [V1 | Tlv2] = Tlv1,
+    Term1 = decode_UTF8_string(V1, [131072]),
 
-%%-------------------------------------------------
-%% attribute ulid(2) with type OCTET STRING
-%%-------------------------------------------------
-[V2|Tlv3] = Tlv2, 
-Term2 = begin
-Val1 = decode_octet_string(V2, [131073]),
-C1 = byte_size(Val1),
-if C1 =:= 26 ->
-Val1;
-true ->
-exit({error,{asn1,bad_range}})
-end
-end,
+    %%-------------------------------------------------
+    %% attribute ulid(2) with type OCTET STRING
+    %%-------------------------------------------------
+    [V2 | Tlv3] = Tlv2,
+    Term2 = begin
+        Val1 = decode_octet_string(V2, [131073]),
+        C1 = byte_size(Val1),
+        if
+            C1 =:= 26 ->
+                Val1;
+            true ->
+                exit({error, {asn1, bad_range}})
+        end
+    end,
 
-%%-------------------------------------------------
-%% attribute lock(3) with type OCTET STRING
-%%-------------------------------------------------
-[V3|Tlv4] = Tlv3, 
-Term3 = begin
-Val2 = decode_octet_string(V3, [131074]),
-C2 = byte_size(Val2),
-if C2 =:= 24 ->
-Val2;
-true ->
-exit({error,{asn1,bad_range}})
-end
-end,
+    %%-------------------------------------------------
+    %% attribute lock(3) with type OCTET STRING
+    %%-------------------------------------------------
+    [V3 | Tlv4] = Tlv3,
+    Term3 = begin
+        Val2 = decode_octet_string(V3, [131074]),
+        C2 = byte_size(Val2),
+        if
+            C2 =:= 24 ->
+                Val2;
+            true ->
+                exit({error, {asn1, bad_range}})
+        end
+    end,
 
-case Tlv4 of
-[] -> true;_ -> exit({error,{asn1, {unexpected,Tlv4}}}) % extra fields not allowed
-end,
-Res1 = {'HeaderRegister',Term1,Term2,Term3},
-Res1.
-
+    case Tlv4 of
+        % extra fields not allowed
+        [] -> true;
+        _ -> exit({error, {asn1, {unexpected, Tlv4}}})
+    end,
+    Res1 = {'HeaderRegister', Term1, Term2, Term3},
+    Res1.
 
 %%================================
 %%  HeaderRegisterAck
@@ -1046,99 +1056,107 @@ enc_HeaderRegisterAck(Val) ->
     enc_HeaderRegisterAck(Val, [<<48>>]).
 
 enc_HeaderRegisterAck(Val, TagIn) ->
-{_,Cindex1,Cindex2,Cindex3} = Val,
+    {_, Cindex1, Cindex2, Cindex3} = Val,
 
-%%-------------------------------------------------
-%% attribute result(1) with type ENUMERATED
-%%-------------------------------------------------
-   {EncBytes1,EncLen1} = case Cindex1 of
-ok -> encode_tags([<<128>>], [0], 1);
-'namespace-full' -> encode_tags([<<128>>], [1], 1);
-'duplicate-node' -> encode_tags([<<128>>], [2], 1);
-'invalid-lock' -> encode_tags([<<128>>], [3], 1);
-'leader-unavailable' -> encode_tags([<<128>>], [4], 1);
-Enumval1 -> exit({error,{asn1, {enumerated_not_in_range,Enumval1}}})
-end,
+    %%-------------------------------------------------
+    %% attribute result(1) with type ENUMERATED
+    %%-------------------------------------------------
+    {EncBytes1, EncLen1} =
+        case Cindex1 of
+            ok -> encode_tags([<<128>>], [0], 1);
+            'namespace-full' -> encode_tags([<<128>>], [1], 1);
+            'duplicate-node' -> encode_tags([<<128>>], [2], 1);
+            'invalid-lock' -> encode_tags([<<128>>], [3], 1);
+            'leader-unavailable' -> encode_tags([<<128>>], [4], 1);
+            Enumval1 -> exit({error, {asn1, {enumerated_not_in_range, Enumval1}}})
+        end,
 
-%%-------------------------------------------------
-%% attribute leader(2) with type OCTET STRING OPTIONAL
-%%-------------------------------------------------
-   {EncBytes2,EncLen2} =  case Cindex2 of
-         asn1_NOVALUE -> {<<>>,0};
-         _ ->
-            encode_restricted_string(Cindex2, [<<129>>])
-       end,
+    %%-------------------------------------------------
+    %% attribute leader(2) with type OCTET STRING OPTIONAL
+    %%-------------------------------------------------
+    {EncBytes2, EncLen2} =
+        case Cindex2 of
+            asn1_NOVALUE -> {<<>>, 0};
+            _ -> encode_restricted_string(Cindex2, [<<129>>])
+        end,
 
-%%-------------------------------------------------
-%% attribute currentIndex(3) with type INTEGER OPTIONAL
-%%-------------------------------------------------
-   {EncBytes3,EncLen3} =  case Cindex3 of
-         asn1_NOVALUE -> {<<>>,0};
-         _ ->
-            encode_integer(Cindex3, [<<130>>])
-       end,
+    %%-------------------------------------------------
+    %% attribute currentIndex(3) with type INTEGER OPTIONAL
+    %%-------------------------------------------------
+    {EncBytes3, EncLen3} =
+        case Cindex3 of
+            asn1_NOVALUE -> {<<>>, 0};
+            _ -> encode_integer(Cindex3, [<<130>>])
+        end,
 
-   BytesSoFar = [EncBytes1, EncBytes2, EncBytes3],
-LenSoFar = EncLen1 + EncLen2 + EncLen3,
-encode_tags(TagIn, BytesSoFar, LenSoFar).
-
+    BytesSoFar = [EncBytes1, EncBytes2, EncBytes3],
+    LenSoFar = EncLen1 + EncLen2 + EncLen3,
+    encode_tags(TagIn, BytesSoFar, LenSoFar).
 
 dec_HeaderRegisterAck(Tlv) ->
-   dec_HeaderRegisterAck(Tlv, [16]).
+    dec_HeaderRegisterAck(Tlv, [16]).
 
 dec_HeaderRegisterAck(Tlv, TagIn) ->
-   %%-------------------------------------------------
-   %% decode tag and length 
-   %%-------------------------------------------------
-Tlv1 = match_tags(Tlv, TagIn),
+    %%-------------------------------------------------
+    %% decode tag and length
+    %%-------------------------------------------------
+    Tlv1 = match_tags(Tlv, TagIn),
 
-%%-------------------------------------------------
-%% attribute result(1) with type ENUMERATED
-%%-------------------------------------------------
-[V1|Tlv2] = Tlv1, 
-Term1 = case decode_integer(V1, [131072]) of
-0 -> ok;
-1 -> 'namespace-full';
-2 -> 'duplicate-node';
-3 -> 'invalid-lock';
-4 -> 'leader-unavailable';
-Default1 -> exit({error,{asn1,{illegal_enumerated,Default1}}})
-end,
+    %%-------------------------------------------------
+    %% attribute result(1) with type ENUMERATED
+    %%-------------------------------------------------
+    [V1 | Tlv2] = Tlv1,
+    Term1 =
+        case decode_integer(V1, [131072]) of
+            0 -> ok;
+            1 -> 'namespace-full';
+            2 -> 'duplicate-node';
+            3 -> 'invalid-lock';
+            4 -> 'leader-unavailable';
+            Default1 -> exit({error, {asn1, {illegal_enumerated, Default1}}})
+        end,
 
-%%-------------------------------------------------
-%% attribute leader(2) with type OCTET STRING OPTIONAL
-%%-------------------------------------------------
-{Term2,Tlv3} = case Tlv2 of
-[{131073,V2}|TempTlv3] ->
-    {begin
-Val1 = decode_octet_string(V2, []),
-C1 = byte_size(Val1),
-if 32 =< C1, C1 =< 64 ->
-Val1;
-true ->
-exit({error,{asn1,bad_range}})
-end
-end, TempTlv3};
-    _ ->
-        { asn1_NOVALUE, Tlv2}
-end,
+    %%-------------------------------------------------
+    %% attribute leader(2) with type OCTET STRING OPTIONAL
+    %%-------------------------------------------------
+    {Term2, Tlv3} =
+        case Tlv2 of
+            [{131073, V2} | TempTlv3] ->
+                {
+                    begin
+                        Val1 = decode_octet_string(V2, []),
+                        C1 = byte_size(Val1),
+                        if
+                            32 =< C1, C1 =< 64 ->
+                                Val1;
+                            true ->
+                                exit({error, {asn1, bad_range}})
+                        end
+                    end,
+                    TempTlv3
+                };
+            _ ->
+                {asn1_NOVALUE, Tlv2}
+        end,
 
-%%-------------------------------------------------
-%% attribute currentIndex(3) with type INTEGER OPTIONAL
-%%-------------------------------------------------
-{Term3,Tlv4} = case Tlv3 of
-[{131074,V3}|TempTlv4] ->
-    {decode_integer(V3, []), TempTlv4};
-    _ ->
-        { asn1_NOVALUE, Tlv3}
-end,
+    %%-------------------------------------------------
+    %% attribute currentIndex(3) with type INTEGER OPTIONAL
+    %%-------------------------------------------------
+    {Term3, Tlv4} =
+        case Tlv3 of
+            [{131074, V3} | TempTlv4] ->
+                {decode_integer(V3, []), TempTlv4};
+            _ ->
+                {asn1_NOVALUE, Tlv3}
+        end,
 
-case Tlv4 of
-[] -> true;_ -> exit({error,{asn1, {unexpected,Tlv4}}}) % extra fields not allowed
-end,
-Res1 = {'HeaderRegisterAck',Term1,Term2,Term3},
-Res1.
-
+    case Tlv4 of
+        % extra fields not allowed
+        [] -> true;
+        _ -> exit({error, {asn1, {unexpected, Tlv4}}})
+    end,
+    Res1 = {'HeaderRegisterAck', Term1, Term2, Term3},
+    Res1.
 
 %%================================
 %%  HeaderJoin
@@ -1147,126 +1165,130 @@ enc_HeaderJoin(Val) ->
     enc_HeaderJoin(Val, [<<48>>]).
 
 enc_HeaderJoin(Val, TagIn) ->
-{_,Cindex1,Cindex2,Cindex3,Cindex4,Cindex5,Cindex6} = Val,
+    {_, Cindex1, Cindex2, Cindex3, Cindex4, Cindex5, Cindex6} = Val,
 
-%%-------------------------------------------------
-%% attribute namespace(1) with type UTF8String
-%%-------------------------------------------------
-   {EncBytes1,EncLen1} = encode_UTF8_string(Cindex1, [<<128>>]),
+    %%-------------------------------------------------
+    %% attribute namespace(1) with type UTF8String
+    %%-------------------------------------------------
+    {EncBytes1, EncLen1} = encode_UTF8_string(Cindex1, [<<128>>]),
 
-%%-------------------------------------------------
-%% attribute ulid(2) with type OCTET STRING
-%%-------------------------------------------------
-   {EncBytes2,EncLen2} = encode_restricted_string(Cindex2, [<<129>>]),
+    %%-------------------------------------------------
+    %% attribute ulid(2) with type OCTET STRING
+    %%-------------------------------------------------
+    {EncBytes2, EncLen2} = encode_restricted_string(Cindex2, [<<129>>]),
 
-%%-------------------------------------------------
-%% attribute joinType(3) with type UTF8String
-%%-------------------------------------------------
-   {EncBytes3,EncLen3} = encode_UTF8_string(Cindex3, [<<130>>]),
+    %%-------------------------------------------------
+    %% attribute joinType(3) with type UTF8String
+    %%-------------------------------------------------
+    {EncBytes3, EncLen3} = encode_UTF8_string(Cindex3, [<<130>>]),
 
-%%-------------------------------------------------
-%% attribute currentLock(4) with type OCTET STRING
-%%-------------------------------------------------
-   {EncBytes4,EncLen4} = encode_restricted_string(Cindex4, [<<131>>]),
+    %%-------------------------------------------------
+    %% attribute currentLock(4) with type OCTET STRING
+    %%-------------------------------------------------
+    {EncBytes4, EncLen4} = encode_restricted_string(Cindex4, [<<131>>]),
 
-%%-------------------------------------------------
-%% attribute newLock(5) with type OCTET STRING
-%%-------------------------------------------------
-   {EncBytes5,EncLen5} = encode_restricted_string(Cindex5, [<<132>>]),
+    %%-------------------------------------------------
+    %% attribute newLock(5) with type OCTET STRING
+    %%-------------------------------------------------
+    {EncBytes5, EncLen5} = encode_restricted_string(Cindex5, [<<132>>]),
 
-%%-------------------------------------------------
-%% attribute options(6) with type OCTET STRING OPTIONAL
-%%-------------------------------------------------
-   {EncBytes6,EncLen6} =  case Cindex6 of
-         asn1_NOVALUE -> {<<>>,0};
-         _ ->
-            encode_restricted_string(Cindex6, [<<133>>])
-       end,
+    %%-------------------------------------------------
+    %% attribute options(6) with type OCTET STRING OPTIONAL
+    %%-------------------------------------------------
+    {EncBytes6, EncLen6} =
+        case Cindex6 of
+            asn1_NOVALUE -> {<<>>, 0};
+            _ -> encode_restricted_string(Cindex6, [<<133>>])
+        end,
 
-   BytesSoFar = [EncBytes1, EncBytes2, EncBytes3, EncBytes4, EncBytes5, EncBytes6],
-LenSoFar = EncLen1 + EncLen2 + EncLen3 + EncLen4 + EncLen5 + EncLen6,
-encode_tags(TagIn, BytesSoFar, LenSoFar).
-
+    BytesSoFar = [EncBytes1, EncBytes2, EncBytes3, EncBytes4, EncBytes5, EncBytes6],
+    LenSoFar = EncLen1 + EncLen2 + EncLen3 + EncLen4 + EncLen5 + EncLen6,
+    encode_tags(TagIn, BytesSoFar, LenSoFar).
 
 dec_HeaderJoin(Tlv) ->
-   dec_HeaderJoin(Tlv, [16]).
+    dec_HeaderJoin(Tlv, [16]).
 
 dec_HeaderJoin(Tlv, TagIn) ->
-   %%-------------------------------------------------
-   %% decode tag and length 
-   %%-------------------------------------------------
-Tlv1 = match_tags(Tlv, TagIn),
+    %%-------------------------------------------------
+    %% decode tag and length
+    %%-------------------------------------------------
+    Tlv1 = match_tags(Tlv, TagIn),
 
-%%-------------------------------------------------
-%% attribute namespace(1) with type UTF8String
-%%-------------------------------------------------
-[V1|Tlv2] = Tlv1, 
-Term1 = decode_UTF8_string(V1, [131072]),
+    %%-------------------------------------------------
+    %% attribute namespace(1) with type UTF8String
+    %%-------------------------------------------------
+    [V1 | Tlv2] = Tlv1,
+    Term1 = decode_UTF8_string(V1, [131072]),
 
-%%-------------------------------------------------
-%% attribute ulid(2) with type OCTET STRING
-%%-------------------------------------------------
-[V2|Tlv3] = Tlv2, 
-Term2 = begin
-Val1 = decode_octet_string(V2, [131073]),
-C1 = byte_size(Val1),
-if C1 =:= 26 ->
-Val1;
-true ->
-exit({error,{asn1,bad_range}})
-end
-end,
+    %%-------------------------------------------------
+    %% attribute ulid(2) with type OCTET STRING
+    %%-------------------------------------------------
+    [V2 | Tlv3] = Tlv2,
+    Term2 = begin
+        Val1 = decode_octet_string(V2, [131073]),
+        C1 = byte_size(Val1),
+        if
+            C1 =:= 26 ->
+                Val1;
+            true ->
+                exit({error, {asn1, bad_range}})
+        end
+    end,
 
-%%-------------------------------------------------
-%% attribute joinType(3) with type UTF8String
-%%-------------------------------------------------
-[V3|Tlv4] = Tlv3, 
-Term3 = decode_UTF8_string(V3, [131074]),
+    %%-------------------------------------------------
+    %% attribute joinType(3) with type UTF8String
+    %%-------------------------------------------------
+    [V3 | Tlv4] = Tlv3,
+    Term3 = decode_UTF8_string(V3, [131074]),
 
-%%-------------------------------------------------
-%% attribute currentLock(4) with type OCTET STRING
-%%-------------------------------------------------
-[V4|Tlv5] = Tlv4, 
-Term4 = begin
-Val2 = decode_octet_string(V4, [131075]),
-C2 = byte_size(Val2),
-if C2 =:= 24 ->
-Val2;
-true ->
-exit({error,{asn1,bad_range}})
-end
-end,
+    %%-------------------------------------------------
+    %% attribute currentLock(4) with type OCTET STRING
+    %%-------------------------------------------------
+    [V4 | Tlv5] = Tlv4,
+    Term4 = begin
+        Val2 = decode_octet_string(V4, [131075]),
+        C2 = byte_size(Val2),
+        if
+            C2 =:= 24 ->
+                Val2;
+            true ->
+                exit({error, {asn1, bad_range}})
+        end
+    end,
 
-%%-------------------------------------------------
-%% attribute newLock(5) with type OCTET STRING
-%%-------------------------------------------------
-[V5|Tlv6] = Tlv5, 
-Term5 = begin
-Val3 = decode_octet_string(V5, [131076]),
-C3 = byte_size(Val3),
-if C3 =:= 24 ->
-Val3;
-true ->
-exit({error,{asn1,bad_range}})
-end
-end,
+    %%-------------------------------------------------
+    %% attribute newLock(5) with type OCTET STRING
+    %%-------------------------------------------------
+    [V5 | Tlv6] = Tlv5,
+    Term5 = begin
+        Val3 = decode_octet_string(V5, [131076]),
+        C3 = byte_size(Val3),
+        if
+            C3 =:= 24 ->
+                Val3;
+            true ->
+                exit({error, {asn1, bad_range}})
+        end
+    end,
 
-%%-------------------------------------------------
-%% attribute options(6) with type OCTET STRING OPTIONAL
-%%-------------------------------------------------
-{Term6,Tlv7} = case Tlv6 of
-[{131077,V6}|TempTlv7] ->
-    {decode_octet_string(V6, []), TempTlv7};
-    _ ->
-        { asn1_NOVALUE, Tlv6}
-end,
+    %%-------------------------------------------------
+    %% attribute options(6) with type OCTET STRING OPTIONAL
+    %%-------------------------------------------------
+    {Term6, Tlv7} =
+        case Tlv6 of
+            [{131077, V6} | TempTlv7] ->
+                {decode_octet_string(V6, []), TempTlv7};
+            _ ->
+                {asn1_NOVALUE, Tlv6}
+        end,
 
-case Tlv7 of
-[] -> true;_ -> exit({error,{asn1, {unexpected,Tlv7}}}) % extra fields not allowed
-end,
-Res1 = {'HeaderJoin',Term1,Term2,Term3,Term4,Term5,Term6},
-Res1.
-
+    case Tlv7 of
+        % extra fields not allowed
+        [] -> true;
+        _ -> exit({error, {asn1, {unexpected, Tlv7}}})
+    end,
+    Res1 = {'HeaderJoin', Term1, Term2, Term3, Term4, Term5, Term6},
+    Res1.
 
 %%================================
 %%  HeaderJoinAck
@@ -1275,83 +1297,86 @@ enc_HeaderJoinAck(Val) ->
     enc_HeaderJoinAck(Val, [<<48>>]).
 
 enc_HeaderJoinAck(Val, TagIn) ->
-{_,Cindex1,Cindex2,Cindex3} = Val,
+    {_, Cindex1, Cindex2, Cindex3} = Val,
 
-%%-------------------------------------------------
-%% attribute result(1) with type ENUMERATED
-%%-------------------------------------------------
-   {EncBytes1,EncLen1} = case Cindex1 of
-ok -> encode_tags([<<128>>], [0], 1);
-'namespace-full' -> encode_tags([<<128>>], [1], 1);
-'duplicate-node' -> encode_tags([<<128>>], [2], 1);
-'invalid-lock' -> encode_tags([<<128>>], [3], 1);
-'leader-unavailable' -> encode_tags([<<128>>], [4], 1);
-Enumval1 -> exit({error,{asn1, {enumerated_not_in_range,Enumval1}}})
-end,
+    %%-------------------------------------------------
+    %% attribute result(1) with type ENUMERATED
+    %%-------------------------------------------------
+    {EncBytes1, EncLen1} =
+        case Cindex1 of
+            ok -> encode_tags([<<128>>], [0], 1);
+            'namespace-full' -> encode_tags([<<128>>], [1], 1);
+            'duplicate-node' -> encode_tags([<<128>>], [2], 1);
+            'invalid-lock' -> encode_tags([<<128>>], [3], 1);
+            'leader-unavailable' -> encode_tags([<<128>>], [4], 1);
+            Enumval1 -> exit({error, {asn1, {enumerated_not_in_range, Enumval1}}})
+        end,
 
-%%-------------------------------------------------
-%% attribute joinType(2) with type UTF8String
-%%-------------------------------------------------
-   {EncBytes2,EncLen2} = encode_UTF8_string(Cindex2, [<<129>>]),
+    %%-------------------------------------------------
+    %% attribute joinType(2) with type UTF8String
+    %%-------------------------------------------------
+    {EncBytes2, EncLen2} = encode_UTF8_string(Cindex2, [<<129>>]),
 
-%%-------------------------------------------------
-%% attribute options(3) with type OCTET STRING OPTIONAL
-%%-------------------------------------------------
-   {EncBytes3,EncLen3} =  case Cindex3 of
-         asn1_NOVALUE -> {<<>>,0};
-         _ ->
-            encode_restricted_string(Cindex3, [<<130>>])
-       end,
+    %%-------------------------------------------------
+    %% attribute options(3) with type OCTET STRING OPTIONAL
+    %%-------------------------------------------------
+    {EncBytes3, EncLen3} =
+        case Cindex3 of
+            asn1_NOVALUE -> {<<>>, 0};
+            _ -> encode_restricted_string(Cindex3, [<<130>>])
+        end,
 
-   BytesSoFar = [EncBytes1, EncBytes2, EncBytes3],
-LenSoFar = EncLen1 + EncLen2 + EncLen3,
-encode_tags(TagIn, BytesSoFar, LenSoFar).
-
+    BytesSoFar = [EncBytes1, EncBytes2, EncBytes3],
+    LenSoFar = EncLen1 + EncLen2 + EncLen3,
+    encode_tags(TagIn, BytesSoFar, LenSoFar).
 
 dec_HeaderJoinAck(Tlv) ->
-   dec_HeaderJoinAck(Tlv, [16]).
+    dec_HeaderJoinAck(Tlv, [16]).
 
 dec_HeaderJoinAck(Tlv, TagIn) ->
-   %%-------------------------------------------------
-   %% decode tag and length 
-   %%-------------------------------------------------
-Tlv1 = match_tags(Tlv, TagIn),
+    %%-------------------------------------------------
+    %% decode tag and length
+    %%-------------------------------------------------
+    Tlv1 = match_tags(Tlv, TagIn),
 
-%%-------------------------------------------------
-%% attribute result(1) with type ENUMERATED
-%%-------------------------------------------------
-[V1|Tlv2] = Tlv1, 
-Term1 = case decode_integer(V1, [131072]) of
-0 -> ok;
-1 -> 'namespace-full';
-2 -> 'duplicate-node';
-3 -> 'invalid-lock';
-4 -> 'leader-unavailable';
-Default1 -> exit({error,{asn1,{illegal_enumerated,Default1}}})
-end,
+    %%-------------------------------------------------
+    %% attribute result(1) with type ENUMERATED
+    %%-------------------------------------------------
+    [V1 | Tlv2] = Tlv1,
+    Term1 =
+        case decode_integer(V1, [131072]) of
+            0 -> ok;
+            1 -> 'namespace-full';
+            2 -> 'duplicate-node';
+            3 -> 'invalid-lock';
+            4 -> 'leader-unavailable';
+            Default1 -> exit({error, {asn1, {illegal_enumerated, Default1}}})
+        end,
 
-%%-------------------------------------------------
-%% attribute joinType(2) with type UTF8String
-%%-------------------------------------------------
-[V2|Tlv3] = Tlv2, 
-Term2 = decode_UTF8_string(V2, [131073]),
+    %%-------------------------------------------------
+    %% attribute joinType(2) with type UTF8String
+    %%-------------------------------------------------
+    [V2 | Tlv3] = Tlv2,
+    Term2 = decode_UTF8_string(V2, [131073]),
 
-%%-------------------------------------------------
-%% attribute options(3) with type OCTET STRING OPTIONAL
-%%-------------------------------------------------
-{Term3,Tlv4} = case Tlv3 of
-[{131074,V3}|TempTlv4] ->
-    {decode_octet_string(V3, []), TempTlv4};
-    _ ->
-        { asn1_NOVALUE, Tlv3}
-end,
+    %%-------------------------------------------------
+    %% attribute options(3) with type OCTET STRING OPTIONAL
+    %%-------------------------------------------------
+    {Term3, Tlv4} =
+        case Tlv3 of
+            [{131074, V3} | TempTlv4] ->
+                {decode_octet_string(V3, []), TempTlv4};
+            _ ->
+                {asn1_NOVALUE, Tlv3}
+        end,
 
-case Tlv4 of
-[] -> true;_ -> exit({error,{asn1, {unexpected,Tlv4}}}) % extra fields not allowed
-end,
-Res1 = {'HeaderJoinAck',Term1,Term2,Term3},
-Res1.
-
+    case Tlv4 of
+        % extra fields not allowed
+        [] -> true;
+        _ -> exit({error, {asn1, {unexpected, Tlv4}}})
+    end,
+    Res1 = {'HeaderJoinAck', Term1, Term2, Term3},
+    Res1.
 
 %%================================
 %%  HeaderForwardJoin
@@ -1360,107 +1385,110 @@ enc_HeaderForwardJoin(Val) ->
     enc_HeaderForwardJoin(Val, [<<48>>]).
 
 enc_HeaderForwardJoin(Val, TagIn) ->
-{_,Cindex1,Cindex2,Cindex3,Cindex4,Cindex5} = Val,
+    {_, Cindex1, Cindex2, Cindex3, Cindex4, Cindex5} = Val,
 
-%%-------------------------------------------------
-%% attribute namespace(1) with type UTF8String
-%%-------------------------------------------------
-   {EncBytes1,EncLen1} = encode_UTF8_string(Cindex1, [<<128>>]),
+    %%-------------------------------------------------
+    %% attribute namespace(1) with type UTF8String
+    %%-------------------------------------------------
+    {EncBytes1, EncLen1} = encode_UTF8_string(Cindex1, [<<128>>]),
 
-%%-------------------------------------------------
-%% attribute ulid(2) with type OCTET STRING
-%%-------------------------------------------------
-   {EncBytes2,EncLen2} = encode_restricted_string(Cindex2, [<<129>>]),
+    %%-------------------------------------------------
+    %% attribute ulid(2) with type OCTET STRING
+    %%-------------------------------------------------
+    {EncBytes2, EncLen2} = encode_restricted_string(Cindex2, [<<129>>]),
 
-%%-------------------------------------------------
-%% attribute joinType(3) with type UTF8String
-%%-------------------------------------------------
-   {EncBytes3,EncLen3} = encode_UTF8_string(Cindex3, [<<130>>]),
+    %%-------------------------------------------------
+    %% attribute joinType(3) with type UTF8String
+    %%-------------------------------------------------
+    {EncBytes3, EncLen3} = encode_UTF8_string(Cindex3, [<<130>>]),
 
-%%-------------------------------------------------
-%% attribute lock(4) with type OCTET STRING
-%%-------------------------------------------------
-   {EncBytes4,EncLen4} = encode_restricted_string(Cindex4, [<<131>>]),
+    %%-------------------------------------------------
+    %% attribute lock(4) with type OCTET STRING
+    %%-------------------------------------------------
+    {EncBytes4, EncLen4} = encode_restricted_string(Cindex4, [<<131>>]),
 
-%%-------------------------------------------------
-%% attribute options(5) with type OCTET STRING OPTIONAL
-%%-------------------------------------------------
-   {EncBytes5,EncLen5} =  case Cindex5 of
-         asn1_NOVALUE -> {<<>>,0};
-         _ ->
-            encode_restricted_string(Cindex5, [<<132>>])
-       end,
+    %%-------------------------------------------------
+    %% attribute options(5) with type OCTET STRING OPTIONAL
+    %%-------------------------------------------------
+    {EncBytes5, EncLen5} =
+        case Cindex5 of
+            asn1_NOVALUE -> {<<>>, 0};
+            _ -> encode_restricted_string(Cindex5, [<<132>>])
+        end,
 
-   BytesSoFar = [EncBytes1, EncBytes2, EncBytes3, EncBytes4, EncBytes5],
-LenSoFar = EncLen1 + EncLen2 + EncLen3 + EncLen4 + EncLen5,
-encode_tags(TagIn, BytesSoFar, LenSoFar).
-
+    BytesSoFar = [EncBytes1, EncBytes2, EncBytes3, EncBytes4, EncBytes5],
+    LenSoFar = EncLen1 + EncLen2 + EncLen3 + EncLen4 + EncLen5,
+    encode_tags(TagIn, BytesSoFar, LenSoFar).
 
 dec_HeaderForwardJoin(Tlv) ->
-   dec_HeaderForwardJoin(Tlv, [16]).
+    dec_HeaderForwardJoin(Tlv, [16]).
 
 dec_HeaderForwardJoin(Tlv, TagIn) ->
-   %%-------------------------------------------------
-   %% decode tag and length 
-   %%-------------------------------------------------
-Tlv1 = match_tags(Tlv, TagIn),
+    %%-------------------------------------------------
+    %% decode tag and length
+    %%-------------------------------------------------
+    Tlv1 = match_tags(Tlv, TagIn),
 
-%%-------------------------------------------------
-%% attribute namespace(1) with type UTF8String
-%%-------------------------------------------------
-[V1|Tlv2] = Tlv1, 
-Term1 = decode_UTF8_string(V1, [131072]),
+    %%-------------------------------------------------
+    %% attribute namespace(1) with type UTF8String
+    %%-------------------------------------------------
+    [V1 | Tlv2] = Tlv1,
+    Term1 = decode_UTF8_string(V1, [131072]),
 
-%%-------------------------------------------------
-%% attribute ulid(2) with type OCTET STRING
-%%-------------------------------------------------
-[V2|Tlv3] = Tlv2, 
-Term2 = begin
-Val1 = decode_octet_string(V2, [131073]),
-C1 = byte_size(Val1),
-if C1 =:= 26 ->
-Val1;
-true ->
-exit({error,{asn1,bad_range}})
-end
-end,
+    %%-------------------------------------------------
+    %% attribute ulid(2) with type OCTET STRING
+    %%-------------------------------------------------
+    [V2 | Tlv3] = Tlv2,
+    Term2 = begin
+        Val1 = decode_octet_string(V2, [131073]),
+        C1 = byte_size(Val1),
+        if
+            C1 =:= 26 ->
+                Val1;
+            true ->
+                exit({error, {asn1, bad_range}})
+        end
+    end,
 
-%%-------------------------------------------------
-%% attribute joinType(3) with type UTF8String
-%%-------------------------------------------------
-[V3|Tlv4] = Tlv3, 
-Term3 = decode_UTF8_string(V3, [131074]),
+    %%-------------------------------------------------
+    %% attribute joinType(3) with type UTF8String
+    %%-------------------------------------------------
+    [V3 | Tlv4] = Tlv3,
+    Term3 = decode_UTF8_string(V3, [131074]),
 
-%%-------------------------------------------------
-%% attribute lock(4) with type OCTET STRING
-%%-------------------------------------------------
-[V4|Tlv5] = Tlv4, 
-Term4 = begin
-Val2 = decode_octet_string(V4, [131075]),
-C2 = byte_size(Val2),
-if C2 =:= 24 ->
-Val2;
-true ->
-exit({error,{asn1,bad_range}})
-end
-end,
+    %%-------------------------------------------------
+    %% attribute lock(4) with type OCTET STRING
+    %%-------------------------------------------------
+    [V4 | Tlv5] = Tlv4,
+    Term4 = begin
+        Val2 = decode_octet_string(V4, [131075]),
+        C2 = byte_size(Val2),
+        if
+            C2 =:= 24 ->
+                Val2;
+            true ->
+                exit({error, {asn1, bad_range}})
+        end
+    end,
 
-%%-------------------------------------------------
-%% attribute options(5) with type OCTET STRING OPTIONAL
-%%-------------------------------------------------
-{Term5,Tlv6} = case Tlv5 of
-[{131076,V5}|TempTlv6] ->
-    {decode_octet_string(V5, []), TempTlv6};
-    _ ->
-        { asn1_NOVALUE, Tlv5}
-end,
+    %%-------------------------------------------------
+    %% attribute options(5) with type OCTET STRING OPTIONAL
+    %%-------------------------------------------------
+    {Term5, Tlv6} =
+        case Tlv5 of
+            [{131076, V5} | TempTlv6] ->
+                {decode_octet_string(V5, []), TempTlv6};
+            _ ->
+                {asn1_NOVALUE, Tlv5}
+        end,
 
-case Tlv6 of
-[] -> true;_ -> exit({error,{asn1, {unexpected,Tlv6}}}) % extra fields not allowed
-end,
-Res1 = {'HeaderForwardJoin',Term1,Term2,Term3,Term4,Term5},
-Res1.
-
+    case Tlv6 of
+        % extra fields not allowed
+        [] -> true;
+        _ -> exit({error, {asn1, {unexpected, Tlv6}}})
+    end,
+    Res1 = {'HeaderForwardJoin', Term1, Term2, Term3, Term4, Term5},
+    Res1.
 
 %%================================
 %%  HeaderForwardJoinAck
@@ -1469,64 +1497,66 @@ enc_HeaderForwardJoinAck(Val) ->
     enc_HeaderForwardJoinAck(Val, [<<48>>]).
 
 enc_HeaderForwardJoinAck(Val, TagIn) ->
-{_,Cindex1,Cindex2} = Val,
+    {_, Cindex1, Cindex2} = Val,
 
-%%-------------------------------------------------
-%% attribute result(1) with type ENUMERATED
-%%-------------------------------------------------
-   {EncBytes1,EncLen1} = case Cindex1 of
-ok -> encode_tags([<<128>>], [0], 1);
-'namespace-full' -> encode_tags([<<128>>], [1], 1);
-'duplicate-node' -> encode_tags([<<128>>], [2], 1);
-'invalid-lock' -> encode_tags([<<128>>], [3], 1);
-'leader-unavailable' -> encode_tags([<<128>>], [4], 1);
-Enumval1 -> exit({error,{asn1, {enumerated_not_in_range,Enumval1}}})
-end,
+    %%-------------------------------------------------
+    %% attribute result(1) with type ENUMERATED
+    %%-------------------------------------------------
+    {EncBytes1, EncLen1} =
+        case Cindex1 of
+            ok -> encode_tags([<<128>>], [0], 1);
+            'namespace-full' -> encode_tags([<<128>>], [1], 1);
+            'duplicate-node' -> encode_tags([<<128>>], [2], 1);
+            'invalid-lock' -> encode_tags([<<128>>], [3], 1);
+            'leader-unavailable' -> encode_tags([<<128>>], [4], 1);
+            Enumval1 -> exit({error, {asn1, {enumerated_not_in_range, Enumval1}}})
+        end,
 
-%%-------------------------------------------------
-%% attribute joinType(2) with type UTF8String
-%%-------------------------------------------------
-   {EncBytes2,EncLen2} = encode_UTF8_string(Cindex2, [<<129>>]),
+    %%-------------------------------------------------
+    %% attribute joinType(2) with type UTF8String
+    %%-------------------------------------------------
+    {EncBytes2, EncLen2} = encode_UTF8_string(Cindex2, [<<129>>]),
 
-   BytesSoFar = [EncBytes1, EncBytes2],
-LenSoFar = EncLen1 + EncLen2,
-encode_tags(TagIn, BytesSoFar, LenSoFar).
-
+    BytesSoFar = [EncBytes1, EncBytes2],
+    LenSoFar = EncLen1 + EncLen2,
+    encode_tags(TagIn, BytesSoFar, LenSoFar).
 
 dec_HeaderForwardJoinAck(Tlv) ->
-   dec_HeaderForwardJoinAck(Tlv, [16]).
+    dec_HeaderForwardJoinAck(Tlv, [16]).
 
 dec_HeaderForwardJoinAck(Tlv, TagIn) ->
-   %%-------------------------------------------------
-   %% decode tag and length 
-   %%-------------------------------------------------
-Tlv1 = match_tags(Tlv, TagIn),
+    %%-------------------------------------------------
+    %% decode tag and length
+    %%-------------------------------------------------
+    Tlv1 = match_tags(Tlv, TagIn),
 
-%%-------------------------------------------------
-%% attribute result(1) with type ENUMERATED
-%%-------------------------------------------------
-[V1|Tlv2] = Tlv1, 
-Term1 = case decode_integer(V1, [131072]) of
-0 -> ok;
-1 -> 'namespace-full';
-2 -> 'duplicate-node';
-3 -> 'invalid-lock';
-4 -> 'leader-unavailable';
-Default1 -> exit({error,{asn1,{illegal_enumerated,Default1}}})
-end,
+    %%-------------------------------------------------
+    %% attribute result(1) with type ENUMERATED
+    %%-------------------------------------------------
+    [V1 | Tlv2] = Tlv1,
+    Term1 =
+        case decode_integer(V1, [131072]) of
+            0 -> ok;
+            1 -> 'namespace-full';
+            2 -> 'duplicate-node';
+            3 -> 'invalid-lock';
+            4 -> 'leader-unavailable';
+            Default1 -> exit({error, {asn1, {illegal_enumerated, Default1}}})
+        end,
 
-%%-------------------------------------------------
-%% attribute joinType(2) with type UTF8String
-%%-------------------------------------------------
-[V2|Tlv3] = Tlv2, 
-Term2 = decode_UTF8_string(V2, [131073]),
+    %%-------------------------------------------------
+    %% attribute joinType(2) with type UTF8String
+    %%-------------------------------------------------
+    [V2 | Tlv3] = Tlv2,
+    Term2 = decode_UTF8_string(V2, [131073]),
 
-case Tlv3 of
-[] -> true;_ -> exit({error,{asn1, {unexpected,Tlv3}}}) % extra fields not allowed
-end,
-Res1 = {'HeaderForwardJoinAck',Term1,Term2},
-Res1.
-
+    case Tlv3 of
+        % extra fields not allowed
+        [] -> true;
+        _ -> exit({error, {asn1, {unexpected, Tlv3}}})
+    end,
+    Res1 = {'HeaderForwardJoinAck', Term1, Term2},
+    Res1.
 
 %%================================
 %%  ExchangeIn
@@ -1535,64 +1565,58 @@ enc_ExchangeIn(Val) ->
     enc_ExchangeIn(Val, [<<48>>]).
 
 enc_ExchangeIn(Val, TagIn) ->
-{_,Cindex1} = Val,
+    {_, Cindex1} = Val,
 
-%%-------------------------------------------------
-%% attribute proposedSample(1) with type SEQUENCE OF
-%%-------------------------------------------------
-   {EncBytes1,EncLen1} = 'enc_ExchangeIn_proposedSample'(Cindex1, [<<160>>]),
+    %%-------------------------------------------------
+    %% attribute proposedSample(1) with type SEQUENCE OF
+    %%-------------------------------------------------
+    {EncBytes1, EncLen1} = 'enc_ExchangeIn_proposedSample'(Cindex1, [<<160>>]),
 
-   BytesSoFar = [EncBytes1],
-LenSoFar = EncLen1,
-encode_tags(TagIn, BytesSoFar, LenSoFar).
-
-
+    BytesSoFar = [EncBytes1],
+    LenSoFar = EncLen1,
+    encode_tags(TagIn, BytesSoFar, LenSoFar).
 
 %%================================
 %%  ExchangeIn_proposedSample
 %%================================
 enc_ExchangeIn_proposedSample(Val, TagIn) ->
-      {EncBytes,EncLen} = 'enc_ExchangeIn_proposedSample_components'(Val,[],0),
-   encode_tags(TagIn, EncBytes, EncLen).
+    {EncBytes, EncLen} = 'enc_ExchangeIn_proposedSample_components'(Val, [], 0),
+    encode_tags(TagIn, EncBytes, EncLen).
 
-'enc_ExchangeIn_proposedSample_components'([], AccBytes, AccLen) -> 
-   {lists:reverse(AccBytes),AccLen};
-
-'enc_ExchangeIn_proposedSample_components'([H|T],AccBytes, AccLen) ->
-   {EncBytes,EncLen} = 'enc_ExchangeEntry'(H, [<<48>>]),
-   'enc_ExchangeIn_proposedSample_components'(T,[EncBytes|AccBytes], AccLen + EncLen).
-
-
+'enc_ExchangeIn_proposedSample_components'([], AccBytes, AccLen) ->
+    {lists:reverse(AccBytes), AccLen};
+'enc_ExchangeIn_proposedSample_components'([H | T], AccBytes, AccLen) ->
+    {EncBytes, EncLen} = 'enc_ExchangeEntry'(H, [<<48>>]),
+    'enc_ExchangeIn_proposedSample_components'(T, [EncBytes | AccBytes], AccLen + EncLen).
 
 dec_ExchangeIn(Tlv) ->
-   dec_ExchangeIn(Tlv, [16]).
+    dec_ExchangeIn(Tlv, [16]).
 
 dec_ExchangeIn(Tlv, TagIn) ->
-   %%-------------------------------------------------
-   %% decode tag and length 
-   %%-------------------------------------------------
-Tlv1 = match_tags(Tlv, TagIn),
+    %%-------------------------------------------------
+    %% decode tag and length
+    %%-------------------------------------------------
+    Tlv1 = match_tags(Tlv, TagIn),
 
-%%-------------------------------------------------
-%% attribute proposedSample(1) with type SEQUENCE OF
-%%-------------------------------------------------
-[V1|Tlv2] = Tlv1, 
-Term1 = 'dec_ExchangeIn_proposedSample'(V1, [131072]),
+    %%-------------------------------------------------
+    %% attribute proposedSample(1) with type SEQUENCE OF
+    %%-------------------------------------------------
+    [V1 | Tlv2] = Tlv1,
+    Term1 = 'dec_ExchangeIn_proposedSample'(V1, [131072]),
 
-case Tlv2 of
-[] -> true;_ -> exit({error,{asn1, {unexpected,Tlv2}}}) % extra fields not allowed
-end,
-Res1 = {'ExchangeIn',Term1},
-Res1.
+    case Tlv2 of
+        % extra fields not allowed
+        [] -> true;
+        _ -> exit({error, {asn1, {unexpected, Tlv2}}})
+    end,
+    Res1 = {'ExchangeIn', Term1},
+    Res1.
 'dec_ExchangeIn_proposedSample'(Tlv, TagIn) ->
-   %%-------------------------------------------------
-   %% decode tag and length 
-   %%-------------------------------------------------
-Tlv1 = match_tags(Tlv, TagIn),
-['dec_ExchangeEntry'(V1, [16]) || V1 <- Tlv1].
-
-
-
+    %%-------------------------------------------------
+    %% decode tag and length
+    %%-------------------------------------------------
+    Tlv1 = match_tags(Tlv, TagIn),
+    ['dec_ExchangeEntry'(V1, [16]) || V1 <- Tlv1].
 
 %%================================
 %%  ExchangeOut
@@ -1601,64 +1625,58 @@ enc_ExchangeOut(Val) ->
     enc_ExchangeOut(Val, [<<48>>]).
 
 enc_ExchangeOut(Val, TagIn) ->
-{_,Cindex1} = Val,
+    {_, Cindex1} = Val,
 
-%%-------------------------------------------------
-%% attribute proposedSample(1) with type SEQUENCE OF
-%%-------------------------------------------------
-   {EncBytes1,EncLen1} = 'enc_ExchangeOut_proposedSample'(Cindex1, [<<160>>]),
+    %%-------------------------------------------------
+    %% attribute proposedSample(1) with type SEQUENCE OF
+    %%-------------------------------------------------
+    {EncBytes1, EncLen1} = 'enc_ExchangeOut_proposedSample'(Cindex1, [<<160>>]),
 
-   BytesSoFar = [EncBytes1],
-LenSoFar = EncLen1,
-encode_tags(TagIn, BytesSoFar, LenSoFar).
-
-
+    BytesSoFar = [EncBytes1],
+    LenSoFar = EncLen1,
+    encode_tags(TagIn, BytesSoFar, LenSoFar).
 
 %%================================
 %%  ExchangeOut_proposedSample
 %%================================
 enc_ExchangeOut_proposedSample(Val, TagIn) ->
-      {EncBytes,EncLen} = 'enc_ExchangeOut_proposedSample_components'(Val,[],0),
-   encode_tags(TagIn, EncBytes, EncLen).
+    {EncBytes, EncLen} = 'enc_ExchangeOut_proposedSample_components'(Val, [], 0),
+    encode_tags(TagIn, EncBytes, EncLen).
 
-'enc_ExchangeOut_proposedSample_components'([], AccBytes, AccLen) -> 
-   {lists:reverse(AccBytes),AccLen};
-
-'enc_ExchangeOut_proposedSample_components'([H|T],AccBytes, AccLen) ->
-   {EncBytes,EncLen} = 'enc_ExchangeEntry'(H, [<<48>>]),
-   'enc_ExchangeOut_proposedSample_components'(T,[EncBytes|AccBytes], AccLen + EncLen).
-
-
+'enc_ExchangeOut_proposedSample_components'([], AccBytes, AccLen) ->
+    {lists:reverse(AccBytes), AccLen};
+'enc_ExchangeOut_proposedSample_components'([H | T], AccBytes, AccLen) ->
+    {EncBytes, EncLen} = 'enc_ExchangeEntry'(H, [<<48>>]),
+    'enc_ExchangeOut_proposedSample_components'(T, [EncBytes | AccBytes], AccLen + EncLen).
 
 dec_ExchangeOut(Tlv) ->
-   dec_ExchangeOut(Tlv, [16]).
+    dec_ExchangeOut(Tlv, [16]).
 
 dec_ExchangeOut(Tlv, TagIn) ->
-   %%-------------------------------------------------
-   %% decode tag and length 
-   %%-------------------------------------------------
-Tlv1 = match_tags(Tlv, TagIn),
+    %%-------------------------------------------------
+    %% decode tag and length
+    %%-------------------------------------------------
+    Tlv1 = match_tags(Tlv, TagIn),
 
-%%-------------------------------------------------
-%% attribute proposedSample(1) with type SEQUENCE OF
-%%-------------------------------------------------
-[V1|Tlv2] = Tlv1, 
-Term1 = 'dec_ExchangeOut_proposedSample'(V1, [131072]),
+    %%-------------------------------------------------
+    %% attribute proposedSample(1) with type SEQUENCE OF
+    %%-------------------------------------------------
+    [V1 | Tlv2] = Tlv1,
+    Term1 = 'dec_ExchangeOut_proposedSample'(V1, [131072]),
 
-case Tlv2 of
-[] -> true;_ -> exit({error,{asn1, {unexpected,Tlv2}}}) % extra fields not allowed
-end,
-Res1 = {'ExchangeOut',Term1},
-Res1.
+    case Tlv2 of
+        % extra fields not allowed
+        [] -> true;
+        _ -> exit({error, {asn1, {unexpected, Tlv2}}})
+    end,
+    Res1 = {'ExchangeOut', Term1},
+    Res1.
 'dec_ExchangeOut_proposedSample'(Tlv, TagIn) ->
-   %%-------------------------------------------------
-   %% decode tag and length 
-   %%-------------------------------------------------
-Tlv1 = match_tags(Tlv, TagIn),
-['dec_ExchangeEntry'(V1, [16]) || V1 <- Tlv1].
-
-
-
+    %%-------------------------------------------------
+    %% decode tag and length
+    %%-------------------------------------------------
+    Tlv1 = match_tags(Tlv, TagIn),
+    ['dec_ExchangeEntry'(V1, [16]) || V1 <- Tlv1].
 
 %%================================
 %%  ExchangeAccept
@@ -1667,26 +1685,22 @@ enc_ExchangeAccept(Val) ->
     enc_ExchangeAccept(Val, [<<48>>]).
 
 enc_ExchangeAccept(Val, TagIn) ->
-{_} = Val,
+    {_} = Val,
 
-   BytesSoFar = [],
-LenSoFar = 0,
-encode_tags(TagIn, BytesSoFar, LenSoFar).
-
+    BytesSoFar = [],
+    LenSoFar = 0,
+    encode_tags(TagIn, BytesSoFar, LenSoFar).
 
 dec_ExchangeAccept(Tlv) ->
-   dec_ExchangeAccept(Tlv, [16]).
+    dec_ExchangeAccept(Tlv, [16]).
 
 dec_ExchangeAccept(Tlv, TagIn) ->
-   %%-------------------------------------------------
-   %% decode tag and length 
-   %%-------------------------------------------------
-match_tags(Tlv, TagIn),
+    %%-------------------------------------------------
+    %% decode tag and length
+    %%-------------------------------------------------
+    match_tags(Tlv, TagIn),
 
-
-   {'ExchangeAccept'}.
-
-
+    {'ExchangeAccept'}.
 
 %%================================
 %%  ExchangeCancelled
@@ -1695,66 +1709,68 @@ enc_ExchangeCancelled(Val) ->
     enc_ExchangeCancelled(Val, [<<48>>]).
 
 enc_ExchangeCancelled(Val, TagIn) ->
-{_,Cindex1,Cindex2} = Val,
+    {_, Cindex1, Cindex2} = Val,
 
-%%-------------------------------------------------
-%% attribute namespace(1) with type UTF8String
-%%-------------------------------------------------
-   {EncBytes1,EncLen1} = encode_UTF8_string(Cindex1, [<<128>>]),
+    %%-------------------------------------------------
+    %% attribute namespace(1) with type UTF8String
+    %%-------------------------------------------------
+    {EncBytes1, EncLen1} = encode_UTF8_string(Cindex1, [<<128>>]),
 
-%%-------------------------------------------------
-%% attribute reason(2) with type ENUMERATED
-%%-------------------------------------------------
-   {EncBytes2,EncLen2} = case Cindex2 of
-normal -> encode_tags([<<129>>], [0], 1);
-'protocol-error' -> encode_tags([<<129>>], [1], 1);
-timeout -> encode_tags([<<129>>], [2], 1);
-'resource-limit' -> encode_tags([<<129>>], [3], 1);
-'network-error' -> encode_tags([<<129>>], [4], 1);
-shutdown -> encode_tags([<<129>>], [5], 1);
-Enumval2 -> exit({error,{asn1, {enumerated_not_in_range,Enumval2}}})
-end,
+    %%-------------------------------------------------
+    %% attribute reason(2) with type ENUMERATED
+    %%-------------------------------------------------
+    {EncBytes2, EncLen2} =
+        case Cindex2 of
+            normal -> encode_tags([<<129>>], [0], 1);
+            'protocol-error' -> encode_tags([<<129>>], [1], 1);
+            timeout -> encode_tags([<<129>>], [2], 1);
+            'resource-limit' -> encode_tags([<<129>>], [3], 1);
+            'network-error' -> encode_tags([<<129>>], [4], 1);
+            shutdown -> encode_tags([<<129>>], [5], 1);
+            Enumval2 -> exit({error, {asn1, {enumerated_not_in_range, Enumval2}}})
+        end,
 
-   BytesSoFar = [EncBytes1, EncBytes2],
-LenSoFar = EncLen1 + EncLen2,
-encode_tags(TagIn, BytesSoFar, LenSoFar).
-
+    BytesSoFar = [EncBytes1, EncBytes2],
+    LenSoFar = EncLen1 + EncLen2,
+    encode_tags(TagIn, BytesSoFar, LenSoFar).
 
 dec_ExchangeCancelled(Tlv) ->
-   dec_ExchangeCancelled(Tlv, [16]).
+    dec_ExchangeCancelled(Tlv, [16]).
 
 dec_ExchangeCancelled(Tlv, TagIn) ->
-   %%-------------------------------------------------
-   %% decode tag and length 
-   %%-------------------------------------------------
-Tlv1 = match_tags(Tlv, TagIn),
+    %%-------------------------------------------------
+    %% decode tag and length
+    %%-------------------------------------------------
+    Tlv1 = match_tags(Tlv, TagIn),
 
-%%-------------------------------------------------
-%% attribute namespace(1) with type UTF8String
-%%-------------------------------------------------
-[V1|Tlv2] = Tlv1, 
-Term1 = decode_UTF8_string(V1, [131072]),
+    %%-------------------------------------------------
+    %% attribute namespace(1) with type UTF8String
+    %%-------------------------------------------------
+    [V1 | Tlv2] = Tlv1,
+    Term1 = decode_UTF8_string(V1, [131072]),
 
-%%-------------------------------------------------
-%% attribute reason(2) with type ENUMERATED
-%%-------------------------------------------------
-[V2|Tlv3] = Tlv2, 
-Term2 = case decode_integer(V2, [131073]) of
-0 -> normal;
-1 -> 'protocol-error';
-2 -> timeout;
-3 -> 'resource-limit';
-4 -> 'network-error';
-5 -> shutdown;
-Default1 -> exit({error,{asn1,{illegal_enumerated,Default1}}})
-end,
+    %%-------------------------------------------------
+    %% attribute reason(2) with type ENUMERATED
+    %%-------------------------------------------------
+    [V2 | Tlv3] = Tlv2,
+    Term2 =
+        case decode_integer(V2, [131073]) of
+            0 -> normal;
+            1 -> 'protocol-error';
+            2 -> timeout;
+            3 -> 'resource-limit';
+            4 -> 'network-error';
+            5 -> shutdown;
+            Default1 -> exit({error, {asn1, {illegal_enumerated, Default1}}})
+        end,
 
-case Tlv3 of
-[] -> true;_ -> exit({error,{asn1, {unexpected,Tlv3}}}) % extra fields not allowed
-end,
-Res1 = {'ExchangeCancelled',Term1,Term2},
-Res1.
-
+    case Tlv3 of
+        % extra fields not allowed
+        [] -> true;
+        _ -> exit({error, {asn1, {unexpected, Tlv3}}})
+    end,
+    Res1 = {'ExchangeCancelled', Term1, Term2},
+    Res1.
 
 %%================================
 %%  NodeQuitting
@@ -1763,55 +1779,57 @@ enc_NodeQuitting(Val) ->
     enc_NodeQuitting(Val, [<<48>>]).
 
 enc_NodeQuitting(Val, TagIn) ->
-{_,Cindex1} = Val,
+    {_, Cindex1} = Val,
 
-%%-------------------------------------------------
-%% attribute reason(1) with type ENUMERATED
-%%-------------------------------------------------
-   {EncBytes1,EncLen1} = case Cindex1 of
-normal -> encode_tags([<<128>>], [0], 1);
-'protocol-error' -> encode_tags([<<128>>], [1], 1);
-timeout -> encode_tags([<<128>>], [2], 1);
-'resource-limit' -> encode_tags([<<128>>], [3], 1);
-'network-error' -> encode_tags([<<128>>], [4], 1);
-shutdown -> encode_tags([<<128>>], [5], 1);
-Enumval1 -> exit({error,{asn1, {enumerated_not_in_range,Enumval1}}})
-end,
+    %%-------------------------------------------------
+    %% attribute reason(1) with type ENUMERATED
+    %%-------------------------------------------------
+    {EncBytes1, EncLen1} =
+        case Cindex1 of
+            normal -> encode_tags([<<128>>], [0], 1);
+            'protocol-error' -> encode_tags([<<128>>], [1], 1);
+            timeout -> encode_tags([<<128>>], [2], 1);
+            'resource-limit' -> encode_tags([<<128>>], [3], 1);
+            'network-error' -> encode_tags([<<128>>], [4], 1);
+            shutdown -> encode_tags([<<128>>], [5], 1);
+            Enumval1 -> exit({error, {asn1, {enumerated_not_in_range, Enumval1}}})
+        end,
 
-   BytesSoFar = [EncBytes1],
-LenSoFar = EncLen1,
-encode_tags(TagIn, BytesSoFar, LenSoFar).
-
+    BytesSoFar = [EncBytes1],
+    LenSoFar = EncLen1,
+    encode_tags(TagIn, BytesSoFar, LenSoFar).
 
 dec_NodeQuitting(Tlv) ->
-   dec_NodeQuitting(Tlv, [16]).
+    dec_NodeQuitting(Tlv, [16]).
 
 dec_NodeQuitting(Tlv, TagIn) ->
-   %%-------------------------------------------------
-   %% decode tag and length 
-   %%-------------------------------------------------
-Tlv1 = match_tags(Tlv, TagIn),
+    %%-------------------------------------------------
+    %% decode tag and length
+    %%-------------------------------------------------
+    Tlv1 = match_tags(Tlv, TagIn),
 
-%%-------------------------------------------------
-%% attribute reason(1) with type ENUMERATED
-%%-------------------------------------------------
-[V1|Tlv2] = Tlv1, 
-Term1 = case decode_integer(V1, [131072]) of
-0 -> normal;
-1 -> 'protocol-error';
-2 -> timeout;
-3 -> 'resource-limit';
-4 -> 'network-error';
-5 -> shutdown;
-Default1 -> exit({error,{asn1,{illegal_enumerated,Default1}}})
-end,
+    %%-------------------------------------------------
+    %% attribute reason(1) with type ENUMERATED
+    %%-------------------------------------------------
+    [V1 | Tlv2] = Tlv1,
+    Term1 =
+        case decode_integer(V1, [131072]) of
+            0 -> normal;
+            1 -> 'protocol-error';
+            2 -> timeout;
+            3 -> 'resource-limit';
+            4 -> 'network-error';
+            5 -> shutdown;
+            Default1 -> exit({error, {asn1, {illegal_enumerated, Default1}}})
+        end,
 
-case Tlv2 of
-[] -> true;_ -> exit({error,{asn1, {unexpected,Tlv2}}}) % extra fields not allowed
-end,
-Res1 = {'NodeQuitting',Term1},
-Res1.
-
+    case Tlv2 of
+        % extra fields not allowed
+        [] -> true;
+        _ -> exit({error, {asn1, {unexpected, Tlv2}}})
+    end,
+    Res1 = {'NodeQuitting', Term1},
+    Res1.
 
 %%================================
 %%  ChangeLock
@@ -1820,66 +1838,68 @@ enc_ChangeLock(Val) ->
     enc_ChangeLock(Val, [<<48>>]).
 
 enc_ChangeLock(Val, TagIn) ->
-{_,Cindex1,Cindex2} = Val,
+    {_, Cindex1, Cindex2} = Val,
 
-%%-------------------------------------------------
-%% attribute newLock(1) with type OCTET STRING
-%%-------------------------------------------------
-   {EncBytes1,EncLen1} = encode_restricted_string(Cindex1, [<<128>>]),
+    %%-------------------------------------------------
+    %% attribute newLock(1) with type OCTET STRING
+    %%-------------------------------------------------
+    {EncBytes1, EncLen1} = encode_restricted_string(Cindex1, [<<128>>]),
 
-%%-------------------------------------------------
-%% attribute currentLock(2) with type OCTET STRING
-%%-------------------------------------------------
-   {EncBytes2,EncLen2} = encode_restricted_string(Cindex2, [<<129>>]),
+    %%-------------------------------------------------
+    %% attribute currentLock(2) with type OCTET STRING
+    %%-------------------------------------------------
+    {EncBytes2, EncLen2} = encode_restricted_string(Cindex2, [<<129>>]),
 
-   BytesSoFar = [EncBytes1, EncBytes2],
-LenSoFar = EncLen1 + EncLen2,
-encode_tags(TagIn, BytesSoFar, LenSoFar).
-
+    BytesSoFar = [EncBytes1, EncBytes2],
+    LenSoFar = EncLen1 + EncLen2,
+    encode_tags(TagIn, BytesSoFar, LenSoFar).
 
 dec_ChangeLock(Tlv) ->
-   dec_ChangeLock(Tlv, [16]).
+    dec_ChangeLock(Tlv, [16]).
 
 dec_ChangeLock(Tlv, TagIn) ->
-   %%-------------------------------------------------
-   %% decode tag and length 
-   %%-------------------------------------------------
-Tlv1 = match_tags(Tlv, TagIn),
+    %%-------------------------------------------------
+    %% decode tag and length
+    %%-------------------------------------------------
+    Tlv1 = match_tags(Tlv, TagIn),
 
-%%-------------------------------------------------
-%% attribute newLock(1) with type OCTET STRING
-%%-------------------------------------------------
-[V1|Tlv2] = Tlv1, 
-Term1 = begin
-Val1 = decode_octet_string(V1, [131072]),
-C1 = byte_size(Val1),
-if C1 =:= 24 ->
-Val1;
-true ->
-exit({error,{asn1,bad_range}})
-end
-end,
+    %%-------------------------------------------------
+    %% attribute newLock(1) with type OCTET STRING
+    %%-------------------------------------------------
+    [V1 | Tlv2] = Tlv1,
+    Term1 = begin
+        Val1 = decode_octet_string(V1, [131072]),
+        C1 = byte_size(Val1),
+        if
+            C1 =:= 24 ->
+                Val1;
+            true ->
+                exit({error, {asn1, bad_range}})
+        end
+    end,
 
-%%-------------------------------------------------
-%% attribute currentLock(2) with type OCTET STRING
-%%-------------------------------------------------
-[V2|Tlv3] = Tlv2, 
-Term2 = begin
-Val2 = decode_octet_string(V2, [131073]),
-C2 = byte_size(Val2),
-if C2 =:= 24 ->
-Val2;
-true ->
-exit({error,{asn1,bad_range}})
-end
-end,
+    %%-------------------------------------------------
+    %% attribute currentLock(2) with type OCTET STRING
+    %%-------------------------------------------------
+    [V2 | Tlv3] = Tlv2,
+    Term2 = begin
+        Val2 = decode_octet_string(V2, [131073]),
+        C2 = byte_size(Val2),
+        if
+            C2 =:= 24 ->
+                Val2;
+            true ->
+                exit({error, {asn1, bad_range}})
+        end
+    end,
 
-case Tlv3 of
-[] -> true;_ -> exit({error,{asn1, {unexpected,Tlv3}}}) % extra fields not allowed
-end,
-Res1 = {'ChangeLock',Term1,Term2},
-Res1.
-
+    case Tlv3 of
+        % extra fields not allowed
+        [] -> true;
+        _ -> exit({error, {asn1, {unexpected, Tlv3}}})
+    end,
+    Res1 = {'ChangeLock', Term1, Term2},
+    Res1.
 
 %%================================
 %%  OntologyHistory
@@ -1888,72 +1908,72 @@ enc_OntologyHistory(Val) ->
     enc_OntologyHistory(Val, [<<48>>]).
 
 enc_OntologyHistory(Val, TagIn) ->
-{_,Cindex1,Cindex2,Cindex3,Cindex4} = Val,
+    {_, Cindex1, Cindex2, Cindex3, Cindex4} = Val,
 
-%%-------------------------------------------------
-%% attribute namespace(1) with type UTF8String
-%%-------------------------------------------------
-   {EncBytes1,EncLen1} = encode_UTF8_string(Cindex1, [<<128>>]),
+    %%-------------------------------------------------
+    %% attribute namespace(1) with type UTF8String
+    %%-------------------------------------------------
+    {EncBytes1, EncLen1} = encode_UTF8_string(Cindex1, [<<128>>]),
 
-%%-------------------------------------------------
-%% attribute oldestIndex(2) with type INTEGER
-%%-------------------------------------------------
-   {EncBytes2,EncLen2} = encode_integer(Cindex2, [<<129>>]),
+    %%-------------------------------------------------
+    %% attribute oldestIndex(2) with type INTEGER
+    %%-------------------------------------------------
+    {EncBytes2, EncLen2} = encode_integer(Cindex2, [<<129>>]),
 
-%%-------------------------------------------------
-%% attribute youngerIndex(3) with type INTEGER
-%%-------------------------------------------------
-   {EncBytes3,EncLen3} = encode_integer(Cindex3, [<<130>>]),
+    %%-------------------------------------------------
+    %% attribute youngerIndex(3) with type INTEGER
+    %%-------------------------------------------------
+    {EncBytes3, EncLen3} = encode_integer(Cindex3, [<<130>>]),
 
-%%-------------------------------------------------
-%% attribute transactions(4) with type OCTET STRING
-%%-------------------------------------------------
-   {EncBytes4,EncLen4} = encode_restricted_string(Cindex4, [<<131>>]),
+    %%-------------------------------------------------
+    %% attribute transactions(4) with type OCTET STRING
+    %%-------------------------------------------------
+    {EncBytes4, EncLen4} = encode_restricted_string(Cindex4, [<<131>>]),
 
-   BytesSoFar = [EncBytes1, EncBytes2, EncBytes3, EncBytes4],
-LenSoFar = EncLen1 + EncLen2 + EncLen3 + EncLen4,
-encode_tags(TagIn, BytesSoFar, LenSoFar).
-
+    BytesSoFar = [EncBytes1, EncBytes2, EncBytes3, EncBytes4],
+    LenSoFar = EncLen1 + EncLen2 + EncLen3 + EncLen4,
+    encode_tags(TagIn, BytesSoFar, LenSoFar).
 
 dec_OntologyHistory(Tlv) ->
-   dec_OntologyHistory(Tlv, [16]).
+    dec_OntologyHistory(Tlv, [16]).
 
 dec_OntologyHistory(Tlv, TagIn) ->
-   %%-------------------------------------------------
-   %% decode tag and length 
-   %%-------------------------------------------------
-Tlv1 = match_tags(Tlv, TagIn),
+    %%-------------------------------------------------
+    %% decode tag and length
+    %%-------------------------------------------------
+    Tlv1 = match_tags(Tlv, TagIn),
 
-%%-------------------------------------------------
-%% attribute namespace(1) with type UTF8String
-%%-------------------------------------------------
-[V1|Tlv2] = Tlv1, 
-Term1 = decode_UTF8_string(V1, [131072]),
+    %%-------------------------------------------------
+    %% attribute namespace(1) with type UTF8String
+    %%-------------------------------------------------
+    [V1 | Tlv2] = Tlv1,
+    Term1 = decode_UTF8_string(V1, [131072]),
 
-%%-------------------------------------------------
-%% attribute oldestIndex(2) with type INTEGER
-%%-------------------------------------------------
-[V2|Tlv3] = Tlv2, 
-Term2 = decode_integer(V2, [131073]),
+    %%-------------------------------------------------
+    %% attribute oldestIndex(2) with type INTEGER
+    %%-------------------------------------------------
+    [V2 | Tlv3] = Tlv2,
+    Term2 = decode_integer(V2, [131073]),
 
-%%-------------------------------------------------
-%% attribute youngerIndex(3) with type INTEGER
-%%-------------------------------------------------
-[V3|Tlv4] = Tlv3, 
-Term3 = decode_integer(V3, [131074]),
+    %%-------------------------------------------------
+    %% attribute youngerIndex(3) with type INTEGER
+    %%-------------------------------------------------
+    [V3 | Tlv4] = Tlv3,
+    Term3 = decode_integer(V3, [131074]),
 
-%%-------------------------------------------------
-%% attribute transactions(4) with type OCTET STRING
-%%-------------------------------------------------
-[V4|Tlv5] = Tlv4, 
-Term4 = decode_octet_string(V4, [131075]),
+    %%-------------------------------------------------
+    %% attribute transactions(4) with type OCTET STRING
+    %%-------------------------------------------------
+    [V4 | Tlv5] = Tlv4,
+    Term4 = decode_octet_string(V4, [131075]),
 
-case Tlv5 of
-[] -> true;_ -> exit({error,{asn1, {unexpected,Tlv5}}}) % extra fields not allowed
-end,
-Res1 = {'OntologyHistory',Term1,Term2,Term3,Term4},
-Res1.
-
+    case Tlv5 of
+        % extra fields not allowed
+        [] -> true;
+        _ -> exit({error, {asn1, {unexpected, Tlv5}}})
+    end,
+    Res1 = {'OntologyHistory', Term1, Term2, Term3, Term4},
+    Res1.
 
 %%================================
 %%  OntologyHistoryRequest
@@ -1962,80 +1982,81 @@ enc_OntologyHistoryRequest(Val) ->
     enc_OntologyHistoryRequest(Val, [<<48>>]).
 
 enc_OntologyHistoryRequest(Val, TagIn) ->
-{_,Cindex1,Cindex2,Cindex3,Cindex4} = Val,
+    {_, Cindex1, Cindex2, Cindex3, Cindex4} = Val,
 
-%%-------------------------------------------------
-%% attribute namespace(1) with type UTF8String
-%%-------------------------------------------------
-   {EncBytes1,EncLen1} = encode_UTF8_string(Cindex1, [<<128>>]),
+    %%-------------------------------------------------
+    %% attribute namespace(1) with type UTF8String
+    %%-------------------------------------------------
+    {EncBytes1, EncLen1} = encode_UTF8_string(Cindex1, [<<128>>]),
 
-%%-------------------------------------------------
-%% attribute requester(2) with type OCTET STRING OPTIONAL
-%%-------------------------------------------------
-   {EncBytes2,EncLen2} =  case Cindex2 of
-         asn1_NOVALUE -> {<<>>,0};
-         _ ->
-            encode_restricted_string(Cindex2, [<<129>>])
-       end,
+    %%-------------------------------------------------
+    %% attribute requester(2) with type OCTET STRING OPTIONAL
+    %%-------------------------------------------------
+    {EncBytes2, EncLen2} =
+        case Cindex2 of
+            asn1_NOVALUE -> {<<>>, 0};
+            _ -> encode_restricted_string(Cindex2, [<<129>>])
+        end,
 
-%%-------------------------------------------------
-%% attribute oldestIndex(3) with type INTEGER
-%%-------------------------------------------------
-   {EncBytes3,EncLen3} = encode_integer(Cindex3, [<<130>>]),
+    %%-------------------------------------------------
+    %% attribute oldestIndex(3) with type INTEGER
+    %%-------------------------------------------------
+    {EncBytes3, EncLen3} = encode_integer(Cindex3, [<<130>>]),
 
-%%-------------------------------------------------
-%% attribute youngerIndex(4) with type INTEGER
-%%-------------------------------------------------
-   {EncBytes4,EncLen4} = encode_integer(Cindex4, [<<131>>]),
+    %%-------------------------------------------------
+    %% attribute youngerIndex(4) with type INTEGER
+    %%-------------------------------------------------
+    {EncBytes4, EncLen4} = encode_integer(Cindex4, [<<131>>]),
 
-   BytesSoFar = [EncBytes1, EncBytes2, EncBytes3, EncBytes4],
-LenSoFar = EncLen1 + EncLen2 + EncLen3 + EncLen4,
-encode_tags(TagIn, BytesSoFar, LenSoFar).
-
+    BytesSoFar = [EncBytes1, EncBytes2, EncBytes3, EncBytes4],
+    LenSoFar = EncLen1 + EncLen2 + EncLen3 + EncLen4,
+    encode_tags(TagIn, BytesSoFar, LenSoFar).
 
 dec_OntologyHistoryRequest(Tlv) ->
-   dec_OntologyHistoryRequest(Tlv, [16]).
+    dec_OntologyHistoryRequest(Tlv, [16]).
 
 dec_OntologyHistoryRequest(Tlv, TagIn) ->
-   %%-------------------------------------------------
-   %% decode tag and length 
-   %%-------------------------------------------------
-Tlv1 = match_tags(Tlv, TagIn),
+    %%-------------------------------------------------
+    %% decode tag and length
+    %%-------------------------------------------------
+    Tlv1 = match_tags(Tlv, TagIn),
 
-%%-------------------------------------------------
-%% attribute namespace(1) with type UTF8String
-%%-------------------------------------------------
-[V1|Tlv2] = Tlv1, 
-Term1 = decode_UTF8_string(V1, [131072]),
+    %%-------------------------------------------------
+    %% attribute namespace(1) with type UTF8String
+    %%-------------------------------------------------
+    [V1 | Tlv2] = Tlv1,
+    Term1 = decode_UTF8_string(V1, [131072]),
 
-%%-------------------------------------------------
-%% attribute requester(2) with type OCTET STRING OPTIONAL
-%%-------------------------------------------------
-{Term2,Tlv3} = case Tlv2 of
-[{131073,V2}|TempTlv3] ->
-    {decode_octet_string(V2, []), TempTlv3};
-    _ ->
-        { asn1_NOVALUE, Tlv2}
-end,
+    %%-------------------------------------------------
+    %% attribute requester(2) with type OCTET STRING OPTIONAL
+    %%-------------------------------------------------
+    {Term2, Tlv3} =
+        case Tlv2 of
+            [{131073, V2} | TempTlv3] ->
+                {decode_octet_string(V2, []), TempTlv3};
+            _ ->
+                {asn1_NOVALUE, Tlv2}
+        end,
 
-%%-------------------------------------------------
-%% attribute oldestIndex(3) with type INTEGER
-%%-------------------------------------------------
-[V3|Tlv4] = Tlv3, 
-Term3 = decode_integer(V3, [131074]),
+    %%-------------------------------------------------
+    %% attribute oldestIndex(3) with type INTEGER
+    %%-------------------------------------------------
+    [V3 | Tlv4] = Tlv3,
+    Term3 = decode_integer(V3, [131074]),
 
-%%-------------------------------------------------
-%% attribute youngerIndex(4) with type INTEGER
-%%-------------------------------------------------
-[V4|Tlv5] = Tlv4, 
-Term4 = decode_integer(V4, [131075]),
+    %%-------------------------------------------------
+    %% attribute youngerIndex(4) with type INTEGER
+    %%-------------------------------------------------
+    [V4 | Tlv5] = Tlv4,
+    Term4 = decode_integer(V4, [131075]),
 
-case Tlv5 of
-[] -> true;_ -> exit({error,{asn1, {unexpected,Tlv5}}}) % extra fields not allowed
-end,
-Res1 = {'OntologyHistoryRequest',Term1,Term2,Term3,Term4},
-Res1.
-
+    case Tlv5 of
+        % extra fields not allowed
+        [] -> true;
+        _ -> exit({error, {asn1, {unexpected, Tlv5}}})
+    end,
+    Res1 = {'OntologyHistoryRequest', Term1, Term2, Term3, Term4},
+    Res1.
 
 %%================================
 %%  TransactionType
@@ -2044,24 +2065,21 @@ enc_TransactionType(Val) ->
     enc_TransactionType(Val, [<<10>>]).
 
 enc_TransactionType(Val, TagIn) ->
-case Val of
-creation -> encode_tags(TagIn, [0], 1);
-goal -> encode_tags(TagIn, [1], 1);
-Enumval1 -> exit({error,{asn1, {enumerated_not_in_range,Enumval1}}})
-end.
-
+    case Val of
+        creation -> encode_tags(TagIn, [0], 1);
+        goal -> encode_tags(TagIn, [1], 1);
+        Enumval1 -> exit({error, {asn1, {enumerated_not_in_range, Enumval1}}})
+    end.
 
 dec_TransactionType(Tlv) ->
-   dec_TransactionType(Tlv, [10]).
+    dec_TransactionType(Tlv, [10]).
 
 dec_TransactionType(Tlv, TagIn) ->
-case decode_integer(Tlv, TagIn) of
-0 -> creation;
-1 -> goal;
-Default1 -> exit({error,{asn1,{illegal_enumerated,Default1}}})
-end.
-
-
+    case decode_integer(Tlv, TagIn) of
+        0 -> creation;
+        1 -> goal;
+        Default1 -> exit({error, {asn1, {illegal_enumerated, Default1}}})
+    end.
 
 %%================================
 %%  TransactionStatus
@@ -2070,28 +2088,25 @@ enc_TransactionStatus(Val) ->
     enc_TransactionStatus(Val, [<<10>>]).
 
 enc_TransactionStatus(Val, TagIn) ->
-case Val of
-created -> encode_tags(TagIn, [0], 1);
-posted -> encode_tags(TagIn, [1], 1);
-delivered -> encode_tags(TagIn, [2], 1);
-processed -> encode_tags(TagIn, [3], 1);
-Enumval1 -> exit({error,{asn1, {enumerated_not_in_range,Enumval1}}})
-end.
-
+    case Val of
+        created -> encode_tags(TagIn, [0], 1);
+        posted -> encode_tags(TagIn, [1], 1);
+        delivered -> encode_tags(TagIn, [2], 1);
+        processed -> encode_tags(TagIn, [3], 1);
+        Enumval1 -> exit({error, {asn1, {enumerated_not_in_range, Enumval1}}})
+    end.
 
 dec_TransactionStatus(Tlv) ->
-   dec_TransactionStatus(Tlv, [10]).
+    dec_TransactionStatus(Tlv, [10]).
 
 dec_TransactionStatus(Tlv, TagIn) ->
-case decode_integer(Tlv, TagIn) of
-0 -> created;
-1 -> posted;
-2 -> delivered;
-3 -> processed;
-Default1 -> exit({error,{asn1,{illegal_enumerated,Default1}}})
-end.
-
-
+    case decode_integer(Tlv, TagIn) of
+        0 -> created;
+        1 -> posted;
+        2 -> delivered;
+        3 -> processed;
+        Default1 -> exit({error, {asn1, {illegal_enumerated, Default1}}})
+    end.
 
 %%================================
 %%  Transaction
@@ -2100,295 +2115,334 @@ enc_Transaction(Val) ->
     enc_Transaction(Val, [<<48>>]).
 
 enc_Transaction(Val, TagIn) ->
-{_,Cindex1,Cindex2,Cindex3,Cindex4,Cindex5,Cindex6,Cindex7,Cindex8,Cindex9,Cindex10,Cindex11,Cindex12,Cindex13,Cindex14,Cindex15,Cindex16} = Val,
+    {_, Cindex1, Cindex2, Cindex3, Cindex4, Cindex5, Cindex6, Cindex7, Cindex8, Cindex9, Cindex10,
+        Cindex11, Cindex12, Cindex13, Cindex14, Cindex15, Cindex16} = Val,
 
-%%-------------------------------------------------
-%% attribute index(1) with type INTEGER DEFAULT = 0
-%%-------------------------------------------------
-   {EncBytes1,EncLen1} =  case Cindex1 of
-         asn1_DEFAULT ->
-            {<<>>,0};
-         _ when Cindex1 =:= 0 ->
-            {<<>>,0};
-         _ ->
-            encode_integer(Cindex1, [<<128>>])
-       end,
+    %%-------------------------------------------------
+    %% attribute index(1) with type INTEGER DEFAULT = 0
+    %%-------------------------------------------------
+    {EncBytes1, EncLen1} =
+        case Cindex1 of
+            asn1_DEFAULT ->
+                {<<>>, 0};
+            _ when Cindex1 =:= 0 ->
+                {<<>>, 0};
+            _ ->
+                encode_integer(Cindex1, [<<128>>])
+        end,
 
-%%-------------------------------------------------
-%% attribute type(2) with type ENUMERATED
-%%-------------------------------------------------
-   {EncBytes2,EncLen2} = case Cindex2 of
-creation -> encode_tags([<<129>>], [0], 1);
-goal -> encode_tags([<<129>>], [1], 1);
-Enumval2 -> exit({error,{asn1, {enumerated_not_in_range,Enumval2}}})
-end,
+    %%-------------------------------------------------
+    %% attribute type(2) with type ENUMERATED
+    %%-------------------------------------------------
+    {EncBytes2, EncLen2} =
+        case Cindex2 of
+            creation -> encode_tags([<<129>>], [0], 1);
+            goal -> encode_tags([<<129>>], [1], 1);
+            Enumval2 -> exit({error, {asn1, {enumerated_not_in_range, Enumval2}}})
+        end,
 
-%%-------------------------------------------------
-%% attribute signature(3) with type OCTET STRING
-%%-------------------------------------------------
-   {EncBytes3,EncLen3} = encode_restricted_string(Cindex3, [<<130>>]),
+    %%-------------------------------------------------
+    %% attribute signature(3) with type OCTET STRING
+    %%-------------------------------------------------
+    {EncBytes3, EncLen3} = encode_restricted_string(Cindex3, [<<130>>]),
 
-%%-------------------------------------------------
-%% attribute tsCreated(4) with type INTEGER DEFAULT = 0
-%%-------------------------------------------------
-   {EncBytes4,EncLen4} =  case Cindex4 of
-         asn1_DEFAULT ->
-            {<<>>,0};
-         _ when Cindex4 =:= 0 ->
-            {<<>>,0};
-         _ ->
-            encode_integer(Cindex4, [<<131>>])
-       end,
+    %%-------------------------------------------------
+    %% attribute tsCreated(4) with type INTEGER DEFAULT = 0
+    %%-------------------------------------------------
+    {EncBytes4, EncLen4} =
+        case Cindex4 of
+            asn1_DEFAULT ->
+                {<<>>, 0};
+            _ when Cindex4 =:= 0 ->
+                {<<>>, 0};
+            _ ->
+                encode_integer(Cindex4, [<<131>>])
+        end,
 
-%%-------------------------------------------------
-%% attribute tsPosted(5) with type INTEGER DEFAULT = 0
-%%-------------------------------------------------
-   {EncBytes5,EncLen5} =  case Cindex5 of
-         asn1_DEFAULT ->
-            {<<>>,0};
-         _ when Cindex5 =:= 0 ->
-            {<<>>,0};
-         _ ->
-            encode_integer(Cindex5, [<<132>>])
-       end,
+    %%-------------------------------------------------
+    %% attribute tsPosted(5) with type INTEGER DEFAULT = 0
+    %%-------------------------------------------------
+    {EncBytes5, EncLen5} =
+        case Cindex5 of
+            asn1_DEFAULT ->
+                {<<>>, 0};
+            _ when Cindex5 =:= 0 ->
+                {<<>>, 0};
+            _ ->
+                encode_integer(Cindex5, [<<132>>])
+        end,
 
-%%-------------------------------------------------
-%% attribute tsDelivered(6) with type INTEGER DEFAULT = 0
-%%-------------------------------------------------
-   {EncBytes6,EncLen6} =  case Cindex6 of
-         asn1_DEFAULT ->
-            {<<>>,0};
-         _ when Cindex6 =:= 0 ->
-            {<<>>,0};
-         _ ->
-            encode_integer(Cindex6, [<<133>>])
-       end,
+    %%-------------------------------------------------
+    %% attribute tsDelivered(6) with type INTEGER DEFAULT = 0
+    %%-------------------------------------------------
+    {EncBytes6, EncLen6} =
+        case Cindex6 of
+            asn1_DEFAULT ->
+                {<<>>, 0};
+            _ when Cindex6 =:= 0 ->
+                {<<>>, 0};
+            _ ->
+                encode_integer(Cindex6, [<<133>>])
+        end,
 
-%%-------------------------------------------------
-%% attribute tsProcessed(7) with type INTEGER OPTIONAL
-%%-------------------------------------------------
-   {EncBytes7,EncLen7} =  case Cindex7 of
-         asn1_NOVALUE -> {<<>>,0};
-         _ ->
-            encode_integer(Cindex7, [<<134>>])
-       end,
+    %%-------------------------------------------------
+    %% attribute tsProcessed(7) with type INTEGER OPTIONAL
+    %%-------------------------------------------------
+    {EncBytes7, EncLen7} =
+        case Cindex7 of
+            asn1_NOVALUE -> {<<>>, 0};
+            _ -> encode_integer(Cindex7, [<<134>>])
+        end,
 
-%%-------------------------------------------------
-%% attribute sourceOntologyId(8) with type OCTET STRING
-%%-------------------------------------------------
-   {EncBytes8,EncLen8} = encode_restricted_string(Cindex8, [<<135>>]),
+    %%-------------------------------------------------
+    %% attribute sourceOntologyId(8) with type OCTET STRING
+    %%-------------------------------------------------
+    {EncBytes8, EncLen8} = encode_restricted_string(Cindex8, [<<135>>]),
 
-%%-------------------------------------------------
-%% attribute prevAddress(9) with type OCTET STRING
-%%-------------------------------------------------
-   {EncBytes9,EncLen9} = encode_restricted_string(Cindex9, [<<136>>]),
+    %%-------------------------------------------------
+    %% attribute prevAddress(9) with type OCTET STRING
+    %%-------------------------------------------------
+    {EncBytes9, EncLen9} = encode_restricted_string(Cindex9, [<<136>>]),
 
-%%-------------------------------------------------
-%% attribute prevHash(10) with type OCTET STRING
-%%-------------------------------------------------
-   {EncBytes10,EncLen10} = encode_restricted_string(Cindex10, [<<137>>]),
+    %%-------------------------------------------------
+    %% attribute prevHash(10) with type OCTET STRING
+    %%-------------------------------------------------
+    {EncBytes10, EncLen10} = encode_restricted_string(Cindex10, [<<137>>]),
 
-%%-------------------------------------------------
-%% attribute currentAddress(11) with type OCTET STRING
-%%-------------------------------------------------
-   {EncBytes11,EncLen11} = encode_restricted_string(Cindex11, [<<138>>]),
+    %%-------------------------------------------------
+    %% attribute currentAddress(11) with type OCTET STRING
+    %%-------------------------------------------------
+    {EncBytes11, EncLen11} = encode_restricted_string(Cindex11, [<<138>>]),
 
-%%-------------------------------------------------
-%% attribute namespace(12) with type UTF8String
-%%-------------------------------------------------
-   {EncBytes12,EncLen12} = encode_UTF8_string(Cindex12, [<<139>>]),
+    %%-------------------------------------------------
+    %% attribute namespace(12) with type UTF8String
+    %%-------------------------------------------------
+    {EncBytes12, EncLen12} = encode_UTF8_string(Cindex12, [<<139>>]),
 
-%%-------------------------------------------------
-%% attribute leader(13) with type OCTET STRING OPTIONAL
-%%-------------------------------------------------
-   {EncBytes13,EncLen13} =  case Cindex13 of
-         asn1_NOVALUE -> {<<>>,0};
-         _ ->
-            encode_restricted_string(Cindex13, [<<140>>])
-       end,
+    %%-------------------------------------------------
+    %% attribute leader(13) with type OCTET STRING OPTIONAL
+    %%-------------------------------------------------
+    {EncBytes13, EncLen13} =
+        case Cindex13 of
+            asn1_NOVALUE -> {<<>>, 0};
+            _ -> encode_restricted_string(Cindex13, [<<140>>])
+        end,
 
-%%-------------------------------------------------
-%% attribute payload(14) with type OCTET STRING
-%%-------------------------------------------------
-   {EncBytes14,EncLen14} = encode_restricted_string(Cindex14, [<<141>>]),
+    %%-------------------------------------------------
+    %% attribute payload(14) with type OCTET STRING
+    %%-------------------------------------------------
+    {EncBytes14, EncLen14} = encode_restricted_string(Cindex14, [<<141>>]),
 
-%%-------------------------------------------------
-%% attribute diff(15) with type OCTET STRING
-%%-------------------------------------------------
-   {EncBytes15,EncLen15} = encode_restricted_string(Cindex15, [<<142>>]),
+    %%-------------------------------------------------
+    %% attribute diff(15) with type OCTET STRING
+    %%-------------------------------------------------
+    {EncBytes15, EncLen15} = encode_restricted_string(Cindex15, [<<142>>]),
 
-%%-------------------------------------------------
-%% attribute status(16) with type ENUMERATED DEFAULT = created
-%%-------------------------------------------------
-   {EncBytes16,EncLen16} =  case Cindex16 of
-         asn1_DEFAULT ->
-            {<<>>,0};
-         _ when Cindex16 =:= created ->
-            {<<>>,0};
-         _ ->
-            case Cindex16 of
-created -> encode_tags([<<143>>], [0], 1);
-posted -> encode_tags([<<143>>], [1], 1);
-delivered -> encode_tags([<<143>>], [2], 1);
-processed -> encode_tags([<<143>>], [3], 1);
-Enumval16 -> exit({error,{asn1, {enumerated_not_in_range,Enumval16}}})
-end
-       end,
+    %%-------------------------------------------------
+    %% attribute status(16) with type ENUMERATED DEFAULT = created
+    %%-------------------------------------------------
+    {EncBytes16, EncLen16} =
+        case Cindex16 of
+            asn1_DEFAULT ->
+                {<<>>, 0};
+            _ when Cindex16 =:= created ->
+                {<<>>, 0};
+            _ ->
+                case Cindex16 of
+                    created -> encode_tags([<<143>>], [0], 1);
+                    posted -> encode_tags([<<143>>], [1], 1);
+                    delivered -> encode_tags([<<143>>], [2], 1);
+                    processed -> encode_tags([<<143>>], [3], 1);
+                    Enumval16 -> exit({error, {asn1, {enumerated_not_in_range, Enumval16}}})
+                end
+        end,
 
-   BytesSoFar = [EncBytes1, EncBytes2, EncBytes3, EncBytes4, EncBytes5, EncBytes6, EncBytes7, EncBytes8, EncBytes9, EncBytes10, EncBytes11, EncBytes12, EncBytes13, EncBytes14, EncBytes15, EncBytes16],
-LenSoFar = EncLen1 + EncLen2 + EncLen3 + EncLen4 + EncLen5 + EncLen6 + EncLen7 + EncLen8 + EncLen9 + EncLen10 + EncLen11 + EncLen12 + EncLen13 + EncLen14 + EncLen15 + EncLen16,
-encode_tags(TagIn, BytesSoFar, LenSoFar).
-
+    BytesSoFar = [
+        EncBytes1,
+        EncBytes2,
+        EncBytes3,
+        EncBytes4,
+        EncBytes5,
+        EncBytes6,
+        EncBytes7,
+        EncBytes8,
+        EncBytes9,
+        EncBytes10,
+        EncBytes11,
+        EncBytes12,
+        EncBytes13,
+        EncBytes14,
+        EncBytes15,
+        EncBytes16
+    ],
+    LenSoFar =
+        EncLen1 + EncLen2 + EncLen3 + EncLen4 + EncLen5 + EncLen6 + EncLen7 + EncLen8 + EncLen9 +
+            EncLen10 + EncLen11 + EncLen12 + EncLen13 + EncLen14 + EncLen15 + EncLen16,
+    encode_tags(TagIn, BytesSoFar, LenSoFar).
 
 dec_Transaction(Tlv) ->
-   dec_Transaction(Tlv, [16]).
+    dec_Transaction(Tlv, [16]).
 
 dec_Transaction(Tlv, TagIn) ->
-   %%-------------------------------------------------
-   %% decode tag and length 
-   %%-------------------------------------------------
-Tlv1 = match_tags(Tlv, TagIn),
+    %%-------------------------------------------------
+    %% decode tag and length
+    %%-------------------------------------------------
+    Tlv1 = match_tags(Tlv, TagIn),
 
-%%-------------------------------------------------
-%% attribute index(1) with type INTEGER DEFAULT = 0
-%%-------------------------------------------------
-{Term1,Tlv2} = case Tlv1 of
-[{131072,V1}|TempTlv2] ->
-    {decode_integer(V1, []), TempTlv2};
-    _ ->
-        {0,Tlv1}
-end,
+    %%-------------------------------------------------
+    %% attribute index(1) with type INTEGER DEFAULT = 0
+    %%-------------------------------------------------
+    {Term1, Tlv2} =
+        case Tlv1 of
+            [{131072, V1} | TempTlv2] ->
+                {decode_integer(V1, []), TempTlv2};
+            _ ->
+                {0, Tlv1}
+        end,
 
-%%-------------------------------------------------
-%% attribute type(2) with type ENUMERATED
-%%-------------------------------------------------
-[V2|Tlv3] = Tlv2, 
-Term2 = case decode_integer(V2, [131073]) of
-0 -> creation;
-1 -> goal;
-Default1 -> exit({error,{asn1,{illegal_enumerated,Default1}}})
-end,
+    %%-------------------------------------------------
+    %% attribute type(2) with type ENUMERATED
+    %%-------------------------------------------------
+    [V2 | Tlv3] = Tlv2,
+    Term2 =
+        case decode_integer(V2, [131073]) of
+            0 -> creation;
+            1 -> goal;
+            Default1 -> exit({error, {asn1, {illegal_enumerated, Default1}}})
+        end,
 
-%%-------------------------------------------------
-%% attribute signature(3) with type OCTET STRING
-%%-------------------------------------------------
-[V3|Tlv4] = Tlv3, 
-Term3 = decode_octet_string(V3, [131074]),
+    %%-------------------------------------------------
+    %% attribute signature(3) with type OCTET STRING
+    %%-------------------------------------------------
+    [V3 | Tlv4] = Tlv3,
+    Term3 = decode_octet_string(V3, [131074]),
 
-%%-------------------------------------------------
-%% attribute tsCreated(4) with type INTEGER DEFAULT = 0
-%%-------------------------------------------------
-{Term4,Tlv5} = case Tlv4 of
-[{131075,V4}|TempTlv5] ->
-    {decode_integer(V4, []), TempTlv5};
-    _ ->
-        {0,Tlv4}
-end,
+    %%-------------------------------------------------
+    %% attribute tsCreated(4) with type INTEGER DEFAULT = 0
+    %%-------------------------------------------------
+    {Term4, Tlv5} =
+        case Tlv4 of
+            [{131075, V4} | TempTlv5] ->
+                {decode_integer(V4, []), TempTlv5};
+            _ ->
+                {0, Tlv4}
+        end,
 
-%%-------------------------------------------------
-%% attribute tsPosted(5) with type INTEGER DEFAULT = 0
-%%-------------------------------------------------
-{Term5,Tlv6} = case Tlv5 of
-[{131076,V5}|TempTlv6] ->
-    {decode_integer(V5, []), TempTlv6};
-    _ ->
-        {0,Tlv5}
-end,
+    %%-------------------------------------------------
+    %% attribute tsPosted(5) with type INTEGER DEFAULT = 0
+    %%-------------------------------------------------
+    {Term5, Tlv6} =
+        case Tlv5 of
+            [{131076, V5} | TempTlv6] ->
+                {decode_integer(V5, []), TempTlv6};
+            _ ->
+                {0, Tlv5}
+        end,
 
-%%-------------------------------------------------
-%% attribute tsDelivered(6) with type INTEGER DEFAULT = 0
-%%-------------------------------------------------
-{Term6,Tlv7} = case Tlv6 of
-[{131077,V6}|TempTlv7] ->
-    {decode_integer(V6, []), TempTlv7};
-    _ ->
-        {0,Tlv6}
-end,
+    %%-------------------------------------------------
+    %% attribute tsDelivered(6) with type INTEGER DEFAULT = 0
+    %%-------------------------------------------------
+    {Term6, Tlv7} =
+        case Tlv6 of
+            [{131077, V6} | TempTlv7] ->
+                {decode_integer(V6, []), TempTlv7};
+            _ ->
+                {0, Tlv6}
+        end,
 
-%%-------------------------------------------------
-%% attribute tsProcessed(7) with type INTEGER OPTIONAL
-%%-------------------------------------------------
-{Term7,Tlv8} = case Tlv7 of
-[{131078,V7}|TempTlv8] ->
-    {decode_integer(V7, []), TempTlv8};
-    _ ->
-        { asn1_NOVALUE, Tlv7}
-end,
+    %%-------------------------------------------------
+    %% attribute tsProcessed(7) with type INTEGER OPTIONAL
+    %%-------------------------------------------------
+    {Term7, Tlv8} =
+        case Tlv7 of
+            [{131078, V7} | TempTlv8] ->
+                {decode_integer(V7, []), TempTlv8};
+            _ ->
+                {asn1_NOVALUE, Tlv7}
+        end,
 
-%%-------------------------------------------------
-%% attribute sourceOntologyId(8) with type OCTET STRING
-%%-------------------------------------------------
-[V8|Tlv9] = Tlv8, 
-Term8 = decode_octet_string(V8, [131079]),
+    %%-------------------------------------------------
+    %% attribute sourceOntologyId(8) with type OCTET STRING
+    %%-------------------------------------------------
+    [V8 | Tlv9] = Tlv8,
+    Term8 = decode_octet_string(V8, [131079]),
 
-%%-------------------------------------------------
-%% attribute prevAddress(9) with type OCTET STRING
-%%-------------------------------------------------
-[V9|Tlv10] = Tlv9, 
-Term9 = decode_octet_string(V9, [131080]),
+    %%-------------------------------------------------
+    %% attribute prevAddress(9) with type OCTET STRING
+    %%-------------------------------------------------
+    [V9 | Tlv10] = Tlv9,
+    Term9 = decode_octet_string(V9, [131080]),
 
-%%-------------------------------------------------
-%% attribute prevHash(10) with type OCTET STRING
-%%-------------------------------------------------
-[V10|Tlv11] = Tlv10, 
-Term10 = decode_octet_string(V10, [131081]),
+    %%-------------------------------------------------
+    %% attribute prevHash(10) with type OCTET STRING
+    %%-------------------------------------------------
+    [V10 | Tlv11] = Tlv10,
+    Term10 = decode_octet_string(V10, [131081]),
 
-%%-------------------------------------------------
-%% attribute currentAddress(11) with type OCTET STRING
-%%-------------------------------------------------
-[V11|Tlv12] = Tlv11, 
-Term11 = decode_octet_string(V11, [131082]),
+    %%-------------------------------------------------
+    %% attribute currentAddress(11) with type OCTET STRING
+    %%-------------------------------------------------
+    [V11 | Tlv12] = Tlv11,
+    Term11 = decode_octet_string(V11, [131082]),
 
-%%-------------------------------------------------
-%% attribute namespace(12) with type UTF8String
-%%-------------------------------------------------
-[V12|Tlv13] = Tlv12, 
-Term12 = decode_UTF8_string(V12, [131083]),
+    %%-------------------------------------------------
+    %% attribute namespace(12) with type UTF8String
+    %%-------------------------------------------------
+    [V12 | Tlv13] = Tlv12,
+    Term12 = decode_UTF8_string(V12, [131083]),
 
-%%-------------------------------------------------
-%% attribute leader(13) with type OCTET STRING OPTIONAL
-%%-------------------------------------------------
-{Term13,Tlv14} = case Tlv13 of
-[{131084,V13}|TempTlv14] ->
-    {decode_octet_string(V13, []), TempTlv14};
-    _ ->
-        { asn1_NOVALUE, Tlv13}
-end,
+    %%-------------------------------------------------
+    %% attribute leader(13) with type OCTET STRING OPTIONAL
+    %%-------------------------------------------------
+    {Term13, Tlv14} =
+        case Tlv13 of
+            [{131084, V13} | TempTlv14] ->
+                {decode_octet_string(V13, []), TempTlv14};
+            _ ->
+                {asn1_NOVALUE, Tlv13}
+        end,
 
-%%-------------------------------------------------
-%% attribute payload(14) with type OCTET STRING
-%%-------------------------------------------------
-[V14|Tlv15] = Tlv14, 
-Term14 = decode_octet_string(V14, [131085]),
+    %%-------------------------------------------------
+    %% attribute payload(14) with type OCTET STRING
+    %%-------------------------------------------------
+    [V14 | Tlv15] = Tlv14,
+    Term14 = decode_octet_string(V14, [131085]),
 
-%%-------------------------------------------------
-%% attribute diff(15) with type OCTET STRING
-%%-------------------------------------------------
-[V15|Tlv16] = Tlv15, 
-Term15 = decode_octet_string(V15, [131086]),
+    %%-------------------------------------------------
+    %% attribute diff(15) with type OCTET STRING
+    %%-------------------------------------------------
+    [V15 | Tlv16] = Tlv15,
+    Term15 = decode_octet_string(V15, [131086]),
 
-%%-------------------------------------------------
-%% attribute status(16) with type ENUMERATED DEFAULT = created
-%%-------------------------------------------------
-{Term16,Tlv17} = case Tlv16 of
-[{131087,V16}|TempTlv17] ->
-    {case decode_integer(V16, []) of
-0 -> created;
-1 -> posted;
-2 -> delivered;
-3 -> processed;
-Default2 -> exit({error,{asn1,{illegal_enumerated,Default2}}})
-end, TempTlv17};
-    _ ->
-        {created,Tlv16}
-end,
+    %%-------------------------------------------------
+    %% attribute status(16) with type ENUMERATED DEFAULT = created
+    %%-------------------------------------------------
+    {Term16, Tlv17} =
+        case Tlv16 of
+            [{131087, V16} | TempTlv17] ->
+                {
+                    case decode_integer(V16, []) of
+                        0 -> created;
+                        1 -> posted;
+                        2 -> delivered;
+                        3 -> processed;
+                        Default2 -> exit({error, {asn1, {illegal_enumerated, Default2}}})
+                    end,
+                    TempTlv17
+                };
+            _ ->
+                {created, Tlv16}
+        end,
 
-case Tlv17 of
-[] -> true;_ -> exit({error,{asn1, {unexpected,Tlv17}}}) % extra fields not allowed
-end,
-Res1 = {'Transaction',Term1,Term2,Term3,Term4,Term5,Term6,Term7,Term8,Term9,Term10,Term11,Term12,Term13,Term14,Term15,Term16},
-Res1.
-
+    case Tlv17 of
+        % extra fields not allowed
+        [] -> true;
+        _ -> exit({error, {asn1, {unexpected, Tlv17}}})
+    end,
+    Res1 =
+        {'Transaction', Term1, Term2, Term3, Term4, Term5, Term6, Term7, Term8, Term9, Term10,
+            Term11, Term12, Term13, Term14, Term15, Term16},
+    Res1.
 
 %%================================
 %%  EptoMessage
@@ -2397,39 +2451,39 @@ enc_EptoMessage(Val) ->
     enc_EptoMessage(Val, [<<48>>]).
 
 enc_EptoMessage(Val, TagIn) ->
-{_,Cindex1} = Val,
+    {_, Cindex1} = Val,
 
-%%-------------------------------------------------
-%% attribute payload(1) with type OCTET STRING
-%%-------------------------------------------------
-   {EncBytes1,EncLen1} = encode_restricted_string(Cindex1, [<<128>>]),
+    %%-------------------------------------------------
+    %% attribute payload(1) with type OCTET STRING
+    %%-------------------------------------------------
+    {EncBytes1, EncLen1} = encode_restricted_string(Cindex1, [<<128>>]),
 
-   BytesSoFar = [EncBytes1],
-LenSoFar = EncLen1,
-encode_tags(TagIn, BytesSoFar, LenSoFar).
-
+    BytesSoFar = [EncBytes1],
+    LenSoFar = EncLen1,
+    encode_tags(TagIn, BytesSoFar, LenSoFar).
 
 dec_EptoMessage(Tlv) ->
-   dec_EptoMessage(Tlv, [16]).
+    dec_EptoMessage(Tlv, [16]).
 
 dec_EptoMessage(Tlv, TagIn) ->
-   %%-------------------------------------------------
-   %% decode tag and length 
-   %%-------------------------------------------------
-Tlv1 = match_tags(Tlv, TagIn),
+    %%-------------------------------------------------
+    %% decode tag and length
+    %%-------------------------------------------------
+    Tlv1 = match_tags(Tlv, TagIn),
 
-%%-------------------------------------------------
-%% attribute payload(1) with type OCTET STRING
-%%-------------------------------------------------
-[V1|Tlv2] = Tlv1, 
-Term1 = decode_octet_string(V1, [131072]),
+    %%-------------------------------------------------
+    %% attribute payload(1) with type OCTET STRING
+    %%-------------------------------------------------
+    [V1 | Tlv2] = Tlv1,
+    Term1 = decode_octet_string(V1, [131072]),
 
-case Tlv2 of
-[] -> true;_ -> exit({error,{asn1, {unexpected,Tlv2}}}) % extra fields not allowed
-end,
-Res1 = {'EptoMessage',Term1},
-Res1.
-
+    case Tlv2 of
+        % extra fields not allowed
+        [] -> true;
+        _ -> exit({error, {asn1, {unexpected, Tlv2}}})
+    end,
+    Res1 = {'EptoMessage', Term1},
+    Res1.
 
 %%================================
 %%  Neighbor
@@ -2438,107 +2492,113 @@ enc_Neighbor(Val) ->
     enc_Neighbor(Val, [<<48>>]).
 
 enc_Neighbor(Val, TagIn) ->
-{_,Cindex1,Cindex2,Cindex3,Cindex4,Cindex5} = Val,
+    {_, Cindex1, Cindex2, Cindex3, Cindex4, Cindex5} = Val,
 
-%%-------------------------------------------------
-%% attribute nodeId(1) with type OCTET STRING
-%%-------------------------------------------------
-   {EncBytes1,EncLen1} = encode_restricted_string(Cindex1, [<<128>>]),
+    %%-------------------------------------------------
+    %% attribute nodeId(1) with type OCTET STRING
+    %%-------------------------------------------------
+    {EncBytes1, EncLen1} = encode_restricted_string(Cindex1, [<<128>>]),
 
-%%-------------------------------------------------
-%% attribute chosenLeader(2) with type OCTET STRING OPTIONAL
-%%-------------------------------------------------
-   {EncBytes2,EncLen2} =  case Cindex2 of
-         asn1_NOVALUE -> {<<>>,0};
-         _ ->
-            encode_restricted_string(Cindex2, [<<129>>])
-       end,
+    %%-------------------------------------------------
+    %% attribute chosenLeader(2) with type OCTET STRING OPTIONAL
+    %%-------------------------------------------------
+    {EncBytes2, EncLen2} =
+        case Cindex2 of
+            asn1_NOVALUE -> {<<>>, 0};
+            _ -> encode_restricted_string(Cindex2, [<<129>>])
+        end,
 
-%%-------------------------------------------------
-%% attribute publicKey(3) with type OCTET STRING
-%%-------------------------------------------------
-   {EncBytes3,EncLen3} = encode_restricted_string(Cindex3, [<<130>>]),
+    %%-------------------------------------------------
+    %% attribute publicKey(3) with type OCTET STRING
+    %%-------------------------------------------------
+    {EncBytes3, EncLen3} = encode_restricted_string(Cindex3, [<<130>>]),
 
-%%-------------------------------------------------
-%% attribute signedTs(4) with type OCTET STRING
-%%-------------------------------------------------
-   {EncBytes4,EncLen4} = encode_restricted_string(Cindex4, [<<131>>]),
+    %%-------------------------------------------------
+    %% attribute signedTs(4) with type OCTET STRING
+    %%-------------------------------------------------
+    {EncBytes4, EncLen4} = encode_restricted_string(Cindex4, [<<131>>]),
 
-%%-------------------------------------------------
-%% attribute ts(5) with type INTEGER
-%%-------------------------------------------------
-   {EncBytes5,EncLen5} = encode_integer(Cindex5, [<<132>>]),
+    %%-------------------------------------------------
+    %% attribute ts(5) with type INTEGER
+    %%-------------------------------------------------
+    {EncBytes5, EncLen5} = encode_integer(Cindex5, [<<132>>]),
 
-   BytesSoFar = [EncBytes1, EncBytes2, EncBytes3, EncBytes4, EncBytes5],
-LenSoFar = EncLen1 + EncLen2 + EncLen3 + EncLen4 + EncLen5,
-encode_tags(TagIn, BytesSoFar, LenSoFar).
-
+    BytesSoFar = [EncBytes1, EncBytes2, EncBytes3, EncBytes4, EncBytes5],
+    LenSoFar = EncLen1 + EncLen2 + EncLen3 + EncLen4 + EncLen5,
+    encode_tags(TagIn, BytesSoFar, LenSoFar).
 
 dec_Neighbor(Tlv) ->
-   dec_Neighbor(Tlv, [16]).
+    dec_Neighbor(Tlv, [16]).
 
 dec_Neighbor(Tlv, TagIn) ->
-   %%-------------------------------------------------
-   %% decode tag and length 
-   %%-------------------------------------------------
-Tlv1 = match_tags(Tlv, TagIn),
+    %%-------------------------------------------------
+    %% decode tag and length
+    %%-------------------------------------------------
+    Tlv1 = match_tags(Tlv, TagIn),
 
-%%-------------------------------------------------
-%% attribute nodeId(1) with type OCTET STRING
-%%-------------------------------------------------
-[V1|Tlv2] = Tlv1, 
-Term1 = begin
-Val1 = decode_octet_string(V1, [131072]),
-C1 = byte_size(Val1),
-if 32 =< C1, C1 =< 64 ->
-Val1;
-true ->
-exit({error,{asn1,bad_range}})
-end
-end,
+    %%-------------------------------------------------
+    %% attribute nodeId(1) with type OCTET STRING
+    %%-------------------------------------------------
+    [V1 | Tlv2] = Tlv1,
+    Term1 = begin
+        Val1 = decode_octet_string(V1, [131072]),
+        C1 = byte_size(Val1),
+        if
+            32 =< C1, C1 =< 64 ->
+                Val1;
+            true ->
+                exit({error, {asn1, bad_range}})
+        end
+    end,
 
-%%-------------------------------------------------
-%% attribute chosenLeader(2) with type OCTET STRING OPTIONAL
-%%-------------------------------------------------
-{Term2,Tlv3} = case Tlv2 of
-[{131073,V2}|TempTlv3] ->
-    {begin
-Val2 = decode_octet_string(V2, []),
-C2 = byte_size(Val2),
-if 32 =< C2, C2 =< 64 ->
-Val2;
-true ->
-exit({error,{asn1,bad_range}})
-end
-end, TempTlv3};
-    _ ->
-        { asn1_NOVALUE, Tlv2}
-end,
+    %%-------------------------------------------------
+    %% attribute chosenLeader(2) with type OCTET STRING OPTIONAL
+    %%-------------------------------------------------
+    {Term2, Tlv3} =
+        case Tlv2 of
+            [{131073, V2} | TempTlv3] ->
+                {
+                    begin
+                        Val2 = decode_octet_string(V2, []),
+                        C2 = byte_size(Val2),
+                        if
+                            32 =< C2, C2 =< 64 ->
+                                Val2;
+                            true ->
+                                exit({error, {asn1, bad_range}})
+                        end
+                    end,
+                    TempTlv3
+                };
+            _ ->
+                {asn1_NOVALUE, Tlv2}
+        end,
 
-%%-------------------------------------------------
-%% attribute publicKey(3) with type OCTET STRING
-%%-------------------------------------------------
-[V3|Tlv4] = Tlv3, 
-Term3 = decode_octet_string(V3, [131074]),
+    %%-------------------------------------------------
+    %% attribute publicKey(3) with type OCTET STRING
+    %%-------------------------------------------------
+    [V3 | Tlv4] = Tlv3,
+    Term3 = decode_octet_string(V3, [131074]),
 
-%%-------------------------------------------------
-%% attribute signedTs(4) with type OCTET STRING
-%%-------------------------------------------------
-[V4|Tlv5] = Tlv4, 
-Term4 = decode_octet_string(V4, [131075]),
+    %%-------------------------------------------------
+    %% attribute signedTs(4) with type OCTET STRING
+    %%-------------------------------------------------
+    [V4 | Tlv5] = Tlv4,
+    Term4 = decode_octet_string(V4, [131075]),
 
-%%-------------------------------------------------
-%% attribute ts(5) with type INTEGER
-%%-------------------------------------------------
-[V5|Tlv6] = Tlv5, 
-Term5 = decode_integer(V5, [131076]),
+    %%-------------------------------------------------
+    %% attribute ts(5) with type INTEGER
+    %%-------------------------------------------------
+    [V5 | Tlv6] = Tlv5,
+    Term5 = decode_integer(V5, [131076]),
 
-case Tlv6 of
-[] -> true;_ -> exit({error,{asn1, {unexpected,Tlv6}}}) % extra fields not allowed
-end,
-Res1 = {'Neighbor',Term1,Term2,Term3,Term4,Term5},
-Res1.
-
+    case Tlv6 of
+        % extra fields not allowed
+        [] -> true;
+        _ -> exit({error, {asn1, {unexpected, Tlv6}}})
+    end,
+    Res1 = {'Neighbor', Term1, Term2, Term3, Term4, Term5},
+    Res1.
 
 %%================================
 %%  LeaderElectionInfo
@@ -2547,39 +2607,39 @@ enc_LeaderElectionInfo(Val) ->
     enc_LeaderElectionInfo(Val, [<<48>>]).
 
 enc_LeaderElectionInfo(Val, TagIn) ->
-{_,Cindex1} = Val,
+    {_, Cindex1} = Val,
 
-%%-------------------------------------------------
-%% attribute payload(1)   External BBSVXProtocol:Neighbor
-%%-------------------------------------------------
-   {EncBytes1,EncLen1} = 'enc_Neighbor'(Cindex1, [<<160>>]),
+    %%-------------------------------------------------
+    %% attribute payload(1)   External BBSVXProtocol:Neighbor
+    %%-------------------------------------------------
+    {EncBytes1, EncLen1} = 'enc_Neighbor'(Cindex1, [<<160>>]),
 
-   BytesSoFar = [EncBytes1],
-LenSoFar = EncLen1,
-encode_tags(TagIn, BytesSoFar, LenSoFar).
-
+    BytesSoFar = [EncBytes1],
+    LenSoFar = EncLen1,
+    encode_tags(TagIn, BytesSoFar, LenSoFar).
 
 dec_LeaderElectionInfo(Tlv) ->
-   dec_LeaderElectionInfo(Tlv, [16]).
+    dec_LeaderElectionInfo(Tlv, [16]).
 
 dec_LeaderElectionInfo(Tlv, TagIn) ->
-   %%-------------------------------------------------
-   %% decode tag and length 
-   %%-------------------------------------------------
-Tlv1 = match_tags(Tlv, TagIn),
+    %%-------------------------------------------------
+    %% decode tag and length
+    %%-------------------------------------------------
+    Tlv1 = match_tags(Tlv, TagIn),
 
-%%-------------------------------------------------
-%% attribute payload(1)   External BBSVXProtocol:Neighbor
-%%-------------------------------------------------
-[V1|Tlv2] = Tlv1, 
-Term1 = 'dec_Neighbor'(V1, [131072]),
+    %%-------------------------------------------------
+    %% attribute payload(1)   External BBSVXProtocol:Neighbor
+    %%-------------------------------------------------
+    [V1 | Tlv2] = Tlv1,
+    Term1 = 'dec_Neighbor'(V1, [131072]),
 
-case Tlv2 of
-[] -> true;_ -> exit({error,{asn1, {unexpected,Tlv2}}}) % extra fields not allowed
-end,
-Res1 = {'LeaderElectionInfo',Term1},
-Res1.
-
+    case Tlv2 of
+        % extra fields not allowed
+        [] -> true;
+        _ -> exit({error, {asn1, {unexpected, Tlv2}}})
+    end,
+    Res1 = {'LeaderElectionInfo', Term1},
+    Res1.
 
 %%================================
 %%  SendForwardSubscription
@@ -2588,58 +2648,59 @@ enc_SendForwardSubscription(Val) ->
     enc_SendForwardSubscription(Val, [<<48>>]).
 
 enc_SendForwardSubscription(Val, TagIn) ->
-{_,Cindex1,Cindex2} = Val,
+    {_, Cindex1, Cindex2} = Val,
 
-%%-------------------------------------------------
-%% attribute subscriberNode(1)   External BBSVXProtocol:NodeEntry
-%%-------------------------------------------------
-   {EncBytes1,EncLen1} = 'enc_NodeEntry'(Cindex1, [<<160>>]),
+    %%-------------------------------------------------
+    %% attribute subscriberNode(1)   External BBSVXProtocol:NodeEntry
+    %%-------------------------------------------------
+    {EncBytes1, EncLen1} = 'enc_NodeEntry'(Cindex1, [<<160>>]),
 
-%%-------------------------------------------------
-%% attribute lock(2) with type OCTET STRING
-%%-------------------------------------------------
-   {EncBytes2,EncLen2} = encode_restricted_string(Cindex2, [<<129>>]),
+    %%-------------------------------------------------
+    %% attribute lock(2) with type OCTET STRING
+    %%-------------------------------------------------
+    {EncBytes2, EncLen2} = encode_restricted_string(Cindex2, [<<129>>]),
 
-   BytesSoFar = [EncBytes1, EncBytes2],
-LenSoFar = EncLen1 + EncLen2,
-encode_tags(TagIn, BytesSoFar, LenSoFar).
-
+    BytesSoFar = [EncBytes1, EncBytes2],
+    LenSoFar = EncLen1 + EncLen2,
+    encode_tags(TagIn, BytesSoFar, LenSoFar).
 
 dec_SendForwardSubscription(Tlv) ->
-   dec_SendForwardSubscription(Tlv, [16]).
+    dec_SendForwardSubscription(Tlv, [16]).
 
 dec_SendForwardSubscription(Tlv, TagIn) ->
-   %%-------------------------------------------------
-   %% decode tag and length 
-   %%-------------------------------------------------
-Tlv1 = match_tags(Tlv, TagIn),
+    %%-------------------------------------------------
+    %% decode tag and length
+    %%-------------------------------------------------
+    Tlv1 = match_tags(Tlv, TagIn),
 
-%%-------------------------------------------------
-%% attribute subscriberNode(1)   External BBSVXProtocol:NodeEntry
-%%-------------------------------------------------
-[V1|Tlv2] = Tlv1, 
-Term1 = 'dec_NodeEntry'(V1, [131072]),
+    %%-------------------------------------------------
+    %% attribute subscriberNode(1)   External BBSVXProtocol:NodeEntry
+    %%-------------------------------------------------
+    [V1 | Tlv2] = Tlv1,
+    Term1 = 'dec_NodeEntry'(V1, [131072]),
 
-%%-------------------------------------------------
-%% attribute lock(2) with type OCTET STRING
-%%-------------------------------------------------
-[V2|Tlv3] = Tlv2, 
-Term2 = begin
-Val1 = decode_octet_string(V2, [131073]),
-C1 = byte_size(Val1),
-if C1 =:= 24 ->
-Val1;
-true ->
-exit({error,{asn1,bad_range}})
-end
-end,
+    %%-------------------------------------------------
+    %% attribute lock(2) with type OCTET STRING
+    %%-------------------------------------------------
+    [V2 | Tlv3] = Tlv2,
+    Term2 = begin
+        Val1 = decode_octet_string(V2, [131073]),
+        C1 = byte_size(Val1),
+        if
+            C1 =:= 24 ->
+                Val1;
+            true ->
+                exit({error, {asn1, bad_range}})
+        end
+    end,
 
-case Tlv3 of
-[] -> true;_ -> exit({error,{asn1, {unexpected,Tlv3}}}) % extra fields not allowed
-end,
-Res1 = {'SendForwardSubscription',Term1,Term2},
-Res1.
-
+    case Tlv3 of
+        % extra fields not allowed
+        [] -> true;
+        _ -> exit({error, {asn1, {unexpected, Tlv3}}})
+    end,
+    Res1 = {'SendForwardSubscription', Term1, Term2},
+    Res1.
 
 %%================================
 %%  OpenForwardJoin
@@ -2648,58 +2709,59 @@ enc_OpenForwardJoin(Val) ->
     enc_OpenForwardJoin(Val, [<<48>>]).
 
 enc_OpenForwardJoin(Val, TagIn) ->
-{_,Cindex1,Cindex2} = Val,
+    {_, Cindex1, Cindex2} = Val,
 
-%%-------------------------------------------------
-%% attribute subscriberNode(1)   External BBSVXProtocol:NodeEntry
-%%-------------------------------------------------
-   {EncBytes1,EncLen1} = 'enc_NodeEntry'(Cindex1, [<<160>>]),
+    %%-------------------------------------------------
+    %% attribute subscriberNode(1)   External BBSVXProtocol:NodeEntry
+    %%-------------------------------------------------
+    {EncBytes1, EncLen1} = 'enc_NodeEntry'(Cindex1, [<<160>>]),
 
-%%-------------------------------------------------
-%% attribute lock(2) with type OCTET STRING
-%%-------------------------------------------------
-   {EncBytes2,EncLen2} = encode_restricted_string(Cindex2, [<<129>>]),
+    %%-------------------------------------------------
+    %% attribute lock(2) with type OCTET STRING
+    %%-------------------------------------------------
+    {EncBytes2, EncLen2} = encode_restricted_string(Cindex2, [<<129>>]),
 
-   BytesSoFar = [EncBytes1, EncBytes2],
-LenSoFar = EncLen1 + EncLen2,
-encode_tags(TagIn, BytesSoFar, LenSoFar).
-
+    BytesSoFar = [EncBytes1, EncBytes2],
+    LenSoFar = EncLen1 + EncLen2,
+    encode_tags(TagIn, BytesSoFar, LenSoFar).
 
 dec_OpenForwardJoin(Tlv) ->
-   dec_OpenForwardJoin(Tlv, [16]).
+    dec_OpenForwardJoin(Tlv, [16]).
 
 dec_OpenForwardJoin(Tlv, TagIn) ->
-   %%-------------------------------------------------
-   %% decode tag and length 
-   %%-------------------------------------------------
-Tlv1 = match_tags(Tlv, TagIn),
+    %%-------------------------------------------------
+    %% decode tag and length
+    %%-------------------------------------------------
+    Tlv1 = match_tags(Tlv, TagIn),
 
-%%-------------------------------------------------
-%% attribute subscriberNode(1)   External BBSVXProtocol:NodeEntry
-%%-------------------------------------------------
-[V1|Tlv2] = Tlv1, 
-Term1 = 'dec_NodeEntry'(V1, [131072]),
+    %%-------------------------------------------------
+    %% attribute subscriberNode(1)   External BBSVXProtocol:NodeEntry
+    %%-------------------------------------------------
+    [V1 | Tlv2] = Tlv1,
+    Term1 = 'dec_NodeEntry'(V1, [131072]),
 
-%%-------------------------------------------------
-%% attribute lock(2) with type OCTET STRING
-%%-------------------------------------------------
-[V2|Tlv3] = Tlv2, 
-Term2 = begin
-Val1 = decode_octet_string(V2, [131073]),
-C1 = byte_size(Val1),
-if C1 =:= 24 ->
-Val1;
-true ->
-exit({error,{asn1,bad_range}})
-end
-end,
+    %%-------------------------------------------------
+    %% attribute lock(2) with type OCTET STRING
+    %%-------------------------------------------------
+    [V2 | Tlv3] = Tlv2,
+    Term2 = begin
+        Val1 = decode_octet_string(V2, [131073]),
+        C1 = byte_size(Val1),
+        if
+            C1 =:= 24 ->
+                Val1;
+            true ->
+                exit({error, {asn1, bad_range}})
+        end
+    end,
 
-case Tlv3 of
-[] -> true;_ -> exit({error,{asn1, {unexpected,Tlv3}}}) % extra fields not allowed
-end,
-Res1 = {'OpenForwardJoin',Term1,Term2},
-Res1.
-
+    case Tlv3 of
+        % extra fields not allowed
+        [] -> true;
+        _ -> exit({error, {asn1, {unexpected, Tlv3}}})
+    end,
+    Res1 = {'OpenForwardJoin', Term1, Term2},
+    Res1.
 
 %%================================
 %%  BBSVXMessage
@@ -2708,166 +2770,128 @@ enc_BBSVXMessage(Val) ->
     enc_BBSVXMessage(Val, []).
 
 enc_BBSVXMessage(Val, TagIn) ->
-   {EncBytes,EncLen} = case element(1,Val) of
-      headerConnect ->
-         'enc_HeaderConnect'(element(2,Val), [<<160>>]);
-      headerConnectAck ->
-         'enc_HeaderConnectAck'(element(2,Val), [<<161>>]);
-      headerRegister ->
-         'enc_HeaderRegister'(element(2,Val), [<<170>>]);
-      headerRegisterAck ->
-         'enc_HeaderRegisterAck'(element(2,Val), [<<171>>]);
-      headerJoin ->
-         'enc_HeaderJoin'(element(2,Val), [<<180>>]);
-      headerJoinAck ->
-         'enc_HeaderJoinAck'(element(2,Val), [<<181>>]);
-      headerForwardJoin ->
-         'enc_HeaderForwardJoin'(element(2,Val), [<<182>>]);
-      headerForwardJoinAck ->
-         'enc_HeaderForwardJoinAck'(element(2,Val), [<<183>>]);
-      exchangeIn ->
-         'enc_ExchangeIn'(element(2,Val), [<<190>>]);
-      exchangeOut ->
-         'enc_ExchangeOut'(element(2,Val), [<<191,31>>]);
-      exchangeAccept ->
-         'enc_ExchangeAccept'(element(2,Val), [<<191,32>>]);
-      exchangeCancelled ->
-         'enc_ExchangeCancelled'(element(2,Val), [<<191,33>>]);
-      changeLock ->
-         'enc_ChangeLock'(element(2,Val), [<<191,34>>]);
-      nodeQuitting ->
-         'enc_NodeQuitting'(element(2,Val), [<<191,40>>]);
-      sendForwardSubscription ->
-         'enc_SendForwardSubscription'(element(2,Val), [<<191,41>>]);
-      openForwardJoin ->
-         'enc_OpenForwardJoin'(element(2,Val), [<<191,42>>]);
-      ontologyHistory ->
-         'enc_OntologyHistory'(element(2,Val), [<<191,50>>]);
-      ontologyHistoryRequest ->
-         'enc_OntologyHistoryRequest'(element(2,Val), [<<191,51>>]);
-      eptoMessage ->
-         'enc_EptoMessage'(element(2,Val), [<<191,52>>]);
-      leaderElectionInfo ->
-         'enc_LeaderElectionInfo'(element(2,Val), [<<191,53>>]);
-      Else -> 
-         exit({error,{asn1,{invalid_choice_type,Else}}})
-   end,
+    {EncBytes, EncLen} =
+        case element(1, Val) of
+            headerConnect ->
+                'enc_HeaderConnect'(element(2, Val), [<<160>>]);
+            headerConnectAck ->
+                'enc_HeaderConnectAck'(element(2, Val), [<<161>>]);
+            headerRegister ->
+                'enc_HeaderRegister'(element(2, Val), [<<170>>]);
+            headerRegisterAck ->
+                'enc_HeaderRegisterAck'(element(2, Val), [<<171>>]);
+            headerJoin ->
+                'enc_HeaderJoin'(element(2, Val), [<<180>>]);
+            headerJoinAck ->
+                'enc_HeaderJoinAck'(element(2, Val), [<<181>>]);
+            headerForwardJoin ->
+                'enc_HeaderForwardJoin'(element(2, Val), [<<182>>]);
+            headerForwardJoinAck ->
+                'enc_HeaderForwardJoinAck'(element(2, Val), [<<183>>]);
+            exchangeIn ->
+                'enc_ExchangeIn'(element(2, Val), [<<190>>]);
+            exchangeOut ->
+                'enc_ExchangeOut'(element(2, Val), [<<191, 31>>]);
+            exchangeAccept ->
+                'enc_ExchangeAccept'(element(2, Val), [<<191, 32>>]);
+            exchangeCancelled ->
+                'enc_ExchangeCancelled'(element(2, Val), [<<191, 33>>]);
+            changeLock ->
+                'enc_ChangeLock'(element(2, Val), [<<191, 34>>]);
+            nodeQuitting ->
+                'enc_NodeQuitting'(element(2, Val), [<<191, 40>>]);
+            sendForwardSubscription ->
+                'enc_SendForwardSubscription'(element(2, Val), [<<191, 41>>]);
+            openForwardJoin ->
+                'enc_OpenForwardJoin'(element(2, Val), [<<191, 42>>]);
+            ontologyHistory ->
+                'enc_OntologyHistory'(element(2, Val), [<<191, 50>>]);
+            ontologyHistoryRequest ->
+                'enc_OntologyHistoryRequest'(element(2, Val), [<<191, 51>>]);
+            eptoMessage ->
+                'enc_EptoMessage'(element(2, Val), [<<191, 52>>]);
+            leaderElectionInfo ->
+                'enc_LeaderElectionInfo'(element(2, Val), [<<191, 53>>]);
+            Else ->
+                exit({error, {asn1, {invalid_choice_type, Else}}})
+        end,
 
-encode_tags(TagIn, EncBytes, EncLen).
-
-
-
+    encode_tags(TagIn, EncBytes, EncLen).
 
 dec_BBSVXMessage(Tlv) ->
-   dec_BBSVXMessage(Tlv, []).
+    dec_BBSVXMessage(Tlv, []).
 
 dec_BBSVXMessage(Tlv, TagIn) ->
-Tlv1 = match_tags(Tlv, TagIn),
-case (case Tlv1 of [CtempTlv1] -> CtempTlv1; _ -> Tlv1 end) of
-
-%% 'headerConnect'
-    {131072, V1} -> 
-        {headerConnect, 'dec_HeaderConnect'(V1, [])};
-
-
-%% 'headerConnectAck'
-    {131073, V1} -> 
-        {headerConnectAck, 'dec_HeaderConnectAck'(V1, [])};
-
-
-%% 'headerRegister'
-    {131082, V1} -> 
-        {headerRegister, 'dec_HeaderRegister'(V1, [])};
-
-
-%% 'headerRegisterAck'
-    {131083, V1} -> 
-        {headerRegisterAck, 'dec_HeaderRegisterAck'(V1, [])};
-
-
-%% 'headerJoin'
-    {131092, V1} -> 
-        {headerJoin, 'dec_HeaderJoin'(V1, [])};
-
-
-%% 'headerJoinAck'
-    {131093, V1} -> 
-        {headerJoinAck, 'dec_HeaderJoinAck'(V1, [])};
-
-
-%% 'headerForwardJoin'
-    {131094, V1} -> 
-        {headerForwardJoin, 'dec_HeaderForwardJoin'(V1, [])};
-
-
-%% 'headerForwardJoinAck'
-    {131095, V1} -> 
-        {headerForwardJoinAck, 'dec_HeaderForwardJoinAck'(V1, [])};
-
-
-%% 'exchangeIn'
-    {131102, V1} -> 
-        {exchangeIn, 'dec_ExchangeIn'(V1, [])};
-
-
-%% 'exchangeOut'
-    {131103, V1} -> 
-        {exchangeOut, 'dec_ExchangeOut'(V1, [])};
-
-
-%% 'exchangeAccept'
-    {131104, V1} -> 
-        {exchangeAccept, 'dec_ExchangeAccept'(V1, [])};
-
-
-%% 'exchangeCancelled'
-    {131105, V1} -> 
-        {exchangeCancelled, 'dec_ExchangeCancelled'(V1, [])};
-
-
-%% 'changeLock'
-    {131106, V1} -> 
-        {changeLock, 'dec_ChangeLock'(V1, [])};
-
-
-%% 'nodeQuitting'
-    {131112, V1} -> 
-        {nodeQuitting, 'dec_NodeQuitting'(V1, [])};
-
-
-%% 'sendForwardSubscription'
-    {131113, V1} -> 
-        {sendForwardSubscription, 'dec_SendForwardSubscription'(V1, [])};
-
-
-%% 'openForwardJoin'
-    {131114, V1} -> 
-        {openForwardJoin, 'dec_OpenForwardJoin'(V1, [])};
-
-
-%% 'ontologyHistory'
-    {131122, V1} -> 
-        {ontologyHistory, 'dec_OntologyHistory'(V1, [])};
-
-
-%% 'ontologyHistoryRequest'
-    {131123, V1} -> 
-        {ontologyHistoryRequest, 'dec_OntologyHistoryRequest'(V1, [])};
-
-
-%% 'eptoMessage'
-    {131124, V1} -> 
-        {eptoMessage, 'dec_EptoMessage'(V1, [])};
-
-
-%% 'leaderElectionInfo'
-    {131125, V1} -> 
-        {leaderElectionInfo, 'dec_LeaderElectionInfo'(V1, [])};
-
-      Else -> 
-         exit({error,{asn1,{invalid_choice_tag,Else}}})
-   end
-.
+    Tlv1 = match_tags(Tlv, TagIn),
+    case
+        (case Tlv1 of
+            [CtempTlv1] -> CtempTlv1;
+            _ -> Tlv1
+        end)
+    of
+        %% 'headerConnect'
+        {131072, V1} ->
+            {headerConnect, 'dec_HeaderConnect'(V1, [])};
+        %% 'headerConnectAck'
+        {131073, V1} ->
+            {headerConnectAck, 'dec_HeaderConnectAck'(V1, [])};
+        %% 'headerRegister'
+        {131082, V1} ->
+            {headerRegister, 'dec_HeaderRegister'(V1, [])};
+        %% 'headerRegisterAck'
+        {131083, V1} ->
+            {headerRegisterAck, 'dec_HeaderRegisterAck'(V1, [])};
+        %% 'headerJoin'
+        {131092, V1} ->
+            {headerJoin, 'dec_HeaderJoin'(V1, [])};
+        %% 'headerJoinAck'
+        {131093, V1} ->
+            {headerJoinAck, 'dec_HeaderJoinAck'(V1, [])};
+        %% 'headerForwardJoin'
+        {131094, V1} ->
+            {headerForwardJoin, 'dec_HeaderForwardJoin'(V1, [])};
+        %% 'headerForwardJoinAck'
+        {131095, V1} ->
+            {headerForwardJoinAck, 'dec_HeaderForwardJoinAck'(V1, [])};
+        %% 'exchangeIn'
+        {131102, V1} ->
+            {exchangeIn, 'dec_ExchangeIn'(V1, [])};
+        %% 'exchangeOut'
+        {131103, V1} ->
+            {exchangeOut, 'dec_ExchangeOut'(V1, [])};
+        %% 'exchangeAccept'
+        {131104, V1} ->
+            {exchangeAccept, 'dec_ExchangeAccept'(V1, [])};
+        %% 'exchangeCancelled'
+        {131105, V1} ->
+            {exchangeCancelled, 'dec_ExchangeCancelled'(V1, [])};
+        %% 'changeLock'
+        {131106, V1} ->
+            {changeLock, 'dec_ChangeLock'(V1, [])};
+        %% 'nodeQuitting'
+        {131112, V1} ->
+            {nodeQuitting, 'dec_NodeQuitting'(V1, [])};
+        %% 'sendForwardSubscription'
+        {131113, V1} ->
+            {sendForwardSubscription, 'dec_SendForwardSubscription'(V1, [])};
+        %% 'openForwardJoin'
+        {131114, V1} ->
+            {openForwardJoin, 'dec_OpenForwardJoin'(V1, [])};
+        %% 'ontologyHistory'
+        {131122, V1} ->
+            {ontologyHistory, 'dec_OntologyHistory'(V1, [])};
+        %% 'ontologyHistoryRequest'
+        {131123, V1} ->
+            {ontologyHistoryRequest, 'dec_OntologyHistoryRequest'(V1, [])};
+        %% 'eptoMessage'
+        {131124, V1} ->
+            {eptoMessage, 'dec_EptoMessage'(V1, [])};
+        %% 'leaderElectionInfo'
+        {131125, V1} ->
+            {leaderElectionInfo, 'dec_LeaderElectionInfo'(V1, [])};
+        Else ->
+            exit({error, {asn1, {invalid_choice_tag, Else}}})
+    end.
 
 %%%
 %%% Run-time functions.
@@ -2884,14 +2908,14 @@ collect_parts(TlvList) ->
 
 collect_parts([{_, L} | Rest], Acc) when is_list(L) ->
     collect_parts(Rest, [collect_parts(L) | Acc]);
-collect_parts([{3, <<Unused,Bits/binary>>} | Rest], _Acc) ->
+collect_parts([{3, <<Unused, Bits/binary>>} | Rest], _Acc) ->
     collect_parts_bit(Rest, [Bits], Unused);
 collect_parts([{_T, V} | Rest], Acc) ->
     collect_parts(Rest, [V | Acc]);
 collect_parts([], Acc) ->
     list_to_binary(lists:reverse(Acc)).
 
-collect_parts_bit([{3, <<Unused,Bits/binary>>} | Rest], Acc, Uacc) ->
+collect_parts_bit([{3, <<Unused, Bits/binary>>} | Rest], Acc, Uacc) ->
     collect_parts_bit(Rest, [Bits | Acc], Unused + Uacc);
 collect_parts_bit([], Acc, Uacc) ->
     list_to_binary([Uacc | lists:reverse(Acc)]).
@@ -2979,9 +3003,11 @@ encode_tags(TagIn, {BytesSoFar, LenSoFar}) ->
 
 encode_tags([Tag | Trest], BytesSoFar, LenSoFar) ->
     {Bytes2, L2} = encode_length(LenSoFar),
-    encode_tags(Trest,
-                [Tag, Bytes2 | BytesSoFar],
-                LenSoFar + byte_size(Tag) + L2);
+    encode_tags(
+        Trest,
+        [Tag, Bytes2 | BytesSoFar],
+        LenSoFar + byte_size(Tag) + L2
+    );
 encode_tags([], BytesSoFar, LenSoFar) ->
     {BytesSoFar, LenSoFar}.
 

@@ -28,8 +28,11 @@
 -define(ENCODING_AUTO, auto).
 
 %% Protocol magic bytes for format detection
--define(ASN1_MAGIC, 16#30).  %% ASN.1 BER SEQUENCE tag
--define(TERM_MAGIC, 131).    %% Erlang term format magic
+
+%% ASN.1 BER SEQUENCE tag
+-define(ASN1_MAGIC, 16#30).
+%% Erlang term format magic
+-define(TERM_MAGIC, 131).
 
 %% ETS table for configuration
 -define(CODEC_CONFIG, bbsvx_codec_config).
@@ -56,9 +59,11 @@ start() ->
 
 %% @doc Set the encoding format
 -spec set_encoding(term | asn1 | auto) -> ok.
-set_encoding(Encoding) when Encoding =:= term; 
-                           Encoding =:= asn1; 
-                           Encoding =:= auto ->
+set_encoding(Encoding) when
+    Encoding =:= term;
+    Encoding =:= asn1;
+    Encoding =:= auto
+->
     ets:insert(?CODEC_CONFIG, {encoding, Encoding}),
     ?'log-info'("Protocol encoding set to: ~p", [Encoding]),
     ok.
@@ -68,7 +73,8 @@ set_encoding(Encoding) when Encoding =:= term;
 get_encoding() ->
     case ets:lookup(?CODEC_CONFIG, encoding) of
         [{encoding, Encoding}] -> Encoding;
-        [] -> ?ENCODING_ASN1  %% Default to ASN.1 encoding
+        %% Default to ASN.1 encoding
+        [] -> ?ENCODING_ASN1
     end.
 
 %% @doc Encode message using current encoding
@@ -101,12 +107,13 @@ decode(Binary, ?ENCODING_AUTO) ->
     %% Auto-detect format and decode accordingly
     migration_decode(Binary).
 
-
 %% @doc Check if binary contains ASN.1 encoded message
 -spec is_asn1_message(binary()) -> boolean().
 is_asn1_message(<<16#30, _/binary>>) -> true;
-is_asn1_message(<<16#80, _/binary>>) -> true;  %% Context-specific tag
-is_asn1_message(<<16#A0, _/binary>>) -> true;  %% Context-specific constructed
+%% Context-specific tag
+is_asn1_message(<<16#80, _/binary>>) -> true;
+%% Context-specific constructed
+is_asn1_message(<<16#A0, _/binary>>) -> true;
 is_asn1_message(_) -> false.
 
 %% @doc Migration-aware decode that handles both formats
@@ -115,7 +122,7 @@ migration_decode(Binary) ->
     case is_asn1_message(Binary) of
         true ->
             case decode_asn1(Binary) of
-                {ok, Message} -> 
+                {ok, Message} ->
                     {ok, Message};
                 {error, _} ->
                     %% Fallback to term format if ASN.1 fails
@@ -124,7 +131,7 @@ migration_decode(Binary) ->
             end;
         false ->
             case decode_term(Binary) of
-                {ok, Message} -> 
+                {ok, Message} ->
                     {ok, Message};
                 {error, _} ->
                     %% Last resort: try ASN.1 anyway
@@ -177,7 +184,6 @@ decode_asn1(Binary) ->
 %%% Performance Optimized Functions
 %%%=============================================================================
 
-
 %% @doc Performance comparison utility
 -spec benchmark_encoding(tuple(), non_neg_integer()) -> #{term => float(), asn1 => float()}.
 benchmark_encoding(Message, Iterations) ->
@@ -185,14 +191,15 @@ benchmark_encoding(Message, Iterations) ->
     {TermTime, _} = timer:tc(fun() ->
         [encode_term(Message) || _ <- lists:seq(1, Iterations)]
     end),
-    
+
     %% Benchmark ASN.1 encoding
     {ASN1Time, _} = timer:tc(fun() ->
         [encode_asn1(Message) || _ <- lists:seq(1, Iterations)]
     end),
-    
+
     #{
-        term => TermTime / Iterations / 1000,  %% ms per operation
+        %% ms per operation
+        term => TermTime / Iterations / 1000,
         asn1 => ASN1Time / Iterations / 1000
     }.
 
@@ -206,12 +213,12 @@ benchmark_encoding(Message, Iterations) ->
 codec_migration_test() ->
     %% Test auto-detection
     Message = #header_connect{node_id = <<"test">>, namespace = <<"ns">>},
-    
+
     %% Test term encoding
     {ok, TermBinary} = encode(Message, term),
     {ok, DecodedFromTerm} = decode(TermBinary, auto),
     ?assertEqual(Message, DecodedFromTerm),
-    
+
     %% Test ASN.1 encoding
     {ok, ASN1Binary} = encode(Message, asn1),
     {ok, DecodedFromASN1} = decode(ASN1Binary, auto),
@@ -220,7 +227,7 @@ codec_migration_test() ->
 performance_test() ->
     Message = #header_connect{node_id = <<"test_node">>, namespace = <<"test_ns">>},
     Benchmark = benchmark_encoding(Message, 100),
-    
+
     %% Both should complete without error
     ?assert(maps:is_key(term, Benchmark)),
     ?assert(maps:is_key(asn1, Benchmark)).

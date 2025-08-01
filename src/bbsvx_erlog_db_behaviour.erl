@@ -22,7 +22,7 @@
 %%  Add functor as a compiled procedure with code in M:F in the
 %%  database. Check that it is not a built-in, if so return error.
 -callback add_compiled_proc(term(), functor(), atom(), atom()) ->
-                               {ok, term()} | error.
+    {ok, term()} | error.
 %% asserta_clause(Db, Functor, Head, Body) -> {ok,NewDb} | error.
 %% assertz_clause(Db, Functor, Head, Body) -> {ok,NewDb} | error.
 %% Insert a clause at the beginning or end of the database.
@@ -40,11 +40,11 @@
 %%        built_in | {code,{Mod,Func}} | {clauses,[Clause]} | undefined.
 %% Return the procedure type and data for a functor.
 -callback get_procedure(term(), functor()) ->
-                           built_in | {code, {atom(), atom()}} | {clauses, [term()]} | undefined.
+    built_in | {code, {atom(), atom()}} | {clauses, [term()]} | undefined.
 %% get_procedure_type(Db, Functor) ->
 %%        built_in | compiled | interpreted | undefined.
 %%  Return the procedure type for a functor.
 -callback get_procedure_type(term(), functor()) ->
-                                built_in | compiled | interpreted | undefined.
+    built_in | compiled | interpreted | undefined.
 %% get_interp_functors(Database) -> [Functor].
 -callback get_interpreted_functors(term()) -> [functor()].

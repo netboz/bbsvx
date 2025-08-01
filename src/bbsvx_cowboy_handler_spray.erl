@@ -11,8 +11,15 @@
 
 -include_lib("logjam/include/logjam.hrl").
 
--export([init/2, allowed_methods/2, malformed_request/2, resource_exists/2,
-         content_types_provided/2, content_types_accepted/2, options/2]).
+-export([
+    init/2,
+    allowed_methods/2,
+    malformed_request/2,
+    resource_exists/2,
+    content_types_provided/2,
+    content_types_accepted/2,
+    options/2
+]).
 -export([provide_outview/2, provide_inview/2, stop_spray_agent/2]).
 
 %%%=============================================================================
@@ -26,13 +33,17 @@ init(Req0, State) ->
 options(Req, State) ->
     ?'log-info'("Options: ~p", [Req]),
     Resp =
-        cowboy_req:reply(204,
-                         #{<<"access-control-allow-origin">> => <<"*">>,
-                           <<"access-control-allow-methods">> =>
-                               <<"GET, POST, PUT, DELETE, OPTIONS">>,
-                           <<"access-control-allow-headers">> => <<"*">>},
-                         <<>>,
-                         Req),
+        cowboy_req:reply(
+            204,
+            #{
+                <<"access-control-allow-origin">> => <<"*">>,
+                <<"access-control-allow-methods">> =>
+                    <<"GET, POST, PUT, DELETE, OPTIONS">>,
+                <<"access-control-allow-headers">> => <<"*">>
+            },
+            <<>>,
+            Req
+        ),
     {stop, Resp, State}.
 
 allowed_methods(Req, State) ->
@@ -55,7 +66,8 @@ malformed_request(Req, State) ->
             _ ->
                 Req2 =
                     cowboy_req:set_resp_body(
-                        jiffy:encode([#{error => <<"missing_namespace">>}]), Req1),
+                        jiffy:encode([#{error => <<"missing_namespace">>}]), Req1
+                    ),
                 {true, Req2, State}
         end
     catch
@@ -75,7 +87,8 @@ resource_exists(Req, #{namespace := Namespace} = State) ->
             Req1 = cowboy_req:set_resp_header(<<"Access-Control-Allow-Origin">>, <<"*">>, Req),
             Req2 =
                 cowboy_req:set_resp_body(
-                    jiffy:encode([#{error => <<"ontology_not_found">>}]), Req1),
+                    jiffy:encode([#{error => <<"ontology_not_found">>}]), Req1
+                ),
             {false, Req2, State}
     end.
 
@@ -105,7 +118,8 @@ stop_spray_agent(Req, #{namespace := Namespace} = State) ->
             ?'log-info'("Spray agent ~p stopped", [Pid]),
             Req2 =
                 cowboy_req:set_resp_body(
-                    jiffy:encode([#{result => <<"ok">>}]), Req1),
+                    jiffy:encode([#{result => <<"ok">>}]), Req1
+                ),
             {true, Req2, State}
     end.
 
@@ -131,22 +145,33 @@ provide_outview(Req, #{namespace := Namespace} = State) ->
             %% Add Access-Control-Allow-Origin header
             Req1 = cowboy_req:set_resp_header(<<"Access-Control-Allow-Origin">>, <<"*">>, Req),
             ?'log-info'("Got View: ~p", [View]),
-            {jiffy:encode(
-                 lists:map(fun(#arc{ulid = Ulid,
-                                    source = Source,
-                                    target = Target,
-                                    lock = Lock,
-                                    age = Age}) ->
-                              #{my_id => MyId,
+            {
+                jiffy:encode(
+                    lists:map(
+                        fun(
+                            #arc{
+                                ulid = Ulid,
+                                source = Source,
+                                target = Target,
+                                lock = Lock,
+                                age = Age
+                            }
+                        ) ->
+                            #{
+                                my_id => MyId,
                                 ulid => Ulid,
                                 source => node_entry_to_map(Source),
                                 target => node_entry_to_map(Target),
                                 lock => Lock,
-                                age => Age}
-                           end,
-                           View)),
-             Req1,
-             State}
+                                age => Age
+                            }
+                        end,
+                        View
+                    )
+                ),
+                Req1,
+                State
+            }
     end.
 
 provide_inview(Req, #{namespace := Namespace} = State) ->
@@ -158,22 +183,33 @@ provide_inview(Req, #{namespace := Namespace} = State) ->
             %% Add Access-Control-Allow-Origin header
             Req1 = cowboy_req:set_resp_header(<<"Access-Control-Allow-Origin">>, <<"*">>, Req),
             ?'log-info'("Got View: ~p", [View]),
-            {jiffy:encode(
-                 lists:map(fun(#arc{ulid = Ulid,
-                                    source = Source,
-                                    target = Target,
-                                    lock = Lock,
-                                    age = Age}) ->
-                              #{my_id => MyId,
+            {
+                jiffy:encode(
+                    lists:map(
+                        fun(
+                            #arc{
+                                ulid = Ulid,
+                                source = Source,
+                                target = Target,
+                                lock = Lock,
+                                age = Age
+                            }
+                        ) ->
+                            #{
+                                my_id => MyId,
                                 ulid => Ulid,
                                 source => node_entry_to_map(Source),
                                 target => node_entry_to_map(Target),
                                 lock => Lock,
-                                age => Age}
-                           end,
-                           View)),
-             Req1,
-             State}
+                                age => Age
+                            }
+                        end,
+                        View
+                    )
+                ),
+                Req1,
+                State
+            }
     end.
 
 format_host(Host) when is_binary(Host) ->
@@ -185,9 +221,13 @@ format_host({A, B, C, D}) ->
 
 %% Convert a node_entry to a map
 -spec node_entry_to_map(node_entry()) -> map().
-node_entry_to_map(#node_entry{node_id = NodeId,
-                              host = Host,
-                              port = Port}) ->
-    #{node_id => NodeId,
-      host => format_host(Host),
-      port => Port}.
+node_entry_to_map(#node_entry{
+    node_id = NodeId,
+    host = Host,
+    port = Port
+}) ->
+    #{
+        node_id => NodeId,
+        host => format_host(Host),
+        port => Port
+    }.

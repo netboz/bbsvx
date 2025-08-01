@@ -98,14 +98,17 @@ assertz_clause(Db, Functor, Head, Body) ->
 retract_clause(Db, Functor, Tag) ->
     case ets:lookup(Db, Functor) of
         [{_, built_in}] ->
-            error;                %Can't retract here
+            %Can't retract here
+            error;
         [{_, code, _}] ->
-            error;                  %Can't retract here
+            %Can't retract here
+            error;
         [{_, clauses, Nt, Cs}] ->
             ets:insert(Db, {Functor, clauses, Nt, lists:keydelete(Tag, 1, Cs)}),
             {ok, Db};
         [] ->
-            {ok, Db}                           %Do nothing
+            %Do nothing
+            {ok, Db}
     end.
 
 %% abolish_clauses(Db, Functor) -> NewDatabase.
@@ -113,7 +116,8 @@ retract_clause(Db, Functor, Tag) ->
 abolish_clauses(Db, Functor) ->
     case ets:lookup(Db, Functor) of
         [{_, built_in}] ->
-            error;                %Can't abolish here
+            %Can't abolish here
+            error;
         [{_, code, _}] ->
             ets:delete(Db, Functor),
             {ok, Db};
@@ -121,7 +125,8 @@ abolish_clauses(Db, Functor) ->
             ets:delete(Db, Functor),
             {ok, Db};
         [] ->
-            {ok, Db}                           %Do nothing
+            %Do nothing
+            {ok, Db}
     end.
 
 %% get_procedure(Db, Functor) ->
@@ -147,22 +152,29 @@ get_procedure(Db, Functor) ->
 get_procedure_type(Db, Functor) ->
     case ets:lookup(Db, Functor) of
         [{_, built_in}] ->
-            built_in;             %A built-in
+            %A built-in
+            built_in;
         [{_, code, _}] ->
-            compiled;               %Compiled (perhaps someday)
+            %Compiled (perhaps someday)
+            compiled;
         [{_, clauses, _, _}] ->
-            interpreted;       %Interpreted clauses
+            %Interpreted clauses
+            interpreted;
         [] ->
-            undefined                         %Undefined
+            %Undefined
+            undefined
     end.
 
 %% get_interp_functors(Db) -> [Functor].
 
 get_interpreted_functors(Db) ->
-    ets:foldl(fun ({Func, clauses, _, _}, Fs) ->
-                      [Func | Fs];
-                  (_, Fs) ->
-                      Fs
-              end,
-              [],
-              Db).
+    ets:foldl(
+        fun
+            ({Func, clauses, _, _}, Fs) ->
+                [Func | Fs];
+            (_, Fs) ->
+                Fs
+        end,
+        [],
+        Db
+    ).

@@ -12,8 +12,13 @@
 -include("bbsvx.hrl").
 -include_lib("logjam/include/logjam.hrl").
 
--export([init/2, allowed_methods/2, malformed_request/2, content_types_provided/2,
-         content_types_accepted/2]).
+-export([
+    init/2,
+    allowed_methods/2,
+    malformed_request/2,
+    content_types_provided/2,
+    content_types_accepted/2
+]).
 -export([accept_transaction/2, provide_transaction/2]).
 
 %%%=============================================================================
@@ -40,15 +45,17 @@ malformed_request(Req, State) ->
                 {error, Reason} ->
                     Req2 =
                         cowboy_req:set_resp_body(
-                            jiffy:encode([#{error => atom_to_binary(Reason)}]), Req1),
+                            jiffy:encode([#{error => atom_to_binary(Reason)}]), Req1
+                        ),
                     {true, Req2, State}
             end
     catch
         A:B ->
-           ?'log-notice'("Malformed request ~p:~p", [A, B]),
+            ?'log-notice'("Malformed request ~p:~p", [A, B]),
             Req3 =
                 cowboy_req:set_resp_body(
-                    jiffy:encode([#{error => <<"invalid_json">>}]), Req),
+                    jiffy:encode([#{error => <<"invalid_json">>}]), Req
+                ),
             {true, Req3, State}
     end.
 
@@ -58,18 +65,22 @@ content_types_provided(#{} = Req, State) ->
 content_types_accepted(#{} = Req, State) ->
     {[{{<<"application">>, <<"json">>, []}, accept_transaction}], Req, State}.
 
-accept_transaction(Req0,
-                   #{transaction := #transaction{namespace = Namespace} = Transaction} = State) ->
+accept_transaction(
+    Req0,
+    #{transaction := #transaction{namespace = Namespace} = Transaction} = State
+) ->
     try bbsvx_epto_service:broadcast(Namespace, Transaction) of
         ok ->
             Req1 =
                 cowboy_req:set_resp_body(
-                    jiffy:encode([#{status => <<"accepted">>}]), Req0),
+                    jiffy:encode([#{status => <<"accepted">>}]), Req0
+                ),
             {true, Req1, State};
         {error, Reason} ->
             Req2 =
                 cowboy_req:set_resp_body(
-                    jiffy:encode([#{error => atom_to_binary(Reason)}]), Req0),
+                    jiffy:encode([#{error => atom_to_binary(Reason)}]), Req0
+                ),
             {true, Req2, State}
     catch
         A:B ->
@@ -77,7 +88,8 @@ accept_transaction(Req0,
             Req3 =
                 cowboy_req:set_resp_body(
                     jiffy:encode([#{error => <<"transac_network_internal_error">>}]),
-                    Req0),
+                    Req0
+                ),
             {true, Req3, State}
     end.
 
@@ -88,7 +100,8 @@ provide_transaction(Req0, State) ->
         undefined ->
             Req1 =
                 cowboy_req:set_resp_body(
-                    jiffy:encode([#{error => <<"missing_transaction_adress">>}]), Req),
+                    jiffy:encode([#{error => <<"missing_transaction_adress">>}]), Req
+                ),
             {true, Req1, State};
         _ ->
             {false, Req, State#{body => DBody}}
@@ -98,15 +111,19 @@ provide_transaction(Req0, State) ->
 %%% Internal functions
 %%%=============================================================================
 -spec validate_map_transaction(Map :: map()) -> transaction().
-validate_map_transaction(#{<<"namespace">> := Namespace,
-                           <<"type">> := Type,
-                           <<"signature">> := Signature,
-                           <<"payload">> := Payload}) ->
+validate_map_transaction(#{
+    <<"namespace">> := Namespace,
+    <<"type">> := Type,
+    <<"signature">> := Signature,
+    <<"payload">> := Payload
+}) ->
     %% get number of elements of transaction record
-    #transaction{type = binary_to_existing_atom(Type),
-                 namespace = Namespace,
-                 signature = Signature,
-                 payload = Payload};
+    #transaction{
+        type = binary_to_existing_atom(Type),
+        namespace = Namespace,
+        signature = Signature,
+        payload = Payload
+    };
 validate_map_transaction(Other) ->
     logger:warning("Invalid transaction map ~p", [Other]),
     {error, missing_field}.

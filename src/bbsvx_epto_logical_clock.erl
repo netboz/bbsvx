@@ -18,8 +18,14 @@
 %% External API
 -export([start_link/2]).
 %% Callbacks
--export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
-         code_change/3]).
+-export([
+    init/1,
+    handle_call/3,
+    handle_cast/2,
+    handle_info/2,
+    terminate/2,
+    code_change/3
+]).
 
 -include("bbsvx.hrl").
 
@@ -36,10 +42,12 @@
 
 -spec start_link(Namespace :: binary(), Ttl :: integer()) -> gen_server:start_ret().
 start_link(Namespace, Ttl) ->
-    gen_server:start_link({via, gproc, {n, l, {?MODULE, Namespace}}},
-                          ?MODULE,
-                          [Namespace, Ttl],
-                          []).
+    gen_server:start_link(
+        {via, gproc, {n, l, {?MODULE, Namespace}}},
+        ?MODULE,
+        [Namespace, Ttl],
+        []
+    ).
 
 %%%=============================================================================
 %%% Gen Server Callbacks
@@ -50,15 +58,17 @@ init([Namespace, Ttl]) ->
     {ok, State}.
 
 -spec handle_call(Request :: term(), From :: gen_server:from(), State :: state()) ->
-                     {reply, Reply :: term(), State :: state()} |
-                     {noreply, State :: state()} |
-                     {stop, Reason :: term(), Reply :: term(), State :: state()}.
+    {reply, Reply :: term(), State :: state()}
+    | {noreply, State :: state()}
+    | {stop, Reason :: term(), Reply :: term(), State :: state()}.
 handle_call({set_ttl, Ttl}, _From, State) when is_number(Ttl) ->
     {reply, ok, State#state{ttl = Ttl}};
 handle_call({is_deliverable, #epto_event{ttl = Ttl}}, _From, State) ->
     Reply = Ttl > State#state.ttl,
-    ?'log-info'("Logical clock: Is deliverable Event TTs : ~p State TTl :~p",
-                [Ttl, State#state.ttl]),
+    ?'log-info'(
+        "Logical clock: Is deliverable Event TTs : ~p State TTl :~p",
+        [Ttl, State#state.ttl]
+    ),
     {reply, Reply, State};
 handle_call(get_clock, _From, State) ->
     NewClock = State#state.logical_clock + 1,

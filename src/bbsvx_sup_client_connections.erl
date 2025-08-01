@@ -36,16 +36,22 @@ start_link() ->
 
 init([]) ->
     SupFlags =
-        #{strategy => simple_one_for_one,
-          intensity => 0,
-          period => 1},
+        #{
+            strategy => simple_one_for_one,
+            intensity => 0,
+            period => 1
+        },
     ChildSpecs =
-        [#{id => bbsvx_client_connection,
-           start => {bbsvx_client_connection, start_link, []},
-           restart => temporary,
-           shutdown => 100,
-           type => worker,
-           modules => [bbsvx_client_connection]}],
+        [
+            #{
+                id => bbsvx_client_connection,
+                start => {bbsvx_client_connection, start_link, []},
+                restart => temporary,
+                shutdown => 100,
+                type => worker,
+                modules => [bbsvx_client_connection]
+            }
+        ],
     {ok, {SupFlags, ChildSpecs}}.
 
 %%%=============================================================================

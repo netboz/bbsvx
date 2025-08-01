@@ -46,12 +46,12 @@
 %%        built_in | {code,{Mod,Func}} | {clauses,[Clause]} | undefined.
 %% Return the procedure type and data for a functor.
 -callback get_procedure(term(), functor()) ->
-                           built_in | {code, {atom(), atom()}} | {clauses, [term()]} | undefined.
+    built_in | {code, {atom(), atom()}} | {clauses, [term()]} | undefined.
 %% get_procedure_type(Db, Functor) ->
 %%        built_in | compiled | interpreted | undefined.
 %%  Return the procedure type for a functor.
 -callback get_procedure_type(term(), functor()) ->
-                                built_in | compiled | interpreted | undefined.
+    built_in | compiled | interpreted | undefined.
 %% get_interp_functors(Database) -> [Functor].
 -callback get_interpreted_functors(term()) -> [functor()].
 
@@ -73,10 +73,14 @@
 %% @TODO: swap parameters order
 new({OutDbArgs, OutMod}) ->
     OutModRef = OutMod:new(OutDbArgs),
-    #db_differ{out_db =
-                   #db{mod = OutMod,
-                       ref = OutModRef,
-                       loc = []}}.
+    #db_differ{
+        out_db =
+            #db{
+                mod = OutMod,
+                ref = OutModRef,
+                loc = []
+            }
+    }.
 
 %% add_built_in(Db, Functor) -> NewDb.
 %%  Add Functor as a built-in in the database.
@@ -89,10 +93,12 @@ add_built_in(#db_differ{out_db = #db{mod = OutMod, ref = Ref} = Db} = DiffRef, F
 %%  Add functor as a compiled procedure with code in M:F in the
 %%  database. Check that it is not a built-in, if so return error.
 
-add_compiled_proc(#db_differ{out_db = #db{mod = OutMod, ref = Ref} = Db} = DiffRef,
-                  Functor,
-                  M,
-                  F) ->
+add_compiled_proc(
+    #db_differ{out_db = #db{mod = OutMod, ref = Ref} = Db} = DiffRef,
+    Functor,
+    M,
+    F
+) ->
     {ok, NewRef} = OutMod:add_compiled_proc(Ref, Functor, M, F),
     {ok, DiffRef#db_differ{out_db = Db#db{ref = NewRef}}}.
 
@@ -100,55 +106,65 @@ add_compiled_proc(#db_differ{out_db = #db{mod = OutMod, ref = Ref} = Db} = DiffR
 %% assertz_clause(Db, Functor, Head, Body) -> {ok,NewDb} | error.
 %%  We DON'T check format and just put it straight into the database.
 
-asserta_clause(#db_differ{out_db = #db{mod = OutMod, ref = Ref} = Db, op_fifo = OpFifo} =
-                   DiffRef,
-               Functor,
-               Head,
-               Body) ->
+asserta_clause(
+    #db_differ{out_db = #db{mod = OutMod, ref = Ref} = Db, op_fifo = OpFifo} =
+        DiffRef,
+    Functor,
+    Head,
+    Body
+) ->
     %% Call outmod to do the real work
     ?'log-info'("asserta_clause to ~p", [Ref]),
     {ok, NewRef} = OutMod:asserta_clause(Ref, Functor, Head, Body),
-    {ok,
-     DiffRef#db_differ{out_db = Db#db{ref = NewRef},
-                       op_fifo = [{asserta, Functor, Head, Body} | OpFifo]}}.
+    {ok, DiffRef#db_differ{
+        out_db = Db#db{ref = NewRef},
+        op_fifo = [{asserta, Functor, Head, Body} | OpFifo]
+    }}.
 
-assertz_clause(#db_differ{out_db = #db{mod = OutMod, ref = Ref} = Db, op_fifo = OpFifo} =
-                   DiffRef,
-               Functor,
-               Head,
-               Body) ->
+assertz_clause(
+    #db_differ{out_db = #db{mod = OutMod, ref = Ref} = Db, op_fifo = OpFifo} =
+        DiffRef,
+    Functor,
+    Head,
+    Body
+) ->
     %% Call outmod to do the real work
     ?'log-info'("asserta_clause to ~p", [Ref]),
 
     {ok, NewRef} = OutMod:assertz_clause(Ref, Functor, Head, Body),
-    {ok,
-     DiffRef#db_differ{out_db = Db#db{ref = NewRef},
-                       op_fifo = [{assertz, Functor, Head, Body} | OpFifo]}}.
+    {ok, DiffRef#db_differ{
+        out_db = Db#db{ref = NewRef},
+        op_fifo = [{assertz, Functor, Head, Body} | OpFifo]
+    }}.
 
 %% retract_clause(Db, Functor, ClauseTag) -> {ok,NewDb} | error.
 %%  Retract (remove) the clause with tag ClauseTag from the list of
 %%  clauses of Functor.
 
-retract_clause(#db_differ{out_db = #db{mod = OutMod, ref = Ref} = Db, op_fifo = OpFifo} =
-                   DiffRef,
-               Functor,
-               Tag) ->
+retract_clause(
+    #db_differ{out_db = #db{mod = OutMod, ref = Ref} = Db, op_fifo = OpFifo} =
+        DiffRef,
+    Functor,
+    Tag
+) ->
     %% Record this retract operation
     %% Call outmod to do the real work
     {ok, NewRef} = OutMod:retract_clause(Ref, Functor, Tag),
-    {ok,
-     DiffRef#db_differ{out_db = Db#db{ref = NewRef},
-                       op_fifo = [{retract, Functor, Tag} | OpFifo]}}.
+    {ok, DiffRef#db_differ{
+        out_db = Db#db{ref = NewRef},
+        op_fifo = [{retract, Functor, Tag} | OpFifo]
+    }}.
 
 %% abolish_clauses(Db, Functor) -> NewDatabase.
 
-abolish_clauses(#db_differ{out_db = #db{mod = OutMod, ref = Ref} = Db, op_fifo = OpFifo} =
-                    DiffRef,
-                Functor) ->
+abolish_clauses(
+    #db_differ{out_db = #db{mod = OutMod, ref = Ref} = Db, op_fifo = OpFifo} =
+        DiffRef,
+    Functor
+) ->
     %% Call outmod to do the real work
     {ok, NewRef} = OutMod:abolish_clauses(Ref, Functor),
-    {ok,
-     DiffRef#db_differ{out_db = Db#db{ref = NewRef}, op_fifo = [{abolish, Functor} | OpFifo]}}.
+    {ok, DiffRef#db_differ{out_db = Db#db{ref = NewRef}, op_fifo = [{abolish, Functor} | OpFifo]}}.
 
 %% get_procedure(Db, Functor) ->
 %%        built_in | {code,{Mod,Func}} | {clauses,[Clause]} | undefined.
@@ -182,44 +198,51 @@ apply_diff(GoalDiff, #db{mod = Mod} = DbIn) ->
     %% @TODO : This can be avoided by making diff commutative
     %% Apply the diff to the database state
     {ok,
-     lists:foldr(fun ({asserta, Functor, Head, Body}, #db{ref = Ref} = Db) ->
-                         {ok, NewRef} = Mod:asserta_clause(Ref, Functor, Head, Body),
-                         Db#db{ref = NewRef};
-                     ({assertz, Functor, Head, Body}, #db{ref = Ref} = Db) ->
-                         {ok, NewRef} = Mod:assertz_clause(Ref, Functor, Head, Body),
-                         Db#db{ref = NewRef};
-                     ({retract, Functor, Tag}, #db{ref = Ref} = Db) ->
-                         {ok, NewRef} = Mod:retract_clause(Ref, Functor, Tag),
-                         Db#db{ref = NewRef};
-                     ({abolish, Functor}, #db{ref = Ref} = Db) ->
-                         {ok, NewRef} = Mod:abolish_clauses(Ref, Functor),
-                         Db#db{ref = NewRef};
-                     (Op, Db) ->
-                         logger:error("Unknown operation in diff: ~p", [Op]),
-                         Db
-                 end,
-                 DbIn,
-                 GoalDiff)}.
-
-
+        lists:foldr(
+            fun
+                ({asserta, Functor, Head, Body}, #db{ref = Ref} = Db) ->
+                    {ok, NewRef} = Mod:asserta_clause(Ref, Functor, Head, Body),
+                    Db#db{ref = NewRef};
+                ({assertz, Functor, Head, Body}, #db{ref = Ref} = Db) ->
+                    {ok, NewRef} = Mod:assertz_clause(Ref, Functor, Head, Body),
+                    Db#db{ref = NewRef};
+                ({retract, Functor, Tag}, #db{ref = Ref} = Db) ->
+                    {ok, NewRef} = Mod:retract_clause(Ref, Functor, Tag),
+                    Db#db{ref = NewRef};
+                ({abolish, Functor}, #db{ref = Ref} = Db) ->
+                    {ok, NewRef} = Mod:abolish_clauses(Ref, Functor),
+                    Db#db{ref = NewRef};
+                (Op, Db) ->
+                    logger:error("Unknown operation in diff: ~p", [Op]),
+                    Db
+            end,
+            DbIn,
+            GoalDiff
+        )}.
 
 state_entry_to_map({{Functor, Arity}, built_in}) ->
-    #{functor => Functor,
-      arity => Arity,
-      type => built_in};
+    #{
+        functor => Functor,
+        arity => Arity,
+        type => built_in
+    };
 state_entry_to_map({{Functor, Arity}, clauses, NumberOfClauses, ListOfClauses}) ->
-    #{functor => Functor,
-      arity => Arity,
-      type => clauses,
-      number_of_clauses => NumberOfClauses,
-      clauses => lists:map(fun clause_to_map/1, ListOfClauses)}.
+    #{
+        functor => Functor,
+        arity => Arity,
+        type => clauses,
+        number_of_clauses => NumberOfClauses,
+        clauses => lists:map(fun clause_to_map/1, ListOfClauses)
+    }.
 
 clause_to_map({ClauseNum, Head, {_Bodies, false}}) ->
     [Functor | Params] = tuple_to_list(Head),
     JsonableParams = lists:map(fun param_to_json/1, Params),
-    #{clause_num => ClauseNum,
-      functor => Functor,
-      arguments => JsonableParams}.
+    #{
+        clause_num => ClauseNum,
+        functor => Functor,
+        arguments => JsonableParams
+    }.
 param_to_json({VarNum}) ->
     VarNumBin = integer_to_binary(VarNum),
     <<"var_", VarNumBin/binary>>;
