@@ -11,10 +11,6 @@ app.use(express.json());
 // In-memory data structure to store nodes and their edges
 let nodes = {}; // Each key is a node_id, value is an object with metadata and edges
 
-// Race condition protection for arc exchanges
-let recentlyAddedEdges = new Map(); // Track edges added recently
-const EDGE_PROTECTION_WINDOW_MS = 2000; // 2 second protection window
-
 // WebSocket server for real-time updates
 const wss = new WebSocket.Server({ noServer: true });
 
@@ -47,32 +43,115 @@ wss.on('connection', (ws) => {
     const data = JSON.parse(message);
 
     if (data.action === 'add') {
-      // Add edge to the corresponding node's edge list
-      if (!nodes[data.from]) nodes[data.from] = { metadata: {}, edges: {} };
-      nodes[data.from].edges[data.ulid] = { ulid: data.ulid, to: data.to };
-
-      // Mark this edge as recently added to protect against race conditions
-      markEdgeAsRecentlyAdded(data.ulid, data.from, data.to);
-
-      // Broadcast the edge add to all clients
-      broadcast({ action: 'add', ulid: data.ulid, from: data.from, to: data.to });
+      handleEdgeAdd(data);
     } else if (data.action === 'remove') {
-      // Check if this edge was recently added (arc exchange race condition protection)
-      if (isEdgeRecentlyAdded(data.ulid, data.from)) {
-        console.log(`Ignoring remove for recently added edge: ${data.ulid} from ${data.from}`);
-        return; // Skip this remove event
-      }
-
-      // Remove edge from the corresponding node's edge list
-      if (nodes[data.from] && nodes[data.from].edges[data.ulid]) {
-        delete nodes[data.from].edges[data.ulid];
-
-        // Broadcast the edge removal to all clients
-        broadcast({ action: 'remove', ulid: data.ulid, from: data.from });
-      }
+      handleEdgeRemove(data);
+    } else if (data.action === 'swap') {
+      handleEdgeSwap(data);
     }
   });
 });
+
+// Handle edge addition
+function handleEdgeAdd(data) {
+  const { ulid, from, to } = data;
+  
+  // Ensure source node exists
+  if (!nodes[from]) {
+    nodes[from] = { metadata: {}, edges: {} };
+  }
+  
+  // Ensure target node exists
+  if (!nodes[to]) {
+    nodes[to] = { metadata: {}, edges: {} };
+  }
+  
+  // Add the edge
+  nodes[from].edges[ulid] = { ulid, to };
+  
+  console.log(`Edge added: ${ulid} from ${from} to ${to}`);
+  
+  // Broadcast the edge add to all clients
+  broadcast({ action: 'add', ulid, from, to });
+}
+
+// Handle edge removal
+function handleEdgeRemove(data) {
+  const { ulid, from } = data;
+  
+  // Remove edge from the source node
+  if (nodes[from] && nodes[from].edges[ulid]) {
+    delete nodes[from].edges[ulid];
+    console.log(`Edge removed: ${ulid} from ${from}`);
+    
+    // Broadcast the edge removal to all clients
+    broadcast({ action: 'remove', ulid, from });
+  } else {
+    console.log(`Edge removal ignored: ${ulid} from ${from} (not found)`);
+  }
+}
+
+// Handle edge swap - update the source node for an existing edge
+function handleEdgeSwap(data) {
+  const { ulid, previous_source, new_source, destination } = data;
+  
+  console.log(`Edge swap: ${ulid} from ${previous_source} to ${new_source}`);
+  
+  let edge = null;
+  let targetNode = destination;
+  
+  // Try to find the edge in the previous source
+  if (previous_source && nodes[previous_source] && nodes[previous_source].edges[ulid]) {
+    edge = nodes[previous_source].edges[ulid];
+    // Always use the destination from the event, not the stored edge.to
+    delete nodes[previous_source].edges[ulid];
+    console.log(`Found edge in expected previous source: ${previous_source}`);
+  } else {
+    // Edge might have been moved already or doesn't exist in expected location
+    // Search for it in all nodes to handle race conditions
+    let foundInNode = null;
+    for (const [nodeId, nodeData] of Object.entries(nodes)) {
+      if (nodeData.edges && nodeData.edges[ulid]) {
+        edge = nodeData.edges[ulid];
+        // Always use the destination from the event, not the stored edge.to
+        delete nodeData.edges[ulid];
+        foundInNode = nodeId;
+        break;
+      }
+    }
+    
+    if (foundInNode) {
+      console.log(`Found edge in different node: ${foundInNode} (expected: ${previous_source})`);
+    } else {
+      console.log(`Edge ${ulid} not found anywhere - creating new edge for swap`);
+      // Create a new edge if we can't find it (use provided destination field)
+      edge = { ulid, to: targetNode };
+    }
+  }
+  
+  // Ensure new source node exists
+  if (!nodes[new_source]) {
+    nodes[new_source] = { metadata: {}, edges: {} };
+  }
+  
+  // Ensure target node exists
+  if (!nodes[targetNode]) {
+    nodes[targetNode] = { metadata: {}, edges: {} };
+  }
+  
+  // Add the edge to the new source
+  nodes[new_source].edges[ulid] = { ulid, to: targetNode };
+  
+  // Broadcast the swap to all clients
+  broadcast({ 
+    action: 'swap', 
+    ulid, 
+    previous_source, 
+    new_source, 
+    destination: targetNode,
+    to: targetNode  // Keep for backward compatibility
+  });
+}
 
 // Broadcast function to send data to all WebSocket clients
 function broadcast(message) {
@@ -81,30 +160,6 @@ function broadcast(message) {
       client.send(JSON.stringify(message));
     }
   });
-}
-
-// Helper functions for race condition protection
-function markEdgeAsRecentlyAdded(ulid, from, to) {
-  const key = `${ulid}-${from}-${to}`;
-  recentlyAddedEdges.set(key, Date.now());
-  console.log(`Protected edge: ${key} for ${EDGE_PROTECTION_WINDOW_MS}ms`);
-  
-  // Auto-cleanup after protection window
-  setTimeout(() => {
-    recentlyAddedEdges.delete(key);
-    console.log(`Protection expired for edge: ${key}`);
-  }, EDGE_PROTECTION_WINDOW_MS);
-}
-
-function isEdgeRecentlyAdded(ulid, from) {
-  const now = Date.now();
-  for (const [key, timestamp] of recentlyAddedEdges.entries()) {
-    if (key.startsWith(`${ulid}-${from}-`) && (now - timestamp) < EDGE_PROTECTION_WINDOW_MS) {
-      console.log(`Edge ${key} is protected (added ${now - timestamp}ms ago)`);
-      return true;
-    }
-  }
-  return false;
 }
 
 // Create a simple HTTP server to serve the frontend
@@ -131,14 +186,14 @@ app.post('/nodes', (req, res) => {
   }
 
   if (action === 'add') {
-    // If the node dosn't exist, create it
+    // If the node doesn't exist, create it
     if (!nodes[node_id]) {
-      nodes[node_id] = { metadata, edges: {} };
+      nodes[node_id] = { metadata: metadata || {}, edges: {} };
       // Broadcast node addition
-      broadcast({ action: 'node_add', node_id, metadata });
+      broadcast({ action: 'node_add', node_id, metadata: metadata || {} });
     } else {
       // If the node already exists, update its metadata
-      nodes[node_id].metadata = metadata;
+      nodes[node_id].metadata = { ...nodes[node_id].metadata, ...metadata };
     }
     res.status(200).send({ message: 'Node added or updated' });
   } else if (action === 'remove') {
@@ -161,14 +216,7 @@ app.post('/edges/add', (req, res) => {
   const { action, ulid, from, to } = req.body;
 
   if (action === 'add') {
-    if (!nodes[from]) nodes[from] = { metadata: {}, edges: {} };
-    nodes[from].edges[ulid] = { ulid, to };
-
-    // Mark this edge as recently added to protect against race conditions
-    markEdgeAsRecentlyAdded(ulid, from, to);
-
-    // Broadcast edge addition to all WebSocket clients
-    broadcast({ action: 'add', ulid, from, to });
+    handleEdgeAdd({ ulid, from, to });
     res.status(200).send({ message: 'Edge added' });
   } else {
     res.status(400).send({ message: 'Invalid action' });
@@ -180,22 +228,20 @@ app.post('/edges/remove', (req, res) => {
   const { action, from, ulid } = req.body;
 
   if (action === 'remove') {
-    // Check if this edge was recently added (arc exchange race condition protection)
-    if (isEdgeRecentlyAdded(ulid, from)) {
-      console.log(`HTTP: Ignoring remove for recently added edge: ${ulid} from ${from}`);
-      res.status(200).send({ message: 'Edge remove ignored (recently added)' });
-      return;
-    }
+    handleEdgeRemove({ ulid, from });
+    res.status(200).send({ message: 'Edge removed' });
+  } else {
+    res.status(400).send({ message: 'Invalid action' });
+  }
+});
 
-    if (nodes[from] && nodes[from].edges[ulid]) {
-      delete nodes[from].edges[ulid];
+// Endpoint to handle edge swaps
+app.post('/edges/swap', (req, res) => {
+  const { action, ulid, previous_source, new_source, destination } = req.body;
 
-      // Broadcast edge removal to all WebSocket clients
-      broadcast({ action: 'remove', ulid, from });
-      res.status(200).send({ message: 'Edge removed' });
-    } else {
-      res.status(404).send({ message: 'Edge not found' });
-    }
+  if (action === 'swap') {
+    handleEdgeSwap({ ulid, previous_source, new_source, destination });
+    res.status(200).send({ message: 'Edge swapped' });
   } else {
     res.status(400).send({ message: 'Invalid action' });
   }

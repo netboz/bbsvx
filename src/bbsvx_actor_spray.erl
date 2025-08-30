@@ -209,7 +209,7 @@ code_change(_Vsn, State, Data, _Extra) ->
 callback_mode() ->
     [handle_event_function, state_enter].
 
-%%%%%%%%%%%%%%%%%%%%%%% Disconnected state %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Disconnected state %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 handle_event(
     enter,
@@ -222,6 +222,9 @@ handle_event(
     } =
         State
 ) ->
+
+    %% Sync call to notify the epto_disord_component the view is empty
+    
     gen_statem:call(
         {via, gproc, {n, l, {bbsvx_epto_disord_component, NameSpace}}},
         empty_inview
@@ -269,9 +272,11 @@ handle_event(
 ) ->
     %% TODO ask other side to connect to us
     {next_state, empty_inview, StateData};
-%%%%%%%%%%%%%%%%%%%%%%% Empty outview state %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Empty outview state %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 handle_event(enter, _, empty_outview, #state{namespace = NameSpace} = State) ->
-    ?'log-info'("spray Agent ~p : Entering Empty outview state", [NameSpace]),
+    ?'log-notice'("spray Agent ~p : Entering Empty outview state", [NameSpace]),
     prometheus_gauge:inc(<<"bbsvx_spray_outview_depleted">>, [NameSpace]),
     {keep_state, State};
 handle_event(
@@ -309,7 +314,9 @@ handle_event(
         _ ->
             keep_state_and_data
     end;
-%% Reception of exchange in, we cancel the exchange
+%% Reception of exchange in, we cancel the exchange for now TODO: check if this 
+%% can be improved by maybe allowing the exchange, to regain arc out from the
+%% exchange.
 handle_event(
     info,
     #incoming_event{origin_arc = _Ulid, event = #exchange_in{}},
@@ -327,7 +334,8 @@ handle_event(
         [State#state.namespace, exchange_in_in_empty_outview]
     ),
     {keep_state, State};
-%% Manage exchange cancelled
+%% Manage exchange cancelled. Following above handler, no exchange should be occuring
+%% while not connected, so this isn't supposed to happen.
 handle_event(
     info,
     #incoming_event{origin_arc = _Ulid, event = #exchange_cancelled{reason = Reason}},
@@ -344,9 +352,11 @@ handle_event(
         arcs_to_leave = [],
         exchange_direction = undefined
     }};
-%%%%%%%%%%%%%%%%%%%%%%% Empty InView state %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Empty InView state %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 handle_event(enter, _, empty_inview, #state{namespace = NameSpace} = State) ->
-    ?'log-info'("spray Agent ~p : Entering Empty inview state", [NameSpace]),
+    ?'log-notice'("spray Agent ~p : Entering Empty inview state", [NameSpace]),
     prometheus_gauge:inc(<<"bbsvx_spray_inview_depleted">>, [NameSpace]),
 
     gen_statem:call(

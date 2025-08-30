@@ -35,7 +35,7 @@
 
 %% @doc Helper to encode messages properly
 encode_message_helper(Message) ->
-    {ok, EncodedMessage} = bbsvx_asn1_codec:encode_message(Message),
+    {ok, EncodedMessage} = bbsvx_protocol_codec:encode(Message),
     EncodedMessage.
 
 -record(state, {
@@ -295,7 +295,7 @@ connect(
         )
     of
         {ok, Socket} ->
-            {ok, EncodedMessage} = bbsvx_asn1_codec:encode_message(#header_connect{
+            {ok, EncodedMessage} = bbsvx_protocol_codec:encode(#header_connect{
                 namespace = NameSpace,
                 node_id = NodeId
             }),
@@ -330,7 +330,7 @@ connect(
     } =
         State
 ) ->
-    case bbsvx_asn1_codec:decode_message_used(Bin) of
+    case bbsvx_protocol_codec:decode_message_used(Bin) of
         {#header_connect_ack{node_id = TargetNodeId} = ConnectHeader, ByteRead} when
             is_number(ByteRead)
         ->
@@ -534,7 +534,7 @@ register(
         State
 ) ->
     ConcatBuf = <<Buffer/binary, Bin/binary>>,
-    case bbsvx_asn1_codec:decode_message_used(ConcatBuf) of
+    case bbsvx_protocol_codec:decode_message_used(ConcatBuf) of
         {
             #header_register_ack{
                 result = Result,
@@ -648,7 +648,7 @@ forward_join(
         State
 ) ->
     ConcatBuf = <<Buffer/binary, Bin/binary>>,
-    case bbsvx_asn1_codec:decode_message_used(ConcatBuf) of
+    case bbsvx_protocol_codec:decode_message_used(ConcatBuf) of
         {#header_forward_join_ack{result = Result, type = Type}, ByteRead} when
             is_number(ByteRead)
         ->
@@ -746,7 +746,7 @@ join(
         State
 ) ->
     ConcatBuf = <<Buffer/binary, Bin/binary>>,
-    case bbsvx_asn1_codec:decode_message_used(ConcatBuf) of
+    case bbsvx_protocol_codec:decode_message_used(ConcatBuf) of
         {#header_join_ack{result = Result}, ByteRead} when is_number(ByteRead) ->
             case Result of
                 ok ->
@@ -968,7 +968,7 @@ parse_packet(
         State
 ) ->
     Decoded =
-        case bbsvx_asn1_codec:decode_message_used(Buffer) of
+        case bbsvx_protocol_codec:decode_message_used(Buffer) of
             {DecodedEvent, NbBytesUsed} when is_number(NbBytesUsed) ->
                 {complete, DecodedEvent, NbBytesUsed};
             error ->

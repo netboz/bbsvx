@@ -1,4 +1,5 @@
 {
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "permissions": {
     "allow": [
       "mcp__ide__getDiagnostics",
@@ -40,7 +41,9 @@
       "Bash(rebar3 shell:*)",
       "Bash(BBSVX_BOOT=root ./bin/bbsvx start)",
       "Bash(docker build:*)",
-      "Bash(rebar3 clean:*)"
+      "Bash(rebar3 clean:*)",
+      "Bash(docker-compose ps:*)",
+      "Bash(docker-compose up:*)"
     ],
     "deny": []
   }

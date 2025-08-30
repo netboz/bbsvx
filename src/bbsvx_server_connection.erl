@@ -49,7 +49,7 @@
 
 %% @doc Helper to encode messages properly
 encode_message_helper(Message) ->
-    {ok, EncodedMessage} = bbsvx_asn1_codec:encode_message(Message),
+    {ok, EncodedMessage} = bbsvx_protocol_codec:encode(Message),
     EncodedMessage.
 
 -record(state, {
@@ -142,7 +142,7 @@ terminate(
     ),
     gen_tcp:close(State#state.socket),
     arc_event(NameSpace, MyUlid, #evt_arc_disconnected{
-        direction = in, ulid = MyUlid, origin_node = State#state.origin_node
+        direction = in, ulid = MyUlid, origin_node = State#state.origin_node, reason = normal
     }),
     void;
 %% Called when orher side (exchange initiator ) indicates it closed this arc because it was mirrored
@@ -155,7 +155,7 @@ terminate(
         my_ulid = MyUlid
     } = State) ->
     ?'log-info'(
-        "~p Terminating conenction IN from ...~p   Reason ~p",
+        "~p Other side requested to terminate conenction IN from ...~p   Reason ~p",
         [?MODULE, OriginNode, mirrored]
     ),
     prometheus_gauge:dec(<<"bbsvx_spray_inview_size">>, [NameSpace]),
@@ -189,7 +189,7 @@ terminate(
     void;
 
 
-terminate(Reason, _CurrentState, #state{origin_node = OriginNode} = State) ->
+terminate(Reason, _CurrentState, #state{namespace = NameSpace, origin_node = OriginNode} = State) ->
     ?'log-warning'(
         "~p Terminating unconnected connection IN from...~p   Reason ~p",
         [?MODULE, OriginNode, Reason]
@@ -203,6 +203,7 @@ terminate(Reason, _CurrentState, #state{origin_node = OriginNode} = State) ->
       })
     ),
     gen_tcp:close(State#state.socket),
+    prometheus_gauge:dec(<<"bbsvx_spray_inview_size">>, [NameSpace]),
     void.
 
 code_change(_Vsn, State, Data, _Extra) ->
@@ -246,7 +247,7 @@ authenticate(
 ->
     %% Perform authentication
     Decoded =
-        case bbsvx_asn1_codec:decode_message_used(BinData) of
+        case bbsvx_protocol_codec:decode_message_used(BinData) of
             {DecodedTerm, Index} when is_number(Index) ->
                 <<_:Index/binary, Rest/binary>> = BinData,
                 {ok, DecodedTerm, Rest};
@@ -308,7 +309,7 @@ wait_for_subscription(
         State
 ) ->
     ConcatBuffer = <<Buffer/binary, BinData/binary>>,
-    case bbsvx_asn1_codec:decode_message_used(ConcatBuffer) of
+    case bbsvx_protocol_codec:decode_message_used(ConcatBuffer) of
         {DecodedTerm, Index} when is_integer(Index) ->
             <<_:Index/binary, Rest/binary>> = ConcatBuffer,
             process_subscription_header(DecodedTerm, State#state{buffer = Rest});
@@ -378,7 +379,7 @@ connected(
         [?MODULE, State#state.origin_node, Reason]
     ),
     gen_statem:reply(From, ok),
-    {stop, normal, State};
+    {stop, Reason, State};
 connected(
     info,
     #incoming_event{event = #exchange_out{proposed_sample = ProposedSample}},
@@ -445,7 +446,7 @@ parse_packet(
         State
 ) ->
     Decoded =
-        case bbsvx_asn1_codec:decode_message_used(Buffer) of
+        case bbsvx_protocol_codec:decode_message_used(Buffer) of
             {DecodedEvent, NbBytesUsed} when is_number(NbBytesUsed) ->
                 {complete, DecodedEvent, NbBytesUsed};
             error ->
@@ -495,7 +496,7 @@ parse_packet(
         {complete, #header_connection_closed{reason = Reason} = Event, Index} ->
             ?'log-info'("~p Connection closed event received ~p", [?MODULE, Event]),
            
-            {stop, Reason, State};
+            {stop, {shutdown, Reason}, State};
         {complete, #node_quitting{reason = Reason} = Event, _Index} ->
             ?'log-notice'("~p Event received ~p", [?MODULE, Event]),
             arc_event(

@@ -33,8 +33,6 @@ COPY src ./src
 COPY include ./include
 COPY config ./config
 COPY priv ./priv
-COPY asn1 ./asn1
-COPY BBSVXProtocol.hrl ./BBSVXProtocol.hrl
 
 # Build the release
 ENV BUILD_WITHOUT_QUIC=true

@@ -6,19 +6,22 @@
   {kernel, [
     {logger_level, info},
     {logger, [
-        {handler, default, logger_std_h,
-        #{level => debug,
-          formatter => {logjam,
-            #{colored => true,
-              time_designator => $\s,
-              time_offset => "",
-              time_unit => second,
-              strip_tz => true,
-              level_capitalize => true
+        %% Human-readable console output (logjam) for development
+        {handler, console, logger_std_h,
+          #{level => debug,
+            config => #{type => standard_io},
+            formatter => {logjam,
+              #{colored => true,
+                time_designator => $\s,
+                time_offset => "",
+                time_unit => second,
+                strip_tz => true,
+                level_capitalize => true
+              }
             }
           }
-         }
-        }
+        },
+        %% JSON logger is now configured programmatically in bbsvx_app.erl
     ]}
 ]},
 

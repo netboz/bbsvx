@@ -97,6 +97,10 @@ running(
     },
     State
 ) ->
+    %% Ensure both nodes exist in graph
+    create_node_if_needed(NodeId),
+    create_node_if_needed(State#state.my_id),
+    
     Data =
         #{
             action => <<"add">>,
@@ -104,31 +108,62 @@ running(
             from => NodeId,
             to => State#state.my_id
         },
-    %% Encode Data to json
     Json = jiffy:encode(Data),
-    %%?'log-info'("add edge post data: ~p", [Data]),
-    %% Post json data to http://graph-visualizer/api/edges
+    ?'log-info'("Adding incoming arc: ~p -> ~p (ulid: ~p)", [NodeId, State#state.my_id, Ulid]),
     httpc:request(
         post,
         {"http://graph-visualizer:3400/edges/add", [], "application/json", Json},
         [],
         []
     ),
-    %%?'log-info'("add edge response: ~p", [R]),
+    {next_state, running, State};
+%% Handle outgoing arc connections
+running(
+    info,
+    #incoming_event{
+        event =
+            #evt_arc_connected_out{
+                ulid = Ulid,
+                target = #node_entry{node_id = TargetNodeId}
+            }
+    },
+    State
+) ->
+    %% Ensure both nodes exist in graph
+    create_node_if_needed(State#state.my_id),
+    create_node_if_needed(TargetNodeId),
+    
+    Data =
+        #{
+            action => <<"add">>,
+            ulid => Ulid,
+            from => State#state.my_id,
+            to => TargetNodeId
+        },
+    Json = jiffy:encode(Data),
+    ?'log-info'("Adding outgoing arc: ~p -> ~p (ulid: ~p)", [State#state.my_id, TargetNodeId, Ulid]),
+    httpc:request(
+        post,
+        {"http://graph-visualizer:3400/edges/add", [], "application/json", Json},
+        [],
+        []
+    ),
     {next_state, running, State};
 running(
     info,
-    #incoming_event{event = #evt_arc_disconnected{ulid = Ulid, direction = in}},
+    #incoming_event{event = #evt_arc_disconnected{ulid = Ulid, direction = in, origin_node = OriginNode, reason = Reason}},
     State
 ) ->
-    %% Handle incoming arc disconnection
+    %% Handle incoming arc disconnection - edge was FROM origin_node TO us
     Data =
         #{
             action => <<"remove">>,
-            from => State#state.my_id,
-            ulid => Ulid
+            from => OriginNode#node_entry.node_id,
+            ulid => Ulid,
+            reason => Reason
         },
     Json = jiffy:encode(Data),
+    ?'log-info'("Removing incoming arc: ~p -> ~p (ulid: ~p, reason: ~p)", [OriginNode#node_entry.node_id, State#state.my_id, Ulid, Reason]),
     httpc:request(
         post,
         {"http://graph-visualizer:3400/edges/remove", [], "application/json", Json},
@@ -138,19 +173,20 @@ running(
     {next_state, running, State};
 running(
     info,
-    #incoming_event{
-        event = #evt_arc_disconnected{ulid = Ulid, direction = out, origin_node = OriginNode}
-    },
+    #incoming_event{event = #evt_arc_disconnected{ulid = Ulid, direction = out, origin_node = OriginNode, reason = Reason}},
     State
 ) ->
-    %% Handle outgoing arc disconnection
+    %% Handle outgoing arc disconnection - edge was FROM us TO origin_node  
     Data =
         #{
             action => <<"remove">>,
-            from => OriginNode#node_entry.node_id,
-            ulid => Ulid
+            from => State#state.my_id,
+            ulid => Ulid,
+            reason => Reason
         },
     Json = jiffy:encode(Data),
+    ?'log-info'("Removing outgoing arc: ~p -> ~p (ulid: ~p, reason: ~p)", [State#state.my_id, OriginNode#node_entry.node_id, Ulid, Reason]),
+
     httpc:request(
         post,
         {"http://graph-visualizer:3400/edges/remove", [], "application/json", Json},
@@ -291,8 +327,44 @@ running(
         []
     ),
     {next_state, running, State};
-%% Catch all
-running(_Type, _Msg, State) ->
+%% Handle node quitted events
+running(
+    info,
+    #incoming_event{
+        event = #evt_node_quitted{
+            node_id = NodeId,
+            host = Host,
+            port = Port,
+            reason = Reason
+        }
+    },
+    State
+) ->
+    ?'log-info'("Node quitted: ~p (~p:~p) reason: ~p", [NodeId, Host, Port, Reason]),
+    Data =
+        #{
+            action => <<"remove">>,
+            node_id => NodeId,
+            reason => Reason
+        },
+    Json = jiffy:encode(Data),
+    httpc:request(
+        post,
+        {"http://graph-visualizer:3400/nodes", [], "application/json", Json},
+        [],
+        []
+    ),
+    {next_state, running, State};
+%% Handle any other arc events we might have missed
+running(
+    info,
+    #incoming_event{event = Event} = IncomingEvent,
+    State
+) ->
+    {next_state, running, State};
+%% Catch all - log unhandled events
+running(Type, Event, State) ->
+    ?'log-debug'("Unhandled event type ~p: ~p", [Type, Event]),
     {next_state, running, State}.
 
 %%%=============================================================================
@@ -339,6 +411,28 @@ cors_headers() ->
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
+
+%% Create a node in the graph if it doesn't exist
+create_node_if_needed(NodeId) when NodeId =/= undefined ->
+    Data =
+        #{
+            action => <<"add">>,
+            node_id => NodeId,
+            metadata =>
+                #{
+                    node_id => NodeId,
+                    auto_created => true
+                }
+        },
+    Json = jiffy:encode(Data),
+    httpc:request(
+        post,
+        {"http://graph-visualizer:3400/nodes", [], "application/json", Json},
+        [],
+        []
+    );
+create_node_if_needed(_) ->
+    ok.
 
 %%%=============================================================================
 %%% Eunit Tests

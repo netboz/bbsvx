@@ -20,10 +20,10 @@
 
 %% Prolog API
 -define(ERLANG_PREDS,
-        [{{register_bubble, 1}, ?MODULE, register_bubble_predicate},
-         {{spawn_child, 2}, ?MODULE, spawn_child_predicate},
-         {{stop_child, 1}, ?MODULE, stop_child_predicate},
-         {{terminate_child, 1}, ?MODULE, terminate_child_predicate}]).
+    [
+         {{new_shared_ontology_predicate, 2}, ?MODULE, pred_new_shared_ontology},
+         {{new_local_ontology_predicate, 2}, ?MODULE, pred_new_local_ontology}
+    ]).
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -44,12 +44,12 @@ external_predicates() ->
 %% @end
 %% ------------------------------------------------------------------------------
 
-pred_new_ontology({_Atom, _Namespace}, Next0, #est{bs = _Bs} = St) ->
-    erlog_int:prove_body(Next0, St).
-    % case bbs_agents_backend:register_bubble(get(agent_name), DNodeName) of
-    %     ok ->
-    %         erlog_int:unify_prove_body(DNodeName, NodeName, Next0, St);
-    %     {error, Reason} ->
-    %         ?ERROR_MSG("Failled to register bubble :~p", [Reason]),
-    %         erlog_int:fail(St)
-    % end.
+pred_new_shared_ontology({_Atom, Namespace}, Next0, #est{bs = Bs} = St) ->
+    case erlog_int:deref(Namespace, Bs) of
+        {_} ->
+            %% Namespace is not binded, fail.
+            erlog_int:fail(St);
+        _ ->
+            bbsvx_ont_service:new_ontology(Namespace, []),
+            erlog_int:prove_body(Next0, St)
+    end.

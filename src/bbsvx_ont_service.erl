@@ -75,8 +75,8 @@ start_link() ->
 %%% @end
 
 -spec new_ontology(ontology()) -> ok | {error, atom()}.
-new_ontology(Namespace) ->
-    gen_server:call(?SERVER, {new_ontology, Namespace, []}).
+new_ontology(#ontology{namespace = Namespace, contact_nodes = ContactNodes} = Ontology) ->
+    gen_server:call(?SERVER, {new_ontology, Ontology}).
 
 %%%-----------------------------------------------------------------------------
 %%% @doc
@@ -136,6 +136,7 @@ prove(Namespace, Predicate) ->
 %%%=============================================================================
 
 init([]) ->
+    %% Try to creae index table
     case
         mnesia:create_table(
             ?INDEX_TABLE,
@@ -268,74 +269,6 @@ init([]) ->
             {stop, Reason}
     end.
 
-% init([]) ->
-%     ?'log-info'("Onto service : starting ontology service"),
-%     case have_index_table() of
-%         true ->
-%             ?'log-info'("Onto service : waiting for index table ~p", [?INDEX_TABLE]),
-%             case mnesia:wait_for_tables([?INDEX_TABLE], ?INDEX_LOAD_TIMEOUT) of
-%                 {timeout, _} ->
-%                     logger:error("Onto service : index table ~p load timeout", [?INDEX_TABLE]),
-%                     {error, index_table_timeout};
-%                 _ ->
-%                     ?'log-info'("Onto service : index table ~p loaded", [?INDEX_TABLE]),
-%                     MyId = bbsvx_crypto_service:my_id(),
-%                     boot_indexed_ontologies(),
-%                     {ok, #state{my_id = MyId}}
-%             end;
-%         false ->
-%             %% First time we start
-%             case mnesia:create_table(?INDEX_TABLE,
-%                                      [{attributes, record_info(fields, ontology)},
-%                                       {disc_copies, [node()]}])
-%             of
-%                 {atomic, ok} ->
-%                     MyId = bbsvx_crypto_service:my_id(),
-
-%                     bbsvx_transaction:new_root_ontology(),
-%                     BootType =
-%                         case init:get_argument(init_root) of
-%                             {ok, [["root"]]} ->
-%                                 ?'log-info'("Onto service : boot type : root"),
-%                                 root;
-%                             {ok, [["join", Host, Port]]} ->
-%                                 ?'log-info'("Onto service : boot type : joining node ~p ~p",
-%                                             [Host, Port]),
-%                                 {join, [#node_entry{host = Host, port = list_to_integer(Port)}]};
-%                             Else ->
-%                                 ?'log-warning'("Onto service : unmanaged boot type ~p", [Else]),
-%                                 application:get_env(bbsvx, boot, root)
-%                         end,
-
-%                     ListOfContactNodes =
-%                         case BootType of
-%                             root ->
-%                                 [];
-%                             {join, LContNods} ->
-%                                 LContNods
-%                         end,
-
-%                     %% Format contact nodes
-%                     ContactNodes =
-%                         [#node_entry{host = Host, port = Port}
-%                          || #node_entry{host = Host, port = Port} <- ListOfContactNodes],
-%                     logger:info("Onto service : contact nodes ~p", [ContactNodes]),
-%                     OntEntry =
-%                         #ontology{namespace = <<"bbsvx:root">>,
-%                                   version = <<"0.0.1">>,
-%                                   type = shared,
-%                                   contact_nodes = ContactNodes},
-%                     mnesia:activity(transaction, fun() -> mnesia:write(OntEntry) end),
-%                     supervisor:start_child(bbsvx_sup_shared_ontologies,
-%                                            [<<"bbsvx:root">>,
-%                                             #{contact_nodes => ContactNodes, boot => BootType}]),
-
-%                     {ok, #state{my_id = MyId}};
-%                 {aborted, {error, Reason}} ->
-%                     logger:error("Onto service : failed to create index table ~p", [Reason]),
-%                     {error, Reason}
-%             end
-%     end.
 
 -spec handle_call(any(), gen_server:from(), state()) -> {reply, any(), state()}.
 handle_call(
@@ -349,8 +282,10 @@ handle_call(
     _From,
     State
 ) ->
+    %% Start by checking if we have this ontology registered into index
     case mnesia:dirty_read(?INDEX_TABLE, Namespace) of
         [] ->
+            %% No, we can continue into ontology creation
             CN =
                 case ContactNodes of
                     [] ->
@@ -587,6 +522,15 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%=============================================================================
 
+-spec(create_index_table() ->  t_result(ok)).
+create_index_table() ->
+    mnesia:create_table(
+            ?INDEX_TABLE,
+            [{attributes, record_info(fields, ontology)}, {disc_copies, [node()]}]
+        ).
+
+
+
 boot_indexed_ontologies() ->
     FirstKey = mnesia:dirty_first(?INDEX_TABLE),
     do_boot_ontologies(FirstKey).
@@ -639,34 +583,39 @@ parse_single_node(NodeStr) ->
             #node_entry{host = <<"localhost">>, port = 2304}
     end.
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% @doc
+%%% Convert a binary namespace to a table name
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+-spec(binary_to_table_name(binary()) -> atom()).
 binary_to_table_name(Namespace) ->
     Replaced = binary:replace(Namespace, <<":">>, <<"_">>),
     binary_to_atom(Replaced).
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% @doc
 %%% Convert a string to an prolog eterm
 %%%
 %%% @param String the string to convert
 %%% @returns {ok, Eterm} if the string was successfully converted, {error, Reason} otherwise
 %%% @end
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 string_to_eterm(String) when is_binary(String) ->
     string_to_eterm(binary_to_list(String));
 string_to_eterm(String) ->
     %% We add a space at the end of the string to parse because of a probable error in prolog parser
-    %% A list is returned in case of error to avoid eterm confusion if we return {error, Error}
     case erlog_scan:tokens([], String ++ " ", 1) of
         {done, {ok, Tokk, _}, _} ->
             case erlog_parse:term(Tokk) of
                 {ok, Eterms} ->
                     Eterms;
                 Other1 ->
-                    [error, Other1]
+                    {error, {parse_error, Other1}}
             end;
         Other ->
-            [error, Other]
+            {error, {scan_error, Other}}
     end.
+
 
 %%%=============================================================================
 %%% Eunit Tests

@@ -129,8 +129,9 @@
     const ws = new WebSocket('ws://localhost:3400');
 
     const eventQueue = []; // Queue to store events while paused
-
     let selectedNodeId = null; // Stores the currently selected node ID
+    let isPaused = false;
+    const pausedIndicator = document.getElementById('paused-indicator');
 
     // Process an individual event
     function processEvent(message) {
@@ -194,7 +195,8 @@
         data.edges.remove(edgesToRemove.map(edge => edge.id));
       } else if (message.action === 'add') {
         const edgeId = `${message.ulid}`;
-        if (!data.edges.get(edgeId)) {
+        const existingEdge = data.edges.get(edgeId);
+        if (!existingEdge) {
           data.edges.add({
             id: edgeId,
             from: message.from,
@@ -202,6 +204,9 @@
             arrows: 'to',
             label: message.ulid.slice(-5)
           });
+          console.log(`Edge added successfully: ${edgeId} from ${message.from} to ${message.to}`);
+        } else {
+          console.log(`Edge addition ignored: ${edgeId} (already exists: from ${existingEdge.from} to ${existingEdge.to})`);
         }
 
         // Ensure both nodes exist
@@ -222,24 +227,45 @@
         }
       } else if (message.action === 'remove') {
         const edgeId = `${message.ulid}`;
-        data.edges.remove({ id: edgeId });
+        console.log(`Removing edge: ${edgeId} from node: ${message.from}`);
+        
+        // Check if edge exists before removing
+        const existingEdge = data.edges.get(edgeId);
+        if (existingEdge) {
+          data.edges.remove({ id: edgeId });
+          console.log(`Edge removed successfully: ${edgeId}`);
+        } else {
+          console.log(`Edge removal ignored: ${edgeId} (not found in frontend)`);
+        }
+      } else if (message.action === 'swap') {
+        // Handle edge swap - update the edge to point from new_source instead of previous_source
+        const edgeId = `${message.ulid}`;
+        const existingEdge = data.edges.get(edgeId);
+        
+        if (existingEdge) {
+          // Update the edge: change source but keep the existing destination
+          data.edges.update({
+            id: edgeId,
+            from: message.new_source,
+            to: existingEdge.to, // Preserve the existing destination
+            arrows: 'to',
+            label: message.ulid.slice(-5)
+          });
 
-        // Check if from node has any remaining edges
-        // Note: bbsvx sends 'from' field, not 'origin_node_id'
-        const nodeId = message.from || message.origin_node_id;
-        if (nodeId) {
-          const fromNodeEdges = data.edges.get({ filter: (edge) => edge.from === nodeId });
-          const toNodeEdges = data.edges.get({ filter: (edge) => edge.to === nodeId });
+          console.log(`Edge swapped: ${message.ulid} from ${message.previous_source} to ${message.new_source}`);
 
-          // If no edges remain, remove the node
-          if (fromNodeEdges.length === 0 && toNodeEdges.length === 0) {
-            data.nodes.remove({ id: nodeId });
+          // Ensure the new source node exists
+          if (!data.nodes.get(message.new_source)) {
+            data.nodes.add({
+              id: message.new_source,
+              label: message.new_source.slice(-5),
+              metadata: {}
+            });
           }
+
         }
       }
-    };
-
-
+    }
 
     // WebSocket message handler
     ws.onmessage = function (event) {
@@ -262,11 +288,7 @@
       }
     }
 
-    // Add reference to the paused indicator
-    let isPaused = false;
-    let queue = [];
-    const pausedIndicator = document.getElementById('paused-indicator');
-
+    // Handle space bar for pause/resume
     document.addEventListener('keydown', (e) => {
       if (e.code === 'Space' && !e.repeat) { // Prevent holding the spacebar from repeatedly toggling
         isPaused = !isPaused; // Toggle the paused state
@@ -281,18 +303,10 @@
       }
     });
 
-    // Function to process queued events
-    function processQueue() {
-      if (queue.length > 0) {
-        queue.forEach((event) => {
-          ws.onmessage(event); // Reapply the queued messages
-        });
-        queue = []; // Clear the queue
-      }
-    };
     ws.onerror = (error) => {
       console.log('WebSocket Error:', error);
     };
+
     // Create the metadata display div
     const metadataDiv = document.createElement('div');
     metadataDiv.style.position = 'absolute';
@@ -407,11 +421,11 @@
 
           try {
             // Fetch outgoing edges
-            const outviewResponse = await fetch(outviewUrl)
+            const outviewResponse = await fetch(outviewUrl);
             const outview = await outviewResponse.json();
 
             // Fetch incoming edges
-            const inviewResponse = await fetch(inviewUrl)
+            const inviewResponse = await fetch(inviewUrl);
             const inview = await inviewResponse.json();
 
             // Populate the metadata with additional data

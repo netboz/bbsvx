@@ -9,13 +9,17 @@
 
 -export([start/2, stop/1]).
 
--include_lib("logjam/include/logjam.hrl").
+%% Using structured logging with logger:info/2 instead of logjam macros
 
 start(_StartType, _StartArgs) ->
     load_schema(),
     clique:register([bbsvx_cli]),
-    ?'log-info'("all flags: ~p~n", [init:get_arguments()]),
-    ?'log-info'("BBSVX starting.", []),
+    logger:info("BBSVX starting", #{
+        component => "bbsvx_app",
+        operation => "application_start",
+        event_type => "system_lifecycle"
+    }),
+    init_file_logger(),
     init_metrics(),
     opentelemetry_cowboy:setup(),
     opentelemetry:get_application_tracer(?MODULE),
@@ -58,6 +62,74 @@ load_schema() ->
             ok = clique_config:load_schema(Directories);
         _ ->
             ok = clique_config:load_schema([code:priv_dir(bbsvx)])
+    end.
+
+init_file_logger() ->
+    % Get node name for unique log file
+    NodeName = atom_to_list(node()),
+    % Create unique filename using full node name, replacing @ and . with _
+    SafeNodeName = re:replace(NodeName, "[@\\.]", "_", [global, {return, list}]),
+    LogFile = "/logs/bbsvx_" ++ SafeNodeName ++ ".log",
+    JsonLogFile = "/logs/bbsvx_" ++ SafeNodeName ++ "_json.log",
+    
+    % Human-readable log handler
+    HandlerConfig = #{
+        level => info,
+        config => #{
+            file => LogFile,
+            max_no_files => 5,
+            max_no_bytes => 10485760
+        },
+        formatter => {logger_formatter, #{
+            single_line => true,
+            template => [time, " ", level, " ", pid, " ", mfa, ":", line, " ", msg, "\n"]
+        }}
+    },
+    logger:add_handler(loki_handler, logger_std_h, HandlerConfig),
+    
+    % JSON structured log handler for Loki
+    JsonHandlerConfig = #{
+        level => info,
+        config => #{
+            file => JsonLogFile,
+            max_no_files => 5,
+            max_no_bytes => 10485760
+        },
+        formatter => {logger_formatter, #{
+            single_line => true,
+            template => ["{\"timestamp\":\"", time, 
+                         "\",\"level\":\"", level,
+                         "\",\"pid\":\"", pid,
+                         "\",\"mfa\":\"", mfa,
+                         "\",\"message\":\"", msg,
+                         "\",\"metadata\":", meta, "}\n"]
+        }}
+    },
+    
+    logger:info("File logger initialized", #{
+        component => "bbsvx_app",
+        operation => "logger_init",
+        log_file => LogFile,
+        event_type => "system_config"
+    }),
+    
+    % Try to add JSON handler with error handling
+    case logger:add_handler(json_handler, logger_std_h, JsonHandlerConfig) of
+        ok ->
+            logger:info("JSON logger initialized", #{
+                component => "bbsvx_app",
+                operation => "json_logger_init",
+                json_log_file => JsonLogFile,
+                event_type => "system_config"
+            });
+        {error, Reason} ->
+            logger:error("Failed to initialize JSON logger", #{
+                component => "bbsvx_app",
+                operation => "json_logger_init_failed",
+                reason => Reason,
+                json_log_file => JsonLogFile,
+                event_type => "system_error"
+            })
     end.
 
 init_ulid_generator() ->
