@@ -148,7 +148,12 @@ handle_cast(_Msg, LoopState) ->
 handle_info(_Info, LoopState) ->
     {noreply, LoopState}.
 
-terminate(_Reason, _LoopState) ->
+terminate(_Reason, #state{namespace = Namespace}) ->
+    jobs:delete_queue({stage_transaction_validate, Namespace}),
+    jobs:delete_queue({stage_transaction_process, Namespace}),
+    jobs:delete_queue({stage_transaction_postprocess, Namespace}),
+    jobs:delete_queue({stage_transaction_results, Namespace}),
+    jobs:delete_queue({stage_transaction_accept, Namespace}),
     ok.
 
 code_change(_OldVsn, LoopState, _Extra) ->

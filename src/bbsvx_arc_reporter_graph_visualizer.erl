@@ -100,7 +100,7 @@ running(
     %% Ensure both nodes exist in graph
     create_node_if_needed(NodeId),
     create_node_if_needed(State#state.my_id),
-    
+
     Data =
         #{
             action => <<"add">>,
@@ -132,7 +132,7 @@ running(
     %% Ensure both nodes exist in graph
     create_node_if_needed(State#state.my_id),
     create_node_if_needed(TargetNodeId),
-    
+
     Data =
         #{
             action => <<"add">>,
@@ -151,7 +151,11 @@ running(
     {next_state, running, State};
 running(
     info,
-    #incoming_event{event = #evt_arc_disconnected{ulid = Ulid, direction = in, origin_node = OriginNode, reason = Reason}},
+    #incoming_event{
+        event = #evt_arc_disconnected{
+            ulid = Ulid, direction = in, origin_node = OriginNode, reason = Reason
+        }
+    },
     State
 ) ->
     %% Handle incoming arc disconnection - edge was FROM origin_node TO us
@@ -163,7 +167,9 @@ running(
             reason => Reason
         },
     Json = jiffy:encode(Data),
-    ?'log-info'("Removing incoming arc: ~p -> ~p (ulid: ~p, reason: ~p)", [OriginNode#node_entry.node_id, State#state.my_id, Ulid, Reason]),
+    ?'log-info'("Removing incoming arc: ~p -> ~p (ulid: ~p, reason: ~p)", [
+        OriginNode#node_entry.node_id, State#state.my_id, Ulid, Reason
+    ]),
     httpc:request(
         post,
         {"http://graph-visualizer:3400/edges/remove", [], "application/json", Json},
@@ -173,10 +179,14 @@ running(
     {next_state, running, State};
 running(
     info,
-    #incoming_event{event = #evt_arc_disconnected{ulid = Ulid, direction = out, origin_node = OriginNode, reason = Reason}},
+    #incoming_event{
+        event = #evt_arc_disconnected{
+            ulid = Ulid, direction = out, origin_node = OriginNode, reason = Reason
+        }
+    },
     State
 ) ->
-    %% Handle outgoing arc disconnection - edge was FROM us TO origin_node  
+    %% Handle outgoing arc disconnection - edge was FROM us TO origin_node
     Data =
         #{
             action => <<"remove">>,
@@ -185,7 +195,9 @@ running(
             reason => Reason
         },
     Json = jiffy:encode(Data),
-    ?'log-info'("Removing outgoing arc: ~p -> ~p (ulid: ~p, reason: ~p)", [State#state.my_id, OriginNode#node_entry.node_id, Ulid, Reason]),
+    ?'log-info'("Removing outgoing arc: ~p -> ~p (ulid: ~p, reason: ~p)", [
+        State#state.my_id, OriginNode#node_entry.node_id, Ulid, Reason
+    ]),
 
     httpc:request(
         post,

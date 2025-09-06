@@ -34,12 +34,12 @@ encode(Message) ->
 decode_message_used(Binary) ->
     try
         case binary_to_term(Binary, [safe, used]) of
-            {Message, BytesUsed} when is_tuple(Message) -> 
+            {Message, BytesUsed} when is_tuple(Message) ->
                 {Message, BytesUsed};
-            _ -> 
+            _ ->
                 error
         end
     catch
-        _:_ -> 
+        _:_ ->
             error
     end.

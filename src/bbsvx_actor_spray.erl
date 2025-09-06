@@ -222,9 +222,8 @@ handle_event(
     } =
         State
 ) ->
-
     %% Sync call to notify the epto_disord_component the view is empty
-    
+
     gen_statem:call(
         {via, gproc, {n, l, {bbsvx_epto_disord_component, NameSpace}}},
         empty_inview
@@ -272,7 +271,6 @@ handle_event(
 ) ->
     %% TODO ask other side to connect to us
     {next_state, empty_inview, StateData};
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Empty outview state %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 handle_event(enter, _, empty_outview, #state{namespace = NameSpace} = State) ->
@@ -314,7 +312,7 @@ handle_event(
         _ ->
             keep_state_and_data
     end;
-%% Reception of exchange in, we cancel the exchange for now TODO: check if this 
+%% Reception of exchange in, we cancel the exchange for now TODO: check if this
 %% can be improved by maybe allowing the exchange, to regain arc out from the
 %% exchange.
 handle_event(
@@ -352,7 +350,6 @@ handle_event(
         arcs_to_leave = [],
         exchange_direction = undefined
     }};
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Empty InView state %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 handle_event(enter, _, empty_inview, #state{namespace = NameSpace} = State) ->

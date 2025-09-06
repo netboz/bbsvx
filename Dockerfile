@@ -74,12 +74,19 @@ else
 fi
 
 # Create configuration overrides for Docker environment
-CONFIG_OVERRIDES="/bbsvx/etc/docker.conf"
+mkdir -p /bbsvx/etc/conf.d
+CONFIG_OVERRIDES="/bbsvx/etc/conf.d/docker.conf"
 echo "# Docker environment overrides" > "$CONFIG_OVERRIDES"
 
-# Set node name based on detected IP
-NODE_NAME=${BBSVX_NODE_NAME:-bbsvx@${CONTAINER_IP}}
-echo "nodename = $NODE_NAME" >> "$CONFIG_OVERRIDES"
+# Set node name based on detected IP - override environment variable with IP
+if [ ! -z "$BBSVX_NODE_NAME" ]; then
+    # Extract node part from environment variable and use detected IP
+    NODE_PART=$(echo "$BBSVX_NODE_NAME" | cut -d'@' -f1)
+    FINAL_NODE_NAME="${NODE_PART}@${CONTAINER_IP}"
+else
+    FINAL_NODE_NAME="bbsvx@${CONTAINER_IP}"
+fi
+echo "nodename = $FINAL_NODE_NAME" >> "$CONFIG_OVERRIDES"
 
 # Set cookie
 COOKIE=${BBSVX_COOKIE:-bbsvx}
@@ -105,7 +112,7 @@ echo "boot = $BOOT_MODE" >> "$CONFIG_OVERRIDES"
 
 echo "Docker configuration:"
 echo "===================="
-echo "Node Name: $NODE_NAME"
+echo "Node Name: $FINAL_NODE_NAME (was: $BBSVX_NODE_NAME)"
 echo "Cookie: $COOKIE"
 echo "Container IP: $CONTAINER_IP"
 echo "Boot Mode: $BOOT_MODE"
@@ -125,10 +132,15 @@ elif [ -f "/bbsvx/bbsvx.conf" ]; then
     CONFIG_FILE="/bbsvx/bbsvx.conf"
     echo "Using current directory config file: $CONFIG_FILE"
 else
-    # Include the docker overrides in main config
-    echo "include docker.conf" >> /bbsvx/etc/bbsvx.conf
     echo "Using default config file: $CONFIG_FILE"
 fi
+
+# Debug: Show the config files before starting
+echo "=== Main Config ==="
+head -20 /bbsvx/etc/bbsvx.conf
+echo "=== Docker Override ==="
+cat /bbsvx/etc/conf.d/docker.conf
+echo "==================="
 
 # Start BBSvx using the native release script
 exec /bbsvx/bin/bbsvx foreground

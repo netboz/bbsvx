@@ -189,16 +189,16 @@ terminate(
     }),
     prometheus_gauge:dec(<<"bbsvx_spray_outview_size">>, [NameSpace]),
     ranch_tcp:send(
-      State#state.socket,
-      encode_message_helper(#header_connection_closed{
-          namespace = State#state.namespace,
-          ulid = State#state.ulid,
-          reason = mirrored
-      })
+        State#state.socket,
+        encode_message_helper(#header_connection_closed{
+            namespace = State#state.namespace,
+            ulid = State#state.ulid,
+            reason = mirrored
+        })
     ),
     gen_tcp:close(State#state.socket),
     ok;
-%% Called when other side indicateds it closed this arc because 
+%% Called when other side indicateds it closed this arc because
 %% it was swapped
 terminate(
     {shutdown, swapped},

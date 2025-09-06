@@ -19,7 +19,7 @@
 %%%=============================================================================
 
 -define(SERVER, ?MODULE).
-
+-define(INIT_RECEIVE_GENESIS_TIMEOUT, 5000).
 %% External API
 -export([start_link/1, start_link/2, stop/0, request_segment/3, get_current_index/1]).
 %% Gen State Machine Callbacks
@@ -74,8 +74,12 @@ stop() ->
 init([Namespace, Options]) ->
     case bbsvx_ont_service:table_exists(Namespace) of
         false ->
-            {error, {no_table, Namespace}};
+            %% Table doesn't exist, we are probably booting, wait for genesis
+            %% transaction.
+            {ok, wait_for_genesis_transaction, #state{namespace = Namespace},
+                ?INIT_RECEIVE_GENESIS_TIMEOUT};
         true ->
+            %% Table already exists, restore state
             MyId = bbsvx_crypto_service:my_id(),
             %% Creating prolog state
             DbRepos = bbsvx_ont_service:binary_to_table_name(Namespace),
@@ -83,7 +87,7 @@ init([Namespace, Options]) ->
                 maps:get(
                     db_mod,
                     Options,
-                    {bbsvx_erlog_db_ets, bbsvx_ont_service:binary_to_table_name(Namespace)}
+                    {bbsvx_erlog_db_ets, DbRepos}
                 ),
             {ok, #est{db = #db{ref = #db_differ{out_db = #db{ref = NewRef}}}} = PrologState} =
                 erlog_int:new(bbsvx_erlog_db_differ, {DbRef, DbMod}),
@@ -124,6 +128,45 @@ callback_mode() ->
 %%%=============================================================================
 %%% State transitions
 %%%=============================================================================
+wait_for_genesis_transacion(enter, _, #state{namespace = Namespace} = State) ->
+    ?'log-info'("Ontology Agent ~p waiting for genesis transaction", [Namespace]),
+    {keep_state, State};
+wait_for_genesis_transacion(
+    info,
+    #transaction{type = genesis} = GenesisTransaction,
+    #state{
+        namespace = Namespace,
+        my_id = MyId
+    } = State
+) ->
+    ?'log-info'("Ontology Agent ~p received genesis transaction", [Namespace]),
+    %% Creating prolog state
+    DbRepos = bbsvx_ont_service:binary_to_table_name(Namespace),
+    {ok, #est{db = #db{ref = #db_differ{out_db = #db{ref = NewRef}}}} = PrologState} =
+        erlog_int:new(bbsvx_erlog_db_differ, {
+            GenesisTransaction#transaction.payload, bbsvx_erlog_db_ets, DbRepos
+        }),
+    ContactNodes = GenesisTransaction#transaction.diff,
+    OntState =
+        #ont_state{
+            namespace = Namespace,
+            current_ts = 0,
+            previous_ts = -1,
+            current_address = <<"0">>,
+            next_address = <<"0">>,
+            contact_nodes = ContactNodes,
+            prolog_state = PrologState
+        },
+    gproc:send({p, l, {?MODULE, Namespace}}, {initialisation, Namespace}),
+    {next_state, initialize_ontology, State#state{
+        repos_table = DbRepos,
+        boot = root,
+        db_mod = bbsvx_erlog_db_ets,
+        db_ref = NewRef,
+        ont_state = OntState,
+        my_id = MyId
+    }}.
+
 initialize_ontology(
     enter,
     _,

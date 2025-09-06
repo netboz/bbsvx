@@ -44,12 +44,12 @@ external_predicates() ->
 %% @end
 %% ------------------------------------------------------------------------------
 
-pred_new_shared_ontology({_Atom, Namespace}, Next0, #est{bs = Bs} = St) ->
+pred_new_shared_ontology({_Atom, #ontology{} = NewOntology}, Next0, #est{bs = Bs} = St) ->
     case erlog_int:deref(Namespace, Bs) of
         {_} ->
             %% Namespace is not binded, fail.
             erlog_int:fail(St);
         _ ->
-            bbsvx_ont_service:new_ontology(Namespace, []),
+            bbsvx_ont_service:new_ontology(NewOntology),
             erlog_int:prove_body(Next0, St)
     end.

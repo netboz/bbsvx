@@ -71,7 +71,7 @@ init_file_logger() ->
     SafeNodeName = re:replace(NodeName, "[@\\.]", "_", [global, {return, list}]),
     LogFile = "/logs/bbsvx_" ++ SafeNodeName ++ ".log",
     JsonLogFile = "/logs/bbsvx_" ++ SafeNodeName ++ "_json.log",
-    
+
     % Human-readable log handler
     HandlerConfig = #{
         level => info,
@@ -80,13 +80,14 @@ init_file_logger() ->
             max_no_files => 5,
             max_no_bytes => 10485760
         },
-        formatter => {logger_formatter, #{
-            single_line => true,
-            template => [time, " ", level, " ", pid, " ", mfa, ":", line, " ", msg, "\n"]
-        }}
+        formatter =>
+            {logger_formatter, #{
+                single_line => true,
+                template => [time, " ", level, " ", pid, " ", mfa, ":", line, " ", msg, "\n"]
+            }}
     },
     logger:add_handler(loki_handler, logger_std_h, HandlerConfig),
-    
+
     % JSON structured log handler for Loki
     JsonHandlerConfig = #{
         level => info,
@@ -95,24 +96,34 @@ init_file_logger() ->
             max_no_files => 5,
             max_no_bytes => 10485760
         },
-        formatter => {logger_formatter, #{
-            single_line => true,
-            template => ["{\"timestamp\":\"", time, 
-                         "\",\"level\":\"", level,
-                         "\",\"pid\":\"", pid,
-                         "\",\"mfa\":\"", mfa,
-                         "\",\"message\":\"", msg,
-                         "\",\"metadata\":", meta, "}\n"]
-        }}
+        formatter =>
+            {logger_formatter, #{
+                single_line => true,
+                template => [
+                    "{\"timestamp\":\"",
+                    time,
+                    "\",\"level\":\"",
+                    level,
+                    "\",\"pid\":\"",
+                    pid,
+                    "\",\"mfa\":\"",
+                    mfa,
+                    "\",\"message\":\"",
+                    msg,
+                    "\",\"metadata\":",
+                    meta,
+                    "}\n"
+                ]
+            }}
     },
-    
+
     logger:info("File logger initialized", #{
         component => "bbsvx_app",
         operation => "logger_init",
         log_file => LogFile,
         event_type => "system_config"
     }),
-    
+
     % Try to add JSON handler with error handling
     case logger:add_handler(json_handler, logger_std_h, JsonHandlerConfig) of
         ok ->

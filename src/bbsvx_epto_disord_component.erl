@@ -128,8 +128,8 @@ syncing({call, From}, {epto_broadcast, Payload}, #state{next_ball = NextBall} = 
 
     EvtId =
         list_to_binary(
-            uuid:to_string(
-                uuid:uuid4()
+            uuid:uuid_to_string(
+                uuid:get_v4()
             )
         ),
     Event =
@@ -273,8 +273,8 @@ running({call, From}, {epto_broadcast, Payload}, #state{next_ball = NextBall} = 
 
     EvtId =
         list_to_binary(
-            uuid:to_string(
-                uuid:uuid4()
+            uuid:uuid_to_string(
+                uuid:get_v4()
             )
         ),
     Event =

@@ -133,12 +133,12 @@ terminate(
     ),
     prometheus_gauge:dec(<<"bbsvx_spray_inview_size">>, [NameSpace]),
     ranch_tcp:send(
-      State#state.socket,
-      encode_message_helper(#header_connection_closed{
-          namespace = State#state.namespace,
-          ulid = State#state.my_ulid,
-          reason = normal
-      })
+        State#state.socket,
+        encode_message_helper(#header_connection_closed{
+            namespace = State#state.namespace,
+            ulid = State#state.my_ulid,
+            reason = normal
+        })
     ),
     gen_tcp:close(State#state.socket),
     arc_event(NameSpace, MyUlid, #evt_arc_disconnected{
@@ -153,17 +153,18 @@ terminate(
         namespace = NameSpace,
         origin_node = OriginNode,
         my_ulid = MyUlid
-    } = State) ->
+    } = State
+) ->
     ?'log-info'(
         "~p Other side requested to terminate conenction IN from ...~p   Reason ~p",
         [?MODULE, OriginNode, mirrored]
     ),
     prometheus_gauge:dec(<<"bbsvx_spray_inview_size">>, [NameSpace]),
-   
+
     gen_tcp:close(State#state.socket),
     arc_event(NameSpace, MyUlid, #evt_arc_disconnected{
         direction = in, ulid = MyUlid, origin_node = State#state.origin_node, reason = mirrored
-}),
+    }),
     void;
 %% Here the connection is swapped ( meaning this connection will replace another server connection as we are
 %% changing the orgin)
@@ -178,29 +179,27 @@ terminate(
         [?MODULE, OriginNode, normal]
     ),
     ranch_tcp:send(
-      State#state.socket,
-      encode_message_helper(#header_connection_closed{
-          namespace = State#state.namespace,
-          ulid = State#state.my_ulid,
-          reason = swapped
-      })
+        State#state.socket,
+        encode_message_helper(#header_connection_closed{
+            namespace = State#state.namespace,
+            ulid = State#state.my_ulid,
+            reason = swapped
+        })
     ),
     gen_tcp:close(State#state.socket),
     void;
-
-
 terminate(Reason, _CurrentState, #state{namespace = NameSpace, origin_node = OriginNode} = State) ->
     ?'log-warning'(
         "~p Terminating unconnected connection IN from...~p   Reason ~p",
         [?MODULE, OriginNode, Reason]
     ),
     ranch_tcp:send(
-      State#state.socket,
-      encode_message_helper(#header_connection_closed{
-          namespace = State#state.namespace,
-          ulid = State#state.my_ulid,
-          reason = Reason
-      })
+        State#state.socket,
+        encode_message_helper(#header_connection_closed{
+            namespace = State#state.namespace,
+            ulid = State#state.my_ulid,
+            reason = Reason
+        })
     ),
     gen_tcp:close(State#state.socket),
     prometheus_gauge:dec(<<"bbsvx_spray_inview_size">>, [NameSpace]),
@@ -495,7 +494,7 @@ parse_packet(
             parse_packet(BinLeft, Action, State);
         {complete, #header_connection_closed{reason = Reason} = Event, Index} ->
             ?'log-info'("~p Connection closed event received ~p", [?MODULE, Event]),
-           
+
             {stop, {shutdown, Reason}, State};
         {complete, #node_quitting{reason = Reason} = Event, _Index} ->
             ?'log-notice'("~p Event received ~p", [?MODULE, Event]),

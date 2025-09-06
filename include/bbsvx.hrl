@@ -92,6 +92,7 @@
     current_address :: binary(),
     namespace :: binary(),
     leader :: binary() | undefined,
+    external_predicates = [] :: [atom()],
     payload :: term(),
     diff = [] :: [term()],
     status = created :: atom()
