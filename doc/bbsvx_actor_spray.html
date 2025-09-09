@@ -1,0 +1,135 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>Module bbsvx_actor_spray</title>
+<link rel="stylesheet" type="text/css" href="stylesheet.css" title="EDoc">
+</head>
+<body bgcolor="white">
+<div class="navbar"><a name="#navbar_top"></a><table width="100%" border="0" cellspacing="0" cellpadding="2" summary="navigation bar"><tr><td><a href="overview-summary.html" target="overviewFrame">Overview</a></td><td><a href="http://www.erlang.org/"><img src="erlang.png" align="right" border="0" alt="erlang logo"></a></td></tr></table></div>
+<hr>
+
+<h1>Module bbsvx_actor_spray</h1>
+<ul class="index"><li><a href="#index">Function Index</a></li><li><a href="#functions">Function Details</a></li></ul>
+
+<p><b>Behaviours:</b> <a href="gen_statem.html"><code>gen_statem</code></a>.</p>
+
+<h2><a name="index">Function Index</a></h2>
+<table width="100%" border="1" cellspacing="0" cellpadding="2" summary="function index"><tr><td valign="top"><a href="#broadcast-2">broadcast/2</a></td><td></td></tr>
+<tr><td valign="top"><a href="#broadcast_unique-2">broadcast_unique/2</a></td><td></td></tr>
+<tr><td valign="top"><a href="#broadcast_unique_random_subset-3">broadcast_unique_random_subset/3</a></td><td></td></tr>
+<tr><td valign="top"><a href="#callback_mode-0">callback_mode/0</a></td><td></td></tr>
+<tr><td valign="top"><a href="#code_change-4">code_change/4</a></td><td></td></tr>
+<tr><td valign="top"><a href="#get_inview-1">get_inview/1</a></td><td></td></tr>
+<tr><td valign="top"><a href="#get_n_unique_random-2">get_n_unique_random/2</a></td><td></td></tr>
+<tr><td valign="top"><a href="#get_outview-1">get_outview/1</a></td><td></td></tr>
+<tr><td valign="top"><a href="#get_views-1">get_views/1</a></td><td></td></tr>
+<tr><td valign="top"><a href="#handle_event-4">handle_event/4</a></td><td></td></tr>
+<tr><td valign="top"><a href="#init-1">init/1</a></td><td></td></tr>
+<tr><td valign="top"><a href="#start_link-1">start_link/1</a></td><td></td></tr>
+<tr><td valign="top"><a href="#start_link-2">start_link/2</a></td><td></td></tr>
+<tr><td valign="top"><a href="#stop-0">stop/0</a></td><td></td></tr>
+<tr><td valign="top"><a href="#terminate-3">terminate/3</a></td><td></td></tr>
+</table>
+
+<h2><a name="functions">Function Details</a></h2>
+
+<h3 class="function"><a name="broadcast-2">broadcast/2</a></h3>
+<div class="spec">
+<p><code>broadcast(NameSpace::binary(), Payload::term()) -&gt; ok</code><br></p>
+<p> </p>
+<p>returns: ok</p>
+</div>
+
+<h3 class="function"><a name="broadcast_unique-2">broadcast_unique/2</a></h3>
+<div class="spec">
+<p><code>broadcast_unique(NameSpace::binary(), Payload::term()) -&gt; ok</code><br></p>
+<p> </p>
+<p>returns: ok</p>
+</div>
+
+<h3 class="function"><a name="broadcast_unique_random_subset-3">broadcast_unique_random_subset/3</a></h3>
+<div class="spec">
+<p><code>broadcast_unique_random_subset(NameSpace::binary(), Payload::term(), N::integer()) -&gt; {ok, integer()}</code><br></p>
+<p> </p>
+<p>returns: Number of nodes the payload was sent to</p>
+</div>
+
+<h3 class="function"><a name="callback_mode-0">callback_mode/0</a></h3>
+<div class="spec">
+<p><code>callback_mode() -&gt; any()</code></p>
+<p> </p>
+</div>
+
+<h3 class="function"><a name="code_change-4">code_change/4</a></h3>
+<div class="spec">
+<p><code>code_change(Vsn, State, Data, Extra) -&gt; any()</code></p>
+<p> </p>
+</div>
+
+<h3 class="function"><a name="get_inview-1">get_inview/1</a></h3>
+<div class="spec">
+<p><code>get_inview(NameSpace::binary()) -&gt; [<a href="#type-arc" docgen-rel="seetype" docgen-href="#arc/0">arc()</a>]</code><br></p>
+<p> </p>
+</div>
+
+<h3 class="function"><a name="get_n_unique_random-2">get_n_unique_random/2</a></h3>
+<div class="spec">
+<p><code>get_n_unique_random(NameSpace::binary() | list(), N::integer()) -&gt; [<a href="#type-arc" docgen-rel="seetype" docgen-href="#arc/0">arc()</a>]</code><br></p>
+<p> </p>
+<p>returns: [arc()]</p>
+</div>
+
+<h3 class="function"><a name="get_outview-1">get_outview/1</a></h3>
+<div class="spec">
+<p><code>get_outview(NameSpace::binary()) -&gt; [<a href="#type-arc" docgen-rel="seetype" docgen-href="#arc/0">arc()</a>]</code><br></p>
+<p> </p>
+</div>
+
+<h3 class="function"><a name="get_views-1">get_views/1</a></h3>
+<div class="spec">
+<p><code>get_views(NameSpace) -&gt; any()</code></p>
+<p> </p>
+</div>
+
+<h3 class="function"><a name="handle_event-4">handle_event/4</a></h3>
+<div class="spec">
+<p><code>handle_event(Type, Incoming_event, CurrentState, State) -&gt; any()</code></p>
+<p> </p>
+</div>
+
+<h3 class="function"><a name="init-1">init/1</a></h3>
+<div class="spec">
+<p><code>init(X1) -&gt; any()</code></p>
+<p> </p>
+</div>
+
+<h3 class="function"><a name="start_link-1">start_link/1</a></h3>
+<div class="spec">
+<p><code>start_link(NameSpace::binary()) -&gt; <a href="/home/yan/src/stdlib/doc/gen_statem.html#type-start_ret" docgen-rel="seetype" docgen-href="stdlib:gen_statem#start_ret/0">gen_statem:start_ret()</a></code><br></p>
+<p> </p>
+</div>
+
+<h3 class="function"><a name="start_link-2">start_link/2</a></h3>
+<div class="spec">
+<p><code>start_link(NameSpace::binary(), Options::list()) -&gt; <a href="/home/yan/src/stdlib/doc/gen_statem.html#type-start_ret" docgen-rel="seetype" docgen-href="stdlib:gen_statem#start_ret/0">gen_statem:start_ret()</a></code><br></p>
+<p> </p>
+</div>
+
+<h3 class="function"><a name="stop-0">stop/0</a></h3>
+<div class="spec">
+<p><code>stop() -&gt; ok</code><br></p>
+<p> </p>
+</div>
+
+<h3 class="function"><a name="terminate-3">terminate/3</a></h3>
+<div class="spec">
+<p><code>terminate(Reason, CurrentState, State) -&gt; any()</code></p>
+<p> </p>
+</div>
+<hr>
+
+<div class="navbar"><a name="#navbar_bottom"></a><table width="100%" border="0" cellspacing="0" cellpadding="2" summary="navigation bar"><tr><td><a href="overview-summary.html" target="overviewFrame">Overview</a></td><td><a href="http://www.erlang.org/"><img src="erlang.png" align="right" border="0" alt="erlang logo"></a></td></tr></table></div>
+<p><i>Generated by EDoc</i></p>
+</body>
+</html>

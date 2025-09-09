@@ -1,0 +1,104 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>Module bbsvx_erlog_db_differ</title>
+<link rel="stylesheet" type="text/css" href="stylesheet.css" title="EDoc">
+</head>
+<body bgcolor="white">
+<div class="navbar"><a name="#navbar_top"></a><table width="100%" border="0" cellspacing="0" cellpadding="2" summary="navigation bar"><tr><td><a href="overview-summary.html" target="overviewFrame">Overview</a></td><td><a href="http://www.erlang.org/"><img src="erlang.png" align="right" border="0" alt="erlang logo"></a></td></tr></table></div>
+<hr>
+
+<h1>Module bbsvx_erlog_db_differ</h1>
+<ul class="index"><li><a href="#index">Function Index</a></li><li><a href="#functions">Function Details</a></li></ul>
+
+<p><b>Behaviours:</b> <a href="bbsvx_erlog_db_behaviour.html"><code>bbsvx_erlog_db_behaviour</code></a>.</p>
+<p><b>This module defines the <code>bbsvx_erlog_db_differ</code> behaviour.</b><br> Required callback functions: <code>new/1</code>, <code>add_built_in/2</code>, <code>add_compiled_proc/4</code>, <code>asserta_clause/4</code>, <code>assertz_clause/4</code>, <code>retract_clause/3</code>, <code>abolish_clauses/2</code>, <code>get_procedure/2</code>, <code>get_procedure_type/2</code>, <code>get_interpreted_functors/1</code>.</p>
+
+<h2><a name="index">Function Index</a></h2>
+<table width="100%" border="1" cellspacing="0" cellpadding="2" summary="function index"><tr><td valign="top"><a href="#abolish_clauses-2">abolish_clauses/2</a></td><td></td></tr>
+<tr><td valign="top"><a href="#add_built_in-2">add_built_in/2</a></td><td></td></tr>
+<tr><td valign="top"><a href="#add_compiled_proc-4">add_compiled_proc/4</a></td><td></td></tr>
+<tr><td valign="top"><a href="#apply_diff-2">apply_diff/2</a></td><td></td></tr>
+<tr><td valign="top"><a href="#asserta_clause-4">asserta_clause/4</a></td><td></td></tr>
+<tr><td valign="top"><a href="#assertz_clause-4">assertz_clause/4</a></td><td></td></tr>
+<tr><td valign="top"><a href="#get_interpreted_functors-1">get_interpreted_functors/1</a></td><td></td></tr>
+<tr><td valign="top"><a href="#get_procedure-2">get_procedure/2</a></td><td></td></tr>
+<tr><td valign="top"><a href="#get_procedure_type-2">get_procedure_type/2</a></td><td></td></tr>
+<tr><td valign="top"><a href="#new-1">new/1</a></td><td></td></tr>
+<tr><td valign="top"><a href="#retract_clause-3">retract_clause/3</a></td><td></td></tr>
+</table>
+
+<h2><a name="functions">Function Details</a></h2>
+
+<h3 class="function"><a name="abolish_clauses-2">abolish_clauses/2</a></h3>
+<div class="spec">
+<p><code>abolish_clauses(Db_differ, Functor) -&gt; any()</code></p>
+<p> </p>
+</div>
+
+<h3 class="function"><a name="add_built_in-2">add_built_in/2</a></h3>
+<div class="spec">
+<p><code>add_built_in(Db_differ, Functor) -&gt; any()</code></p>
+<p> </p>
+</div>
+
+<h3 class="function"><a name="add_compiled_proc-4">add_compiled_proc/4</a></h3>
+<div class="spec">
+<p><code>add_compiled_proc(Db_differ, Functor, M, F) -&gt; any()</code></p>
+<p> </p>
+</div>
+
+<h3 class="function"><a name="apply_diff-2">apply_diff/2</a></h3>
+<div class="spec">
+<p><code>apply_diff(GoalDiff::[term()], Db::<a href="#type-db" docgen-rel="seetype" docgen-href="#db/0">db()</a>) -&gt; {ok, <a href="#type-db" docgen-rel="seetype" docgen-href="#db/0">db()</a>}</code><br></p>
+<p> </p>
+</div>
+
+<h3 class="function"><a name="asserta_clause-4">asserta_clause/4</a></h3>
+<div class="spec">
+<p><code>asserta_clause(Db_differ, Functor, Head, Body) -&gt; any()</code></p>
+<p> </p>
+</div>
+
+<h3 class="function"><a name="assertz_clause-4">assertz_clause/4</a></h3>
+<div class="spec">
+<p><code>assertz_clause(Db_differ, Functor, Head, Body) -&gt; any()</code></p>
+<p> </p>
+</div>
+
+<h3 class="function"><a name="get_interpreted_functors-1">get_interpreted_functors/1</a></h3>
+<div class="spec">
+<p><code>get_interpreted_functors(Db_differ) -&gt; any()</code></p>
+<p> </p>
+</div>
+
+<h3 class="function"><a name="get_procedure-2">get_procedure/2</a></h3>
+<div class="spec">
+<p><code>get_procedure(Db_differ, Functor) -&gt; any()</code></p>
+<p> </p>
+</div>
+
+<h3 class="function"><a name="get_procedure_type-2">get_procedure_type/2</a></h3>
+<div class="spec">
+<p><code>get_procedure_type(Db_differ, Functor) -&gt; any()</code></p>
+<p> </p>
+</div>
+
+<h3 class="function"><a name="new-1">new/1</a></h3>
+<div class="spec">
+<p><code>new(X1) -&gt; any()</code></p>
+<p> </p>
+</div>
+
+<h3 class="function"><a name="retract_clause-3">retract_clause/3</a></h3>
+<div class="spec">
+<p><code>retract_clause(Db_differ, Functor, Tag) -&gt; any()</code></p>
+<p> </p>
+</div>
+<hr>
+
+<div class="navbar"><a name="#navbar_bottom"></a><table width="100%" border="0" cellspacing="0" cellpadding="2" summary="navigation bar"><tr><td><a href="overview-summary.html" target="overviewFrame">Overview</a></td><td><a href="http://www.erlang.org/"><img src="erlang.png" align="right" border="0" alt="erlang logo"></a></td></tr></table></div>
+<p><i>Generated by EDoc</i></p>
+</body>
+</html>

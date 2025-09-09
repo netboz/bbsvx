@@ -1,0 +1,14 @@
+%% encoding: UTF-8
+{application,bbsvx}.
+{modules,[bbsvx_actor_leader_manager,bbsvx_actor_ontology,bbsvx_actor_spray,
+          bbsvx_app,bbsvx_arc_reporter_graph_visualizer,
+          bbsvx_client_connection,bbsvx_cowboy_handler_ontology,
+          bbsvx_cowboy_handler_spray,bbsvx_cowboy_handler_transaction,
+          bbsvx_cowboy_websocket_handler,bbsvx_crypto_service,
+          bbsvx_epto_disord_component,bbsvx_epto_logical_clock,
+          bbsvx_epto_service,bbsvx_erlog_db_behaviour,bbsvx_erlog_db_differ,
+          bbsvx_erlog_db_ets,bbsvx_network_service,bbsvx_ont_root,
+          bbsvx_ont_service,bbsvx_protocol_codec,bbsvx_server_connection,
+          bbsvx_structured_logging,bbsvx_sup,bbsvx_sup_client_connections,
+          bbsvx_sup_shared_ontologies,bbsvx_sup_shared_ontology,
+          bbsvx_transaction,bbsvx_transaction_pipeline,jsonlog_jiffy_encoder]}.
