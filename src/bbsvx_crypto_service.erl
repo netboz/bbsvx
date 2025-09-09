@@ -1,11 +1,12 @@
 %%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Gen Server built from template.
-%%% @author yan
-%%% @end
+%%% BBSvx Cryptographic Service
 %%%-----------------------------------------------------------------------------
 
 -module(bbsvx_crypto_service).
+
+-moduledoc "BBSvx Cryptographic Service\n\n"
+"Gen Server for cryptographic operations including key generation, signing, and hashing.\n\n"
+"Provides node identity, digital signatures, and transaction address calculation.".
 
 -author("yan").
 
@@ -41,13 +42,7 @@
 start_link() ->
     gen_server:start_link({via, gproc, {n, l, ?MODULE}}, ?MODULE, [], []).
 
-%%%-----------------------------------------------------------------------------
-%%% @doc
-%%% my_id() -> binary().
-%%% Returns the id of this node.
-%%% At this moent, it is the public key stored into the state of the gen_server
-%%% @end
-%%%-----------------------------------------------------------------------------
+%% Returns the ID of this node (base64-encoded public key)
 
 -spec my_id() -> binary().
 my_id() ->

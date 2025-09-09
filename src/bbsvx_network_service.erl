@@ -1,11 +1,12 @@
 %%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Gen Server built from template.
-%%% @author yan
-%%% @end
+%%% BBSvx Network Service
 %%%-----------------------------------------------------------------------------
 
 -module(bbsvx_network_service).
+
+-moduledoc "BBSvx Network Service\n\n"
+"Gen Server for network configuration and P2P connection management.\n\n"
+"Manages network interface information and host/port binding for P2P connections.".
 
 -author("yan").
 
@@ -48,9 +49,7 @@ start_link(Host, Port) ->
     gen_server:start_link({via, gproc, {n, l, ?SERVER}}, ?MODULE, [Host, Port], []).
 
 %%-----------------------------------------------------------------------------
-%% @doc
 %% Return the host/port of this node
-%% @end
 %% -----------------------------------------------------------------------------
 -spec my_host_port() ->
     {ok, {Host :: inet:ip4_address(), Port :: inet:port_number()}}

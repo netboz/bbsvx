@@ -1,9 +1,12 @@
 %%%-------------------------------------------------------------------
-%% @doc bbsvx top level supervisor.
-%% @end
+%%% BBSvx Top Level Supervisor
 %%%-------------------------------------------------------------------
 
 -module(bbsvx_sup).
+
+-moduledoc "BBSvx Top Level Supervisor\n\n"
+"Main application supervisor managing core system services.\n\n"
+"Uses one-for-all strategy to ensure system consistency across all components.".
 
 -behaviour(supervisor).
 

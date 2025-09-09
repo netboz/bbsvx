@@ -1,12 +1,12 @@
 %%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Simple CBOR protocol codec for BBSvx P2P messages.
-%%% Clean, fast implementation without encoding choice complexity.
-%%% @author yan
-%%% @end
+%%% BBSvx Protocol Codec
 %%%-----------------------------------------------------------------------------
 
 -module(bbsvx_protocol_codec).
+
+-moduledoc "BBSvx Protocol Codec\n\n"
+"Simple protocol codec for BBSvx P2P messages using term_to_binary encoding.\n\n"
+"Provides clean, fast encoding/decoding without choice complexity.".
 
 -include("bbsvx.hrl").
 -include_lib("logjam/include/logjam.hrl").
@@ -18,7 +18,7 @@
 %%% API Functions
 %%%=============================================================================
 
-%% @doc Encode message using term_to_binary
+%% Encode message using term_to_binary
 -spec encode(tuple()) -> {ok, binary()} | {error, term()}.
 encode(Message) ->
     try
@@ -29,7 +29,7 @@ encode(Message) ->
             {error, {encode_error, Error, Reason}}
     end.
 
-%% @doc Decode message with byte consumption for streaming protocol
+%% Decode message with byte consumption for streaming protocol
 -spec decode_message_used(binary()) -> {tuple(), non_neg_integer()} | error.
 decode_message_used(Binary) ->
     try

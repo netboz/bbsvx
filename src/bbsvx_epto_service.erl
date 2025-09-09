@@ -1,11 +1,12 @@
 %%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Gen Server built from template.
-%%% @author yan
-%%% @end
+%%% BBSvx EPTO Service
 %%%-----------------------------------------------------------------------------
 
 -module(bbsvx_epto_service).
+
+-moduledoc "BBSvx EPTO Service\n\n"
+"Gen Server for EPTO (Epidemic Totally Ordered) broadcast service.\n\n"
+"Provides reliable broadcast operations for distributed consensus in the overlay network.".
 
 -author("yan").
 

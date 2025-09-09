@@ -1,11 +1,12 @@
 %%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Gen State Machine built from template.
-%%% @author yan
-%%% @end
+%%% BBSvx Server Connection
 %%%-----------------------------------------------------------------------------
 
 -module(bbsvx_server_connection).
+
+-moduledoc "BBSvx Server Connection\n\n"
+"Gen State Machine for handling incoming P2P connections using Ranch protocol.\n\n"
+"Manages connection states, protocol handshakes, and message forwarding for SPRAY protocol.".
 
 -author("yan").
 
@@ -47,7 +48,7 @@
 %%% Helper Functions
 %%%=============================================================================
 
-%% @doc Helper to encode messages properly
+%% Helper to encode messages properly
 encode_message_helper(Message) ->
     {ok, EncodedMessage} = bbsvx_protocol_codec:encode(Message),
     EncodedMessage.
@@ -89,7 +90,7 @@ accept_register(ConnectionPid, #header_register_ack{} = Header) ->
 accept_join(ConnectionPid, #header_join_ack{} = Header) ->
     gen_statem:call(ConnectionPid, {accept_join, Header}).
 
-%% @TODO: Review cast/call logic here
+%% TODO: Review cast/call logic here
 accept_exchange(ConnectionPid, ProposedSample) ->
     gen_statem:call(ConnectionPid, {exchange_out, ProposedSample}).
 
@@ -215,13 +216,11 @@ callback_mode() ->
 %%% State transitions
 %%%=============================================================================
 
-%% @doc
 %% authenticate/3
 %% This is the first state of the connection. It is responsible for
 %% authenticating the connection at the node level.
 %% TODO: Implement authentication. Authentication should be done
 %% by querying the ontology and excpect a succeed result from the proved goal
-%% @end
 
 -spec authenticate(enter | info, any(), state()) ->
     {keep_state, state()} | {next_state, atom(), state()} | {stop, any(), state()}.
@@ -290,13 +289,11 @@ authenticate(Type, Event, State) ->
     ?'log-warning'("~p Unmanaged event ~p", [?MODULE, {authenticate, {Type, Event}}]),
     {keep_state, State}.
 
-%% @doc
 %% wait_for_subscription/3
 %% This state is responsible for waiting for the subscription message.
 %% Upon the subscription message, it will be decided if the connection is
 %% a join, register or forward subscription.
 %% Lock is checked at this stage.
-%% @end
 wait_for_subscription(enter, _, State) ->
     {keep_state, State};
 wait_for_subscription(
@@ -528,12 +525,10 @@ parse_packet(
 %%%=============================================================================
 
 %%------------------------------------------------------------------------------
-%% @doc
 %% process_subscription_header/2
 %% Process the subscription header received from the client. Subscription means
 %% the client wants to join the ontology mesh. Thiq is the second step of the
 %% connection process.
-%% @end
 %% %%------------------------------------------------------------------------------
 -spec process_subscription_header(term(), state()) ->
     {next_state, atom(), state()} | {stop, any(), state()}.
@@ -789,10 +784,8 @@ process_subscription_header(
     end.
 
 %%-----------------------------------------------------------------------------
-%% @doc
 %% ontology_arc_event/3
 %% Send an event related to arcs events on this namespace
-%% @end
 %% ----------------------------------------------------------------------------
 -spec arc_event(binary(), binary(), term()) -> ok.
 arc_event(NameSpace, MyUlid, Event) ->

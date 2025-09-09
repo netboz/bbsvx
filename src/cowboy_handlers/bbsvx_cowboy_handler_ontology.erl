@@ -1,17 +1,13 @@
 %%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Cowboy onologies handler
-%%% This module handles the ontology requests from REST clients
-%%% Path:
-%%%  PUT        /ontologies/:namespace : Create an ontology
-%%%  DELETE     /ontologies/:namespace : Delete an ontology
-%%%  GET        /ontologies/:namespace : Get an ontology details
-%%%
-%%% @author yan
-%%% @end
+%%% BBSvx Cowboy Ontology Handler
 %%%-----------------------------------------------------------------------------
 
 -module(bbsvx_cowboy_handler_ontology).
+
+-moduledoc "BBSvx Cowboy Ontology Handler\n\n"
+"Cowboy REST handler for ontology operations.\n\n"
+"Handles CREATE (PUT), DELETE, and GET operations for ontology resources via REST API.\n"
+"Routes: PUT/DELETE/GET /ontologies/:namespace".
 
 -author("yan").
 
@@ -302,10 +298,8 @@ accept_goal(Req0, #{namespace := Namespace, goal := Payload} = State) ->
     end.
 
 %%-----------------------------------------------------------------------------
-%% @doc
 %% get_ulid/0
 %% Return an unique identifier
-%% @end
 %% ----------------------------------------------------------------------------
 -spec get_ulid() -> binary().
 get_ulid() ->

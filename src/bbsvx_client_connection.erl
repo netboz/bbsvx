@@ -1,11 +1,12 @@
 %%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Gen State Machine built from template.
-%%% @author yan
-%%% @end
+%%% BBSvx Client Connection Module
 %%%-----------------------------------------------------------------------------
 
 -module(bbsvx_client_connection).
+
+-moduledoc "BBSvx Client Connection Module\n\n"
+"Gen State Machine for managing outbound P2P connections in SPRAY protocol.\n\n"
+"Handles connection establishment, registration, arc exchanges, and message forwarding.".
 
 -behaviour(gen_statem).
 
@@ -33,7 +34,7 @@
 %%% Helper Functions
 %%%=============================================================================
 
-%% @doc Helper to encode messages properly
+%% Helper to encode messages properly
 encode_message_helper(Message) ->
     {ok, EncodedMessage} = bbsvx_protocol_codec:encode(Message),
     EncodedMessage.
@@ -514,11 +515,7 @@ connect(Type, Event, State) ->
     ?'log-warning'("Connecting Ignoring event ~p~n", [{Type, Event}]),
     {keep_state, State}.
 
-%%-----------------------------------------------------------------------------
-%% @doc
-%% Contacting inview state
-%% We are regsitering to a contact node
-%% @end
+%% Contacting inview state - registering to a contact node
 register(enter, _, State) ->
     {keep_state, State};
 register(
@@ -911,23 +908,14 @@ handle_event(Type, Event, State) ->
 %%% Internal functions
 %%%=============================================================================
 
-%%-----------------------------------------------------------------------------
-%% @doc
-%% get_lock/0
-%% generate and return a lock
-%% @end
+%% Generate and return a lock
 -spec get_lock(Length :: non_neg_integer()) -> binary().
 get_lock(Length) ->
     base64:encode(
         crypto:strong_rand_bytes(Length)
     ).
 
-%%-----------------------------------------------------------------------------
-%% @doc
-%% get_ulid/0
-%% Return an unique identifier
-%% @end
-%% ----------------------------------------------------------------------------
+%% Return a unique identifier
 -spec get_ulid() -> binary().
 get_ulid() ->
     UlidGen = persistent_term:get(ulid_gen),
@@ -935,12 +923,7 @@ get_ulid() ->
     persistent_term:put(ulid_gen, NewGen),
     Ulid.
 
-%%-----------------------------------------------------------------------------
-%% @doc
-%% ontology_arc_event/3
-%% Send an event related to arcs events on this namespace
-%% @end
-%% ----------------------------------------------------------------------------
+%% Send an event related to arc events on this namespace
 -spec arc_event(binary(), binary(), term()) -> ok.
 arc_event(NameSpace, MyUlid, Event) ->
     gproc:send(

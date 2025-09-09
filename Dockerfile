@@ -1,5 +1,5 @@
 # Build stage
-FROM erlang:26.2-alpine AS build
+FROM erlang:27-alpine AS build
 
 # Build the image used to build the release
 RUN apk update && apk add --no-cache \
@@ -41,7 +41,7 @@ RUN rebar3 compile && \
     rebar3 release
 
 ## Build the runtime image
-FROM erlang:26.2-alpine AS run
+FROM erlang:27-alpine AS run
 RUN apk update && apk add --no-cache \
     openssl-dev \
     ncurses-libs \

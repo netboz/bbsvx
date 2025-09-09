@@ -1,11 +1,12 @@
 %%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Header built from template
-%%% @author yan
-%%% @end
+%%% BBSvx Root Ontology
 %%%-----------------------------------------------------------------------------
 
 -module(bbsvx_ont_root).
+
+-moduledoc "BBSvx Root Ontology\n\n"
+"Root ontology module providing external predicates for BBSvx system operations.\n\n"
+"Defines Prolog predicates for ontology creation and system management functions.".
 
 -author("yan").
 
@@ -16,7 +17,7 @@
 -include("bbsvx.hrl").
 
 -export([external_predicates/0]).
--export([pred_new_ontology/3]).
+-export([pred_new_shared_ontology/3]).
 
 %% Prolog API
 -define(ERLANG_PREDS,
@@ -26,25 +27,22 @@
     ]).
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% @private
 %% Return the list of built in predicates contained in this module
-%%
-%% @end
+%% @private
 %%------------------------------------------------------------------------------
 
+-doc false.
 external_predicates() ->
     ?ERLANG_PREDS.
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% @private
 %% This function is called by the prolog engine when new_ontology prolog clause
 %% is called. It is responsible for registering a new bubble in the system.
-%% @end
+%% @private
 %% ------------------------------------------------------------------------------
 
-pred_new_shared_ontology({_Atom, #ontology{} = NewOntology}, Next0, #est{bs = Bs} = St) ->
+-doc false.
+pred_new_shared_ontology({_Atom, #ontology{namespace = Namespace} = NewOntology}, Next0, #est{bs = Bs} = St) ->
     case erlog_int:deref(Namespace, Bs) of
         {_} ->
             %% Namespace is not binded, fail.

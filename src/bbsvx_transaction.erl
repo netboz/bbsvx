@@ -102,24 +102,33 @@ build_root_genesis_transaction(Options) ->
                 {ok, {[], SucceededStaticPreds}} ->
                     %% All external predicates and static ontology predicates loaded
                     %% We can build the genesis transaction
-                    #transaction{
-                        type = genesis,
+                    MyId = bbsvx_crypto_service:my_id(),
+                    Timestamp = erlang:system_time(millisecond),
+                    InitialGoal = #goal{
+                        id = ulid:generate(),
+                        namespace = <<"bbsvx:root">>,
+                        source_id = MyId,
+                        timestamp = Timestamp,
+                        payload = [{asserta, SucceededStaticPreds}]
+                    },
+                    {ok, #transaction{
+                        type = creation,
                         index = 0,
                         external_predicates = proplists:get_value(extenal_predicates, Options, []),
                         current_address = <<"0">>,
                         prev_address = <<"-1">>,
                         prev_hash = <<"0">>,
                         signature =
-                            %% @TODO: Should be signature of ont owner
+                            %% TODO: Should be signature of ont owner
                             <<"">>,
-                        ts_created = erlang:system_time(),
-                        ts_processed = erlang:system_time(),
+                        ts_created = erlang:system_time(millisecond),
+                        ts_processed = erlang:system_time(millisecond),
                         source_ontology_id = <<"">>,
                         leader = bbsvx_crypto_service:my_id(),
                         diff = [],
                         namespace = <<"bbsvx:root">>,
-                        payload = [{asserta, SucceededStaticPreds}]
-                    };
+                        payload = InitialGoal
+                    }};
                 {ok, {Failled, _Succeeded}} ->
                     ?'log-error'("Failed to validate static ontology predicates: ~p", [Failled]),
                     {error, failed_to_validate_static_ontology}
@@ -129,16 +138,13 @@ build_root_genesis_transaction(Options) ->
             {error, failed_to_load_modules}
     end.
 
-%% @doc Asserts that Erlang modules linked to an ontology are loaded.
-%%
+%% Asserts that Erlang modules linked to an ontology are loaded.
 %% Recursively loads a list of external predicate modules and tracks
 %% which ones succeed or fail during the loading process.
-%%
 %% Parameters:
 %% - `Modules` - List of module atoms to load
 %% - `Failed` - Accumulator for failed modules
 %% - `Succeeded` - Accumulator for successfully loaded modules
-%%
 %% Returns:
 %% `{ok, {Failed, Succeeded}}` where both are lists of module results.
 -spec load_external_predicates([atom()], list(), list()) ->
@@ -153,10 +159,8 @@ load_external_predicates([Mod | OtherMods], Failled, Succeeded) ->
             load_external_predicates(OtherMods, Failled ++ [{Error, Mod}], Succeeded)
     end.
 
-%% @doc Verifies that an Erlang module linked to an ontology is loaded.
-%%
+%% Verifies that an Erlang module linked to an ontology is loaded.
 %% Uses `code:ensure_loaded/1` to verify the module can be loaded.
-%%
 %% Returns:
 %% - `ok` - Module successfully loaded
 %% - `{error, Reason}` - Failed to load module
@@ -169,28 +173,25 @@ load_external_predicate(BuiltInPredMod) ->
             {error, Error}
     end.
 
-%% @doc Parses and loads static ontology predicates from various sources.
-%%
+%% Parses and loads static ontology predicates from various sources.
 %% Processes a list of predicate definitions, which can be either string
 %% literals or file references, and validates them for loading into the
 %% ontology system.
-%%
 %% Parameters:
 %% - `Predicates` - List of predicate definitions
 %% - `Failed` - Accumulator for failed predicates
 %% - `Succeeded` - Accumulator for successfully parsed predicates
-%%
 %% Returns:
 %% `{ok, {Failed, Succeeded}}` with parsing results.
 -spec parse_load_static_predicates(
-    [list({string, binary() | list()} | {file, atom(), binary()})], list(), list()
+    [{string, binary() | list()} | {file, atom(), binary()}], list(), list()
 ) -> {ok, {Failled :: list(), Succeeded :: list()}}.
 parse_load_static_predicates([], Failled, Succeeded) ->
     {ok, {Failled, Succeeded}};
 parse_load_static_predicates([Pred | OtherPreds], Failled, Succeeded) ->
     case parse_load_static_predicate(Pred) of
-        ok ->
-            parse_load_static_predicates(OtherPreds, Failled, Succeeded ++ [Pred]);
+        {ok, Terms} ->
+            parse_load_static_predicates(OtherPreds, Failled, Succeeded ++ Terms);
         Error ->
             parse_load_static_predicates(OtherPreds, Failled ++ [{Error, Pred}], Succeeded)
     end.
@@ -198,7 +199,10 @@ parse_load_static_predicates([Pred | OtherPreds], Failled, Succeeded) ->
 -spec parse_load_static_predicate({string, binary() | list()} | {file, atom(), binary()}) ->
     {ok, term()} | {error, Reason :: term()}.
 parse_load_static_predicate({string, StrPred}) ->
-    string_to_eterm(StrPred);
+    case string_to_eterm(StrPred) of
+        {error, Reason} -> {error, Reason};
+        Terms -> {ok, Terms}
+    end;
 parse_load_static_predicate({file, App, Filename}) ->
     BaseDir = c:pwd(),
     case code:priv_dir(App) of
@@ -207,12 +211,12 @@ parse_load_static_predicate({file, App, Filename}) ->
             % Of course, this will not work for all cases, but should account
             % for most
             {error, bad_name};
-        SomeDir ->
+        SomeDir when is_list(SomeDir) ->
             % In this case, we are running in a release and the VM knows
             % where the application (and thus the priv directory) resides
             % on the file system
             AbsPath = filename:join([BaseDir, SomeDir, "ontologies", Filename]),
-            try erlog_io:scan_file(AbsPath) of
+            try erlog_io:read_file(AbsPath) of
                 {ok, Terms} ->
                     {ok, Terms};
                 {error, einval, Error} ->
@@ -227,7 +231,7 @@ parse_load_static_predicate({file, App, Filename}) ->
             catch
                 Error:Reason ->
                     ?'log-error'("Exception :~p ~p", [Error, Reason]),
-                    {Error, Reason}
+                    {error, Reason}
             end
     end.
 
@@ -273,20 +277,16 @@ read_transaction(Namespace, TransactonAddress) ->
     TableName = bbsvx_ont_service:binary_to_table_name(Namespace),
     read_transaction(TableName, TransactonAddress).
 
-%% @doc Converts a string to a Prolog term using the Erlog parser.
-%%
+%% Converts a string to a Prolog term using the Erlog parser.
 %% Parses string input (binary or list) into Prolog terms suitable
 %% for use in the ontology system.
-%%
 %% Examples:
 %% ```erlang
 %% string_to_eterm("fact(a, b)").
 %% % Returns parsed Prolog term
 %% ```
-%%
 %% Parameters:
 %% - `String` - Binary or string to convert
-%%
 %% Returns:
 %% - `{ok, Term}` - Successfully parsed Prolog term
 %% - `{error, Reason}` - Parse error with reason

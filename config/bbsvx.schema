@@ -15,79 +15,45 @@
   {default, "root"},
   {datatype, string},
   {env, "BBSVX_BOOT"},
-  {comment, "Boot mode: 'auto' (restarts only), 'root' (new cluster, fresh data only), 'join <host> <port>' (join existing). Can be set via BBSVX_BOOT environment variable."}
+  {comment, "Boot mode: 'root' (new cluster) or 'join host1:port1 host2:port2' (join existing cluster). Can be set via BBSVX_BOOT environment variable."}
 ]}.
 
 {translation, "bbsvx.boot",
  fun(Conf) ->
      Boot = cuttlefish:conf_get("boot", Conf),
      case Boot of
-         "auto" ->
-             %% Auto-detect only works for restarts - check if node has been initialized
-             DataDir = cuttlefish:conf_get("paths.data_dir", Conf, "./data"),
-             SchemaFile = filename:join([DataDir, "schema.DAT"]),
-             case filelib:is_file(SchemaFile) of
-                 true ->
-                     %% Schema exists - this is a restart, auto-join existing cluster
-                     ContactNodes = cuttlefish:conf_get("network.contact_nodes", Conf, "none"),
-                     case ContactNodes of
-                         "none" ->
-                             %% No contact nodes specified - restart as standalone
-                             join;
-                         _ ->
-                             %% Parse contact nodes and use first one for join
-                             case string:tokens(ContactNodes, ",") of
-                                 [FirstNode | _] ->
-                                     case string:tokens(string:strip(FirstNode), ":") of
-                                         [Host, Port] -> 
-                                             {join, Host, list_to_integer(Port)};
-                                         [Host] -> 
-                                             {join, Host, 2304};
-                                         _ -> 
-                                             {join, "localhost", 2304}
-                                     end;
-                                 [] ->
-                                     {join, "localhost", 2304}
-                             end
-                     end;
-                 false ->
-                     %% No schema file - this is first start, cannot auto-detect intent
-                     %% User must specify 'root' or 'join host port' explicitly
-                     error({invalid_config, 
-                            "First start detected - 'boot = auto' requires explicit intent. "
-                            "Use 'boot = root' to start new cluster or 'boot = join host port' to join existing cluster"})
-             end;
          "root" ->
-             %% Check if data already exists - forbid root mode on existing data
-             DataDir = cuttlefish:conf_get("paths.data_dir", Conf, "./data"),
-             SchemaFile = filename:join([DataDir, "schema.DAT"]),
-             case filelib:is_file(SchemaFile) of
-                 true ->
-                     %% Data exists - cannot start in root mode
-                     error({invalid_config,
-                            "Cannot start in 'boot = root' mode - existing data detected in " ++ DataDir ++ ". "
-                            "Use 'boot = auto' for restart or 'boot = join host port' to join cluster. "
-                            "To start fresh, remove the data directory first."});
-                 false ->
-                     %% No existing data - root mode is allowed
-                     root
-             end;
+             root;
          Other when is_list(Other) ->
-             %% Parse "join host port" format
+             %% Parse "join host1:port1 host2:port2" format
              case string:tokens(Other, " ") of
-                 ["join", Host, Port] ->
-                     {join, Host, list_to_integer(Port)};
-                 ["join", Host] ->
-                     {join, Host, 2304};
+                 ["join"] ->
+                     %% No contact nodes specified - error
+                     error({invalid_config, 
+                            "boot = join requires contact nodes. "
+                            "Use 'boot = join host1:port1 host2:port2'"});
+                 ["join" | ContactNodesList] ->
+                     %% Parse host:port pairs
+                     ParsedNodes = lists:map(fun(NodeStr) ->
+                         case string:tokens(NodeStr, ":") of
+                             [Host, Port] -> 
+                                 {Host, list_to_integer(Port)};
+                             [Host] -> 
+                                 {Host, 2304};
+                             _ -> 
+                                 error({invalid_config, "Invalid node format: " ++ NodeStr ++ ". Use host:port"})
+                         end
+                     end, ContactNodesList),
+                     {join, ParsedNodes};
                  _ ->
                      error({invalid_config, 
                             "Invalid boot format: '" ++ Other ++ "'. "
-                            "Use 'root' or 'join host port'"})
+                            "Use 'root' or 'join host1:port1 host2:port2'"})
              end;
          Other ->
              error({invalid_config, 
                     "Invalid boot mode: '" ++ Other ++ "'. "
-                    "Use 'auto', 'root', or 'join host port'"})
+                    "Use 'root' or 'join host1:port1 host2:port2'"})
      end
  end}.
 

@@ -1,11 +1,12 @@
 %%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Gen State Machine built from template.
-%%% @author yan
-%%% @end
+%%% BBSvx EPTO Disorder Component
 %%%-----------------------------------------------------------------------------
 
 -module(bbsvx_epto_disord_component).
+
+-moduledoc "BBSvx EPTO Disorder Component\n\n"
+"Gen State Machine for EPTO dissemination protocol disorder handling.\n\n"
+"Manages event ordering, broadcasting, and state transitions for the EPTO consensus algorithm.".
 
 -author("yan").
 
@@ -126,12 +127,7 @@ syncing({call, From}, empty_inview, _State) ->
 syncing({call, From}, {epto_broadcast, Payload}, #state{next_ball = NextBall} = State) ->
     ?'log-info'("Epto dissemination component : Broadcast ~p", [Payload]),
 
-    EvtId =
-        list_to_binary(
-            uuid:uuid_to_string(
-                uuid:get_v4()
-            )
-        ),
+    EvtId = ulid:generate(),
     Event =
         #epto_event{
             id = EvtId,
@@ -271,12 +267,7 @@ running({call, From}, empty_inview, State) ->
 running({call, From}, {epto_broadcast, Payload}, #state{next_ball = NextBall} = State) ->
     ?'log-info'("Epto dissemination component : Broadcast ~p", [Payload]),
 
-    EvtId =
-        list_to_binary(
-            uuid:uuid_to_string(
-                uuid:get_v4()
-            )
-        ),
+    EvtId = ulid:generate(),
     Event =
         #epto_event{
             id = EvtId,
@@ -336,7 +327,7 @@ running(
     {incoming_event, {epto_message, {receive_ball, Ball, _CurrentIndex}}},
     #state{namespace = _Namespace} = State
 ) ->
-    %% @TODO: next event could considerably slow down the ball processing, should be made async ?
+    %% TODO: next event could considerably slow down the ball processing, should be made async ?
     % gproc:send({p, l, {epto_event, State#state.ontology}}, {received_ball, Ball}),
     UpdatedNextBall =
         maps:fold(
@@ -370,7 +361,7 @@ running(
     {incoming_event, {receive_ball, Ball, _CurrentIndex}},
     #state{namespace = _Namespace} = State
 ) ->
-    %% @TODO: next event could considerably slow down the ball processing, should be made async ?
+    %% TODO: next event could considerably slow down the ball processing, should be made async ?
     % gproc:send({p, l, {epto_event, State#state.ontology}}, {received_ball, Ball}),
     UpdatedNextBall =
         maps:fold(
@@ -400,11 +391,7 @@ running(
         ),
     {keep_state, State#state{next_ball = UpdatedNextBall}}.
 
-%%-----------------------------------------------------------------------------
-%% @doc
 %% Handle events common to all states.
-%% @end
-%%-----------------------------------------------------------------------------
 handle_event({call, From}, get_count, Data) ->
     %% Reply with the current count
     {keep_state, Data, [{reply, From, Data}]};

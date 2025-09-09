@@ -1,11 +1,12 @@
 %%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Header built from template
-%%% @author yan
-%%% @end
+%%% BBSvx Cowboy Transaction Handler
 %%%-----------------------------------------------------------------------------
 
 -module(bbsvx_cowboy_handler_transaction).
+
+-moduledoc "BBSvx Cowboy Transaction Handler\n\n"
+"Cowboy REST handler for transaction operations.\n\n"
+"Handles transaction submission and retrieval via REST API endpoints.".
 
 -author("yan").
 

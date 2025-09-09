@@ -1,11 +1,12 @@
 %%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Supervisor built from template.
-%%% @author yan
-%%% @end
+%%% BBSvx Shared Ontology Supervisor
 %%%-----------------------------------------------------------------------------
 
 -module(bbsvx_sup_shared_ontology).
+
+-moduledoc "BBSvx Shared Ontology Supervisor\n\n"
+"Supervisor for shared ontology services including ontology actor, EPTO disorder component, \n"
+"SPRAY protocol actor, and leader manager for a specific namespace.".
 
 -author("yan").
 
@@ -42,7 +43,7 @@ start_link(Namespace, Options) ->
 %%%=============================================================================
 
 init([Namespace, Options]) ->
-    ?'log-info'("Ontology supervisor starting on  ~p", [Namespace]),
+    ?'log-info'("Ontology supervisor starting on ~p", [Namespace]),
     SupFlags =
         #{
             strategy => one_for_one,

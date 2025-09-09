@@ -156,7 +156,7 @@ BBSVX_P2P_PORT=3000 BBSVX_HTTP_PORT=9000 ./bin/bbsvx start
 BBSvx orchestrates these excellent Erlang bubble-formation libraries:
 - **Cowboy**: HTTP server framework (bubble communication protocol)
 - **Gproc**: Process registry (bubble tracking system)
-- **Clique**: Command-line interface (bubble control wand)
+- **Cuttlefish**: Configuration management (bubble configuration schema)
 - **OpenTelemetry**: Observability (bubble behavior analysis)
 - **Prometheus**: Metrics collection (bubble dynamics measurement)
 - **And many more...** (check `rebar.config` for the complete bubble recipe)

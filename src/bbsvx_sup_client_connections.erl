@@ -1,11 +1,12 @@
 %%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Supervisor built from template.
-%%% @author yan
-%%% @end
+%%% BBSvx Client Connections Supervisor
 %%%-----------------------------------------------------------------------------
 
 -module(bbsvx_sup_client_connections).
+
+-moduledoc "BBSvx Client Connections Supervisor\n\n"
+"Simple one-for-one supervisor for outbound P2P client connections.\n\n"
+"Manages dynamic creation and supervision of bbsvx_client_connection processes.".
 
 -author("yan").
 

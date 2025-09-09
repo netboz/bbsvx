@@ -1,11 +1,12 @@
 %%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Header built from template
-%%% @author yan
-%%% @end
+%%% BBSvx Cowboy SPRAY Handler
 %%%-----------------------------------------------------------------------------
 
 -module(bbsvx_cowboy_handler_spray).
+
+-moduledoc "BBSvx Cowboy SPRAY Handler\n\n"
+"Cowboy REST handler for SPRAY protocol inspection and management.\n\n"
+"Provides API endpoints for viewing inview/outview connections and controlling SPRAY agents.".
 
 -include("bbsvx.hrl").
 

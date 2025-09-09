@@ -26,7 +26,10 @@
 ]},
 
       {bbsvx, [
-        {boot, {join, [{"bbsvx-bbsvx_root-1", 2304}]}}]} %% or {join, ListOfContactNode}
+        %% Boot configuration is now handled by cuttlefish schema
+        %% Use bbsvx.conf or environment variables instead
+        %% Example: boot = join node1:2304 node2:2305
+      ]}
         
 ].
 

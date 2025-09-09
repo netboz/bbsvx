@@ -1,11 +1,12 @@
 %%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Gen State Machine built from template.
-%%% @author yan
-%%% @end
+%%% BBSvx Ontology Actor
 %%%-----------------------------------------------------------------------------
 
 -module(bbsvx_actor_ontology).
+
+-moduledoc "BBSvx Ontology Actor\n\n"
+"Gen State Machine for managing ontology state and Prolog knowledge bases.\n\n"
+"Handles ontology initialization, synchronization, and transaction processing.".
 
 -behaviour(gen_statem).
 
@@ -25,11 +26,17 @@
 %% Gen State Machine Callbacks
 -export([init/1, code_change/4, callback_mode/0, terminate/3]).
 %% State transitions
--export([ready/3, initialize_ontology/3, wait_for_registration/3, syncing/3]).
+-export([
+    ready/3,
+    initialize_ontology/3,
+    wait_for_genesis_transaction/3,
+    wait_for_registration/3,
+    syncing/3
+]).
 
 -record(state, {
     namespace :: binary(),
-    ont_state :: ont_state(),
+    ont_state :: ont_state() | undefined,
     repos_table :: atom(),
     boot :: term(),
     db_mod :: atom(),
@@ -37,10 +44,17 @@
     my_id :: binary() | undefined
 }).
 
+-type state() :: #state{}.
+
 %%%=============================================================================
 %%% API
 %%%=============================================================================
 
+-doc """
+Starts a linked ontology actor process for the specified namespace.
+
+Uses default options for initialization.
+""".
 -spec start_link(Namespace :: binary()) -> gen_statem:start_ret().
 start_link(Namespace) ->
     gen_statem:start_link(
@@ -50,6 +64,11 @@ start_link(Namespace) ->
         []
     ).
 
+-doc """
+Starts a linked ontology actor process with custom options.
+
+Options may include boot mode, database module, and other configuration.
+""".
 -spec start_link(Namespace :: binary(), Options :: map()) -> gen_statem:start_ret().
 start_link(Namespace, Options) ->
     gen_statem:start_link(
@@ -59,10 +78,18 @@ start_link(Namespace, Options) ->
         []
     ).
 
+-doc """
+Retrieves the current transaction index for the specified namespace.
+
+Used to query the current state of the ontology transaction log.
+""".
 -spec get_current_index(Namespace :: binary()) -> {ok, integer()}.
 get_current_index(Namespace) ->
     gen_statem:call({via, gproc, {n, l, {?MODULE, Namespace}}}, get_current_index).
 
+-doc """
+Stops the ontology actor server gracefully.
+""".
 -spec stop() -> ok.
 stop() ->
     gen_statem:stop(?SERVER).
@@ -72,25 +99,60 @@ stop() ->
 %%%=============================================================================
 
 init([Namespace, Options]) ->
-    case bbsvx_ont_service:table_exists(Namespace) of
-        false ->
-            %% Table doesn't exist, we are probably booting, wait for genesis
+    %% Get our node ID
+    MyId = bbsvx_crypto_service:my_id(),
+    %% Build empty prolog state
+    DbRepos = bbsvx_ont_service:binary_to_table_name(Namespace),
+    {DbMod, DbRef} =
+        maps:get(
+            db_mod,
+            Options,
+            {bbsvx_erlog_db_ets, DbRepos}
+        ),
+    {ok, #est{db = #db{ref = #db_differ{out_db = #db{ref = NewRef}}}} = PrologState} =
+        erlog_int:new(bbsvx_erlog_db_differ, {DbRef, DbMod}),
+
+    %% Check if we are booting or joining
+    case maps:get(boot, Options, root) of
+        root ->
+            %% we are probably booting, wait for genesis
             %% transaction.
-            {ok, wait_for_genesis_transaction, #state{namespace = Namespace},
+            OntState =
+                #ont_state{
+                    namespace = Namespace,
+                    current_ts = 0,
+                    previous_ts = -1,
+                    current_index = 0,
+                    local_index = 0,
+                    contact_nodes = [],
+                    prolog_state = PrologState
+                },
+
+            {ok, wait_for_genesis_transaction,
+                #state{
+                    namespace = Namespace,
+                    my_id = MyId,
+                    ont_state = undefined,
+                    db_mod = DbMod,
+                    db_ref = NewRef
+                },
                 ?INIT_RECEIVE_GENESIS_TIMEOUT};
+
+        {join, ContactNodes} ->
+            %% we are joining an existing network, wait for registration
+            {ok, wait_for_registration,
+                #state{
+                    namespace = Namespace,
+                    my_id = MyId,
+                    ont_state = undefined,
+                    db_mod = DbMod,
+                    db_ref = NewRef
+                },
+                ?INIT_RECEIVE_GENESIS_TIMEOUT};
+
         true ->
-            %% Table already exists, restore state
-            MyId = bbsvx_crypto_service:my_id(),
-            %% Creating prolog state
-            DbRepos = bbsvx_ont_service:binary_to_table_name(Namespace),
-            {DbMod, DbRef} =
-                maps:get(
-                    db_mod,
-                    Options,
-                    {bbsvx_erlog_db_ets, DbRepos}
-                ),
-            {ok, #est{db = #db{ref = #db_differ{out_db = #db{ref = NewRef}}}} = PrologState} =
-                erlog_int:new(bbsvx_erlog_db_differ, {DbRef, DbMod}),
+            %% Table already exists, restore state,
+
             Boot = maps:get(boot, Options, join),
             ContactNodes = maps:get(contact_nodes, Options, []),
             OntState =
@@ -128,44 +190,35 @@ callback_mode() ->
 %%%=============================================================================
 %%% State transitions
 %%%=============================================================================
-wait_for_genesis_transacion(enter, _, #state{namespace = Namespace} = State) ->
+
+-spec wait_for_genesis_transaction(
+    gen_statem:event_type(),
+    transaction() | term(),
+    state()
+) -> gen_statem:state_function_result().
+wait_for_genesis_transaction(enter, _, #state{namespace = Namespace} = State) ->
     ?'log-info'("Ontology Agent ~p waiting for genesis transaction", [Namespace]),
     {keep_state, State};
-wait_for_genesis_transacion(
+wait_for_genesis_transaction(
     info,
-    #transaction{type = genesis} = GenesisTransaction,
+    #transaction{type = creation},
     #state{
-        namespace = Namespace,
-        my_id = MyId
+        namespace = Namespace
     } = State
 ) ->
     ?'log-info'("Ontology Agent ~p received genesis transaction", [Namespace]),
-    %% Creating prolog state
-    DbRepos = bbsvx_ont_service:binary_to_table_name(Namespace),
-    {ok, #est{db = #db{ref = #db_differ{out_db = #db{ref = NewRef}}}} = PrologState} =
-        erlog_int:new(bbsvx_erlog_db_differ, {
-            GenesisTransaction#transaction.payload, bbsvx_erlog_db_ets, DbRepos
-        }),
-    ContactNodes = GenesisTransaction#transaction.diff,
-    OntState =
-        #ont_state{
-            namespace = Namespace,
-            current_ts = 0,
-            previous_ts = -1,
-            current_address = <<"0">>,
-            next_address = <<"0">>,
-            contact_nodes = ContactNodes,
-            prolog_state = PrologState
-        },
-    gproc:send({p, l, {?MODULE, Namespace}}, {initialisation, Namespace}),
-    {next_state, initialize_ontology, State#state{
-        repos_table = DbRepos,
-        boot = root,
-        db_mod = bbsvx_erlog_db_ets,
-        db_ref = NewRef,
-        ont_state = OntState,
-        my_id = MyId
-    }}.
+    %% start transaction pipeline
+    case start_transaction_pipeline(Namespace, State#state.ont_state) of
+        {ok, _Pid} ->
+            ok;
+        {error, Reason} ->
+            ?'log-error'("Ontology Agent ~p failed to start transaction pipeline ~p", [Namespace, Reason])
+    end,
+
+    {next_state, initialize_ontology, State#state{}};
+wait_for_genesis_transaction(_EventType, _Event, State) ->
+    %% Catch-all clause for unhandled events
+    {keep_state, State}.
 
 initialize_ontology(
     enter,
@@ -326,7 +379,7 @@ wait_for_registration(
 
     {next_state, syncing, State#state{ont_state = OntState#ont_state{current_index = CurrentIndex}}}.
 
-%% @TODO : crypto: diff needs to be signed
+%% TODO : crypto: diff needs to be signed
 syncing(enter, _, #state{namespace = Namespace} = State) ->
     ?'log-info'("Ontology Agent ~p syncing", [Namespace]),
     {keep_state, State};
@@ -353,7 +406,7 @@ syncing(
     },
     #state{} = State
 ) ->
-    %% @TODO : May some checks should be done to see if we indeed
+    %% TODO : May some checks should be done to see if we indeed
     %% have segment and forward request if needed
     History = retrieve_transaction_history(Namespace, OldestIndex, YoungerIndex),
     YoungerIndexRetrieved =
@@ -408,6 +461,36 @@ ready(Type, Event, _State) ->
 %%% Internal functions
 %%%=============================================================================
 
+-doc """
+    Starts the supervised transaction pipeline.
+""".
+-spec start_transaction_pipeline(binary(), ont_state()) -> supervisor:startchild_ret().
+start_transaction_pipeline(Namespace, OntState) ->
+    supervisor:start_child(
+            {via, gproc, {n, l, {bbsvx_sup_shared_ontology, Namespace}}},
+            #{
+                id => {bbsvx_transaction_pipeline, Namespace},
+                start =>
+                    {bbsvx_transaction_pipeline, start_link, [
+                        Namespace,
+                        OntState#ont_state{
+                            current_index =
+                                OntState#ont_state.local_index
+                        },
+                        #{}
+                    ]},
+                restart => transient,
+                shutdown => 1000,
+                type => worker,
+                modules => [bbsvx_transaction_pipeline]
+            }
+        ).
+
+-doc """
+Requests a segment of transaction history from the network.
+
+Broadcasts a request to other nodes for missing transaction data.
+""".
 -spec request_segment(binary(), integer(), integer()) -> {ok, integer()}.
 request_segment(Namespace, OldestIndex, YoungerIndex) ->
     ?'log-info'("Requesting segment ~p ~p ~p", [Namespace, OldestIndex, YoungerIndex]),
@@ -424,6 +507,11 @@ request_segment(Namespace, OldestIndex, YoungerIndex) ->
         1
     ).
 
+-doc """
+Loads transaction history from persistent storage into the ontology state.
+
+Restores the Prolog knowledge base from stored transaction diffs.
+""".
 -spec load_history(ont_state(), atom()) -> ont_state() | {error, term()}.
 load_history(OntState, ReposTable) ->
     FrstTransationKey = mnesia:dirty_first(ReposTable),
@@ -435,13 +523,18 @@ load_history(OntState, ReposTable) ->
             do_load_history(Key, OntState, ReposTable)
     end.
 
--spec do_load_history(number() | '$end_of_table', ont_state(), atom()) ->
+-doc """
+Recursive helper function for loading transaction history.
+
+Applies transaction diffs sequentially to rebuild the ontology state.
+""".
+-spec do_load_history(term(), ont_state(), atom()) ->
     ont_state() | {error, term()}.
 do_load_history('$end_of_table', #ont_state{} = OntState, _ReposTable) ->
     OntState;
 do_load_history(Key, #ont_state{prolog_state = PrologState} = OntState, ReposTable) ->
     OntDb = PrologState#est.db,
-    %% @TODO : Current Adrress should match the transaction previous address field
+    %% TODO : Current Adrress should match the transaction previous address field
     TransacEntry = bbsvx_transaction:read_transaction(ReposTable, Key),
     case TransacEntry of
         not_found ->
@@ -451,7 +544,7 @@ do_load_history(Key, #ont_state{prolog_state = PrologState} = OntState, ReposTab
             {ok, #db{ref = Ref} = NewOntDb} =
                 bbsvx_erlog_db_differ:apply_diff(TransacEntry#transaction.diff, OntDb),
             NextKey = mnesia:dirty_next(ReposTable, Key),
-            %% @TODO : The way op_fifo is resetted is not good and coud be done by using
+            %% TODO : The way op_fifo is resetted is not good and coud be done by using
             %% standard erlog state instead of differ
             do_load_history(
                 NextKey,
@@ -475,6 +568,11 @@ do_load_history(Key, #ont_state{prolog_state = PrologState} = OntState, ReposTab
             )
     end.
 
+-doc """
+Retrieves a range of transactions from the repository.
+
+Returns transactions sorted by index within the specified range.
+""".
 retrieve_transaction_history(Namespace, OldestIndex, YoungerIndex) ->
     TableName = bbsvx_ont_service:binary_to_table_name(Namespace),
     SelectFun =

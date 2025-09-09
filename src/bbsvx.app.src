@@ -6,8 +6,6 @@
     {applications, [
         kernel,
         stdlib,
-        opentelemetry_api,
-        cowboy_telemetry,
         cuttlefish,
         prometheus,
         cowboy,
@@ -20,8 +18,7 @@
         erlog,
         uuid,
         quickrand,
-        ulid,
-        clique
+        ulid
     ]},
     {env, []},
     {modules, [prometheus_httpd]},

@@ -1,13 +1,13 @@
 %%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Gen State Machine built from template.
-%%% @author yan
-%%% Leader election over overlayed network
-%%% cf : https://pure.tudelft.nl/ws/portalfiles/portal/69222795/main.pdf
-%%% @end
+%%% BBSvx Leader Election Manager
 %%%-----------------------------------------------------------------------------
 
 -module(bbsvx_actor_leader_manager).
+
+-moduledoc "BBSvx Leader Election Manager\n\n"
+"Gen State Machine for leader election over overlay network.\n\n"
+"Implements distributed leader election algorithm for consensus operations.\n"
+"Reference: https://pure.tudelft.nl/ws/portalfiles/portal/69222795/main.pdf".
 
 -behaviour(gen_statem).
 
@@ -230,23 +230,15 @@ running(EventType, EventContent, Data) ->
 %%% Internal functions
 %%%=============================================================================
 
-%%-----------------------------------------------------------------------------
-%% @doc
-%% Get the valid entries from the neighbors list.
-%% meaning only entries for witch the Ts does not differ by more than
-%% DeltaC + M*DeltaR time units from T.
-%% @end
+%% Get valid entries from neighbors list where Ts doesn't differ by more than
+%% DeltaC + M*DeltaR time units from T
 
 -spec get_valid_entries(neighbors(), integer(), integer(), integer(), integer()) ->
     neighbors().
 get_valid_entries(Neigh, T, DeltaC, DeltaR, M) ->
     lists:filter(fun(#neighbor{ts = Ts}) -> abs(T - Ts) < DeltaC + M * DeltaR end, Neigh).
 
-%%-----------------------------------------------------------------------------
-%% @doc
-%% Pick 3 random entries from the given list, duplicate some entries if the list
-%% is too short.
-%% @end
+%% Pick 3 random entries from the list, duplicating entries if list is too short
 
 -spec pick_three_random(neighbors()) -> neighbors().
 pick_three_random([]) ->
@@ -265,10 +257,7 @@ pick_three_random(Neigh) ->
     Randomized = [X || {_, X} <- lists:sort([{rand:uniform(), N} || N <- Neigh])],
     lists:sublist(Randomized, 3).
 
-%%-----------------------------------------------------------------------------
-%% @doc
-%% Get the most referenced leader from the given list.
-%% @end
+%% Get the most referenced leader from the given list
 
 -spec get_most_referenced_leader(neighbors()) -> neighbor().
 get_most_referenced_leader([

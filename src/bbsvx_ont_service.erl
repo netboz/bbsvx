@@ -1,11 +1,12 @@
 %%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Gen Server built from template.
-%%% @author yan
-%%% @end
+%%% BBSvx Ontology Service
 %%%-----------------------------------------------------------------------------
 
 -module(bbsvx_ont_service).
+
+-moduledoc "BBSvx Ontology Service\n\n"
+"Gen Server for managing ontology instances and Prolog knowledge base operations.\n\n"
+"Provides API for ontology creation, querying, goal storage, and distributed connections.".
 
 -author("yan").
 
@@ -57,54 +58,30 @@
 %%%=============================================================================
 
 -spec start_link() -> gen_statem:start_ret().
-%%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Start the ontology service
-%%% @returns {ok, Pid} if the service was started successfully, {error, Reason} otherwise
-%%% @end
+%% Start the ontology service
 
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
-%%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Create a new ontology
-%%% @param Ontology the ontology to create
-%%% @returns ok if the ontology was created successfully, {error, Reason} otherwise
-%%% @end
+%% Create a new ontology
 
 -spec new_ontology(ontology()) -> ok | {error, atom()}.
 new_ontology(#ontology{namespace = Namespace, contact_nodes = ContactNodes} = Ontology) ->
     gen_server:call(?SERVER, {new_ontology, Ontology}).
 
-%%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Get an ontology
-%%% @param Namespace the namespace of the ontology to get
-%%% @returns {ok, Ontology} if the ontology was found, {error, Reason} otherwise
-%%% @end
+%% Get an ontology by namespace
 
 -spec get_ontology(binary()) -> {ok, ontology()} | {error, atom()}.
 get_ontology(Namespace) ->
     gen_server:call(?SERVER, {get_ontology, Namespace}).
 
-%%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Delete an ontology
-%%% @param Namespace the namespace of the ontology to delete
-%%% @returns ok if the ontology was deleted successfully, {error, Reason} otherwise
-%%% @end
-%%%
+%% Delete an ontology by namespace
 -spec delete_ontology(Namespace :: binary()) -> ok | {error, atom()}.
 delete_ontology(Namespace) ->
     gen_server:call(?SERVER, {delete_ontology, Namespace}).
 
 %%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Connect an ontology to the network
-%%% @param Namespace the namespace of the ontology to connect
-%%% @returns ok if the ontology was connected successfully, {error, Reason} otherwise
-%%% @end
+%% Connect an ontology to the network
 
 -spec connect_ontology(Namespace :: binary()) -> ok | {error, atom()}.
 connect_ontology(Namespace) ->
@@ -112,11 +89,7 @@ connect_ontology(Namespace) ->
 
 -spec disconnect_ontology(Namespace :: binary()) -> ok | {error, atom()}.
 %%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Disconnect an ontology from the network
-%%% @param Namespace the namespace of the ontology to disconnect
-%%% @returns ok if the ontology was disconnected successfully, {error, Reason} otherwise
-%%% @end
+%% Disconnect an ontology from the network
 disconnect_ontology(Namespace) ->
     gen_server:call(?SERVER, {disconnect_ontology, Namespace}).
 
@@ -150,18 +123,29 @@ init([]) ->
                     {ok, #state{my_id = MyId}}
             end;
         {atomic, ok} ->
-            %% This is the first time we start, so we need to create root ontology
+            %% This is the first time we start, so we need to either create root ontology, either
+            %% join an existing network
 
             BootMode = application:get_env(bbsvx, boot, root),
             ListOfContactNodes =
                 case BootMode of
                     root ->
-                        {ok, {MyHost, MyPort}} = bbsvx_network_service:my_host_port(),
-                        [#node_entry{host = MyHost, port = MyPort}];
-                    {join, Host, Port} ->
+                        [];
+                    {join, ContactNodesTuples} when is_list(ContactNodesTuples) ->
                         %% This node is asked to boot by joining already existing network
-                        %% {ok, #state{my_id = MyId}};
-                        [#node_entry{host = list_to_binary(Host), port = Port}]
+                        %% Convert from [{Host, Port}, ...] to [#node_entry{}, ...]
+                        lists:map(
+                            fun({Host, Port}) when  Host andalso is_integer(Port) ->
+                                #node_entry{
+                                    host = list_to_binary(Host),
+                                    port = Port
+                                }
+                            end,
+                            ContactNodesTuples
+                        );
+                    Other ->
+                        logger:error("Invalid boot mode: ~p", [Other]),
+                        {stop, {invalid_boot_mode, Other}}
                 end,
 
             logger:info("Onto service : contact nodes ~p", [ListOfContactNodes]),
@@ -176,21 +160,37 @@ init([]) ->
                 ok ->
                     %% Now start the shared ontology needed processes (bbsvx_actor_spay,
                     %% bbsvx_actor_ontology, bbsvx_epto_disord_component and bbsvx_actor_leader_manager)
-                    case activate_ontology(<<"bbsvx:root">>, ListOfContactNodes) of
-                        ok ->
+                    case
+                        activate_ontology(<<"bbsvx:root">>, #{
+                            contact_nodes => ListOfContactNodes,
+                            boot => BootMode
+                        })
+                    of
+                        {ok, _} ->
                             ?'log-info'("Onto service : root ontology processes started", []),
                             %% TODO: nt sure we need to keep my_id()
-                            {ok, GenesisTransaction} = bbsvx_transaction:build_root_genesis_transaction(
-                                [
-                                    {static_ontology, [{file, bbsvx, "bbsvx_root.pl"}]},
-                                    {extenal_ontology, [bbsvx_ont_root]}
-                                ]
-                            ),
-                            gproc:send(
-                                {p, l, {bbsvx_actor_ontology, <<"bbsvx:root">>}}, GenesisTransaction
-                            ),
-                            MyId = bbsvx_crypto_service:my_id(),
-                            {ok, #state{my_id = MyId}};
+                            case
+                                bbsvx_transaction:build_root_genesis_transaction(
+                                    [
+                                        {static_ontology, [{file, bbsvx, "bbsvx_root.pl"}]},
+                                        {extenal_ontology, [bbsvx_ont_root]}
+                                    ]
+                                )
+                            of
+                                {ok, GenesisTransaction} ->
+                                    gproc:send(
+                                        {n, l, {bbsvx_actor_ontology, <<"bbsvx:root">>}},
+                                        GenesisTransaction
+                                    ),
+                                    MyId = bbsvx_crypto_service:my_id(),
+                                    {ok, #state{my_id = MyId}};
+                                {error, Reason} ->
+                                    ?'log-error'(
+                                        "Onto service : failed to create root genesis transaction, reason: ~p",
+                                        [Reason]
+                                    ),
+                                    {stop, Reason}
+                            end;
                         {error, Reason} ->
                             ?'log-error'(
                                 "Onto service : failed to start root ontology processes, reason: ~p",
@@ -246,7 +246,7 @@ init([]) ->
 %                             prev_address = <<"-1">>,
 %                             prev_hash = <<"0">>,
 %                             signature =
-%                                 %% @TODO: Should be signature of ont owner
+%                                 %% TODO: Should be signature of ont owner
 %                                 <<"">>,
 %                             ts_created = erlang:system_time(),
 %                             ts_processed = erlang:system_time(),
@@ -379,7 +379,10 @@ handle_call(
                             ?'log-info'("Onto service : indexed new ontology ~p", [Ont]),
                             case Type of
                                 shared ->
-                                    ActivationResult = activate_ontology(Namespace, CN),
+                                    ActivationResult = activate_ontology(Namespace, #{
+                                        contact_nodes => CN,
+                                        boot => join
+                                    }),
                                     {reply, ActivationResult, State};
                                 local ->
                                     {reply, ok, State}
@@ -414,7 +417,7 @@ handle_call({prove, Namespace, Predicate}, _From, State) when
             Timestamp = erlang:system_time(microsecond),
             Goal =
                 #goal{
-                    id = uuid:uuid_to_string(uuid:get_v4()),
+                    id = ulid:generate(),
                     namespace = Namespace,
                     source_id = State#state.my_id,
                     timestamp = Timestamp,
@@ -454,8 +457,13 @@ handle_call({connect_ontology, Namespace}, _From, State) ->
                     {error, already_connected};
                 {ok, #ontology{type = shared, contact_nodes = ContactNodes} = Ont} ->
                     %% Start shared ontology agents
-                    %% @TODO: check contact nodes below if it have unexpected value
-                    case activate_ontology(Namespace, ContactNodes) of
+                    %% TODO: check contact nodes below if it have unexpected value
+                    case
+                        activate_ontology(Namespace, #{
+                            contact_nodes => ContactNodes,
+                            boot => join
+                        })
+                    of
                         ok ->
                             update_ontology(Ont#ontology{type = shared});
                         {error, Reason} ->
@@ -574,11 +582,14 @@ create_transaction_table(NameSpace) ->
 
 -spec index_new_ontology(ontology()) -> ok | {error, Reason :: term()}.
 index_new_ontology(#ontology{} = Ontology) ->
-    case mnesia:activity(transaction, fun() -> mnesia:write(Ontology) end) of
-        {atomic, _} ->
-            ok;
-        {aborted, Reason} ->
-            {error, Reason}
+    try
+        mnesia:activity(transaction, fun() -> mnesia:write(Ontology) end),
+        ok
+    catch
+        exit:{aborted, Reason} ->
+            {error, Reason};
+        Error:Reason ->
+            {error, {Error, Reason}}
     end.
 
 -spec create_index_table() -> {atomic, ok} | {aborted, term()}.
@@ -588,10 +599,10 @@ create_index_table() ->
         [{attributes, record_info(fields, ontology)}, {disc_copies, [node()]}]
     ).
 
--spec activate_ontology(Namespace :: binary(), ContactNodes :: [node_entry()]) ->
+-spec activate_ontology(Namespace :: binary(), Options :: map()) ->
     supervisor:startchild_ret().
-activate_ontology(Namespace, ContactNodes) ->
-    supervisor:start_child(bbsvx_sup_shared_ontologies, [Namespace, ContactNodes]).
+activate_ontology(Namespace, Options) ->
+    supervisor:start_child(bbsvx_sup_shared_ontologies, [Namespace, Options]).
 
 -spec deactivate_ontology(Namespace :: binary()) -> ok | {error, Reason :: atom()}.
 deactivate_ontology(Namespace) ->
@@ -659,9 +670,7 @@ parse_single_node(NodeStr) ->
     end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% @doc
-%%% Convert a binary namespace to a table name
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Convert a binary namespace to a table name
 -spec binary_to_table_name(binary()) -> atom().
 binary_to_table_name(Namespace) ->
     Replaced = binary:replace(Namespace, <<":">>, <<"_">>),

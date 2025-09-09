@@ -1,8 +1,12 @@
 %%%-------------------------------------------------------------------
-%% @doc Structured logging helpers for BBSvx with Loki labels
-%% @end
+%%% BBSvx Structured Logging
 %%%-------------------------------------------------------------------
+
 -module(bbsvx_structured_logging).
+
+-moduledoc "BBSvx Structured Logging\n\n"
+"Structured logging helpers for BBSvx with Loki labels and event categorization.\n\n"
+"Provides consistent logging interface for SPRAY, connection, leader election, ontology, and transaction events.".
 
 -export([
     log_spray_event/4,
@@ -12,7 +16,7 @@
     log_transaction_event/4
 ]).
 
-%% @doc Log SPRAY protocol events
+%% Log SPRAY protocol events
 -spec log_spray_event(atom(), binary(), map(), any()) -> ok.
 log_spray_event(Operation, Ulid, ExtraData, Message) ->
     logger:info(
@@ -29,7 +33,7 @@ log_spray_event(Operation, Ulid, ExtraData, Message) ->
         )
     ).
 
-%% @doc Log connection events
+%% Log connection events
 -spec log_connection_event(inbound | outbound, binary(), map(), any()) -> ok.
 log_connection_event(Direction, PeerNode, ExtraData, Message) ->
     logger:info(
@@ -46,7 +50,7 @@ log_connection_event(Direction, PeerNode, ExtraData, Message) ->
         )
     ).
 
-%% @doc Log leader election events
+%% Log leader election events
 -spec log_leader_election_event(atom(), binary(), map(), any()) -> ok.
 log_leader_election_event(Operation, Namespace, ExtraData, Message) ->
     logger:info(
@@ -63,7 +67,7 @@ log_leader_election_event(Operation, Namespace, ExtraData, Message) ->
         )
     ).
 
-%% @doc Log ontology events
+%% Log ontology events
 -spec log_ontology_event(atom(), binary(), map(), any()) -> ok.
 log_ontology_event(Operation, Namespace, ExtraData, Message) ->
     logger:info(
@@ -80,7 +84,7 @@ log_ontology_event(Operation, Namespace, ExtraData, Message) ->
         )
     ).
 
-%% @doc Log transaction events
+%% Log transaction events
 -spec log_transaction_event(atom(), binary(), map(), any()) -> ok.
 log_transaction_event(Operation, TransactionId, ExtraData, Message) ->
     logger:info(

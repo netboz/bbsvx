@@ -1,11 +1,12 @@
 %%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Gen State Machine built from template.
-%%% @author yan
-%%% @end
+%%% BBSvx SPRAY Actor
 %%%-----------------------------------------------------------------------------
 
 -module(bbsvx_actor_spray).
+
+-moduledoc "BBSvx SPRAY Actor\n\n"
+"Gen State Machine implementing SPRAY protocol for peer sampling and overlay network formation.\n\n"
+"Manages inview/outview connections, arc exchanges, and network topology maintenance.".
 
 -behaviour(gen_statem).
 
@@ -482,6 +483,7 @@ handle_event(
     connected,
     #state{namespace = NameSpace} = State
 ) ->
+    %% Check if this creates an empty inview
     case lists:filter(fun(#arc{ulid = InUlid}) -> InUlid =/= Ulid end, get_inview(NameSpace)) of
         [] ->
             ?'log-warning'(
@@ -1110,10 +1112,8 @@ handle_event(Type, Msg, StateName, StateData) ->
 %%%=============================================================================
 
 %%-----------------------------------------------------------------------------
-%% @doc
 %% swap_connections/4
 %% Used to initiate proposed connections received from an exchange.
-%% @end
 %% ----------------------------------------------------------------------------
 
 -spec swap_connections(binary(), node_entry(), node_entry(), [exchange_entry()]) -> ok.
@@ -1155,12 +1155,10 @@ swap_connections(
     ).
 
 %%-----------------------------------------------------------------------------
-%% @doc
 %% swap_connection/4
 %% Initiate a connection proposed during and exchange.
 %% The target node we are connecting to, when connected, will disconnected
 %% the connection with same ulid
-%% @end
 %% ----------------------------------------------------------------------------
 
 -spec swap_connection(
@@ -1186,12 +1184,10 @@ swap_connection(
     ).
 
 %%-----------------------------------------------------------------------------
-%% @doc
 %% open_connection/4
 %% Open a connection in case of a forard join request
 %% TODO: This function is badly named, it should be renamed to reflect the fact
 %% this is a forward join request
-%% @end
 %% ----------------------------------------------------------------------------
 
 -spec open_connection(
@@ -1208,11 +1204,9 @@ open_connection(NameSpace, MyNode, TargetNode, Options) ->
     ).
 
 %%-----------------------------------------------------------------------------
-%% @doc
 %% terminate_connection/3
 %% Terminate a connection identified by Ulid, using direction Direction and
 %% reason Reason.
-%% @end
 %% ----------------------------------------------------------------------------
 -spec terminate_connection(Ulid :: binary(), Direction :: in | out, Reason :: atom()) ->
     ok.
@@ -1223,10 +1217,8 @@ terminate_connection(Ulid, Direction, Reason) ->
     gproc:send({n, l, {arc, Direction, Ulid}}, {terminate, Reason}).
 
 %%-----------------------------------------------------------------------------
-%% @doc
 %% send/3
 %% Send a message over and arc
-%% @end
 
 -spec send(Ulid :: binary(), Direction :: in | out, Payload :: term()) -> ok.
 send(Ulid, Direction, Payload) ->
@@ -1236,11 +1228,9 @@ send(Ulid, Direction, Payload) ->
     ok.
 
 %%-----------------------------------------------------------------------------
-%% @doc
 %% register_to_node/3
 %% Register to a node. This is to be called when contacting a node to request
 %% to join the namespace.
-%% @end
 %% ----------------------------------------------------------------------------
 
 -spec register_to_node(binary(), node_entry(), node_entry()) ->
@@ -1258,12 +1248,10 @@ register_to_node(NameSpace, MyNode, ContactNode) ->
     ).
 
 %%-----------------------------------------------------------------------------
-%% @doc
 %% register_namespace/3
 %% Join namespace by sending register requests to the lists of nodes
 %% Return list of nodes that failed to start registering, empty list if all
 %% nodes succeeded to connection bootup
-%% @end
 %% ----------------------------------------------------------------------------
 
 -spec register_namespace(binary(), node_entry(), [node_entry()]) ->
@@ -1479,10 +1467,8 @@ react_quitted_node(
     {keep_state, State}.
 
 %%-----------------------------------------------------------------------------
-%% @doc
 %% reset_age/1
 %% Reset the age of a node
-%% @end
 %% ----------------------------------------------------------------------------
 
 -spec reset_age(Ulid :: binary()) -> ok.
@@ -1490,10 +1476,8 @@ reset_age(Ulid) ->
     gproc:send({n, l, {arc, out, Ulid}}, reset_age).
 
 %%-----------------------------------------------------------------------------
-%% @doc
 %% get_oldest_arc/1
 %% Get the oldest arc in a view
-%% @end
 %% ----------------------------------------------------------------------------
 
 -spec get_oldest_arc([arc()]) -> arc().
@@ -1504,10 +1488,8 @@ get_oldest_arc(Arcs) ->
     lists:last(Sorted).
 
 %%-----------------------------------------------------------------------------
-%% @doc
 %% filter_arcs_to_leave/2
 %% Removes nodes to leave from the outview
-%% @end
 %% ----------------------------------------------------------------------------
 -spec filter_arcs_to_leave([arc()], [exchange_entry()]) -> [arc()].
 filter_arcs_to_leave(OutView, ArcsToLeave) ->
@@ -1522,11 +1504,9 @@ filter_arcs_to_leave(OutView, ArcsToLeave) ->
     ).
 
 %%-----------------------------------------------------------------------------
-%% @doc
 %% get_big_random_sample/1
 %% Like get_random_sample/1 but doesn't substract 1 when halving view size.
 %% Used to select nodes to exchange when acting as exchange target
-%% @end
 %% ----------------------------------------------------------------------------
 
 -spec get_big_random_sample([arc()]) -> {[arc()], [arc()]}.
@@ -1541,12 +1521,10 @@ get_big_random_sample(View) ->
     {_Sample, _Rest} = lists:split(length(View) div 2, Shuffled).
 
 %%-----------------------------------------------------------------------------
-%% @doc
 %% get_randm_sample/2
 %% Get a random sample of nodes from a list of nodes.
 %% returns the sample and the rest of the list.
 %% Used to select nodes to exchange when acting as exchange initiator.
-%% @end
 %% ----------------------------------------------------------------------------
 -spec get_random_sample([arc()]) -> {[arc()], [arc()]}.
 get_random_sample([]) ->
@@ -1560,22 +1538,16 @@ get_random_sample(View) ->
     {_Sample, _Rest} = lists:split(length(View) div 2 - 1, Shuffled).
 
 %%%-----------------------------------------------------------------------------
-%%% @doc
 %%% Send payload to all connections in the outview
 %%% @returns ok
-%%% @end
-%%%
 
 -spec broadcast(NameSpace :: binary(), Payload :: term()) -> ok.
 broadcast(NameSpace, Payload) ->
     lists:foreach(fun(Pid) -> Pid ! {send, Payload} end, get_outview_pids(NameSpace)).
 
 %%%-----------------------------------------------------------------------------
-%%% @doc
 %%% Send payload to all unique connections in the outview
 %%% @returns ok
-%%% @end
-%%%
 -spec broadcast_unique(NameSpace :: binary(), Payload :: term()) -> ok.
 broadcast_unique(NameSpace, Payload) ->
     Pids = get_outview_pids(NameSpace),
@@ -1583,10 +1555,8 @@ broadcast_unique(NameSpace, Payload) ->
     lists:foreach(fun(Pid) -> Pid ! {send, Payload} end, UniquePids).
 
 %%%-----------------------------------------------------------------------------
-%%% @doc
 %%% Send payload to a random subset of the view
 %%% @returns Number of nodes the payload was sent to
-%%% @end
 
 -spec broadcast_unique_random_subset(
     NameSpace :: binary(),
@@ -1600,29 +1570,23 @@ broadcast_unique_random_subset(NameSpace, Payload, N) ->
     {ok, length(RandomSubset)}.
 
 %%%-----------------------------------------------------------------------------
-%%% @doc
 %%% Get n unique random arcs from the outview
 %%% @returns [arc()]
-%%% @end
 -spec get_n_unique_random(binary() | list(), N :: integer()) -> [arc()].
 get_n_unique_random(NameSpace, N) when is_binary(NameSpace) ->
     OutView = get_outview(NameSpace),
     get_n_unique_random(OutView, N);
 %%%-----------------------------------------------------------------------------
-%%% @doc
 %%% Get n unique random elements from the input list
 %%% @returns [term()]
-%%% @end
 get_n_unique_random(List, N) ->
     lists:sublist(
         lists:usort(fun(_N1, _N2) -> rand:uniform(2) =< 1 end, List), N
     ).
 
 %%-----------------------------------------------------------------------------
-%% @doc
 %% get_outview/1
 %% Get the outview of a namespace
-%% @end
 %% ----------------------------------------------------------------------------
 
 -spec get_outview(binary()) -> [arc()].
@@ -1635,10 +1599,8 @@ get_outview(NameSpace) ->
     gproc:select([{MatchHead, Guard, Result}]).
 
 %%-----------------------------------------------------------------------------
-%% @doc
 %% get_inview/1
 %% Get the inview of a namespace
-%% @end
 %% ----------------------------------------------------------------------------
 
 -spec get_inview(binary()) -> [arc()].
@@ -1651,10 +1613,8 @@ get_inview(NameSpace) ->
     gproc:select([{MatchHead, Guard, Result}]).
 
 %%-----------------------------------------------------------------------------
-%% @doc
 %% get_views/1
 %% Get the views of a namespace ( inview and outview )
-%% @end
 %% ----------------------------------------------------------------------------
 
 get_views(NameSpace) ->
@@ -1691,11 +1651,9 @@ format_host({A, B, C, D}) ->
     list_to_binary(io_lib:format("~p.~p.~p.~p", [A, B, C, D])).
 
 %%%-----------------------------------------------------------------------------
-%%% @doc
 %%% filter_and_count/2
 %%% Filter out the target node from the sample and count the number of time it
 %%% was removed
-%%% @end
 %%% ----------------------------------------------------------------------------
 
 -spec filter_and_count(TargetNodeId :: binary(), [arc()]) -> {integer(), [arc()]}.

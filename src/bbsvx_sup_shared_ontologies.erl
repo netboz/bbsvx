@@ -1,11 +1,12 @@
 %%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Supervisor built from template.
-%%% @author yan
-%%% @end
+%%% BBSvx Shared Ontologies Supervisor
 %%%-----------------------------------------------------------------------------
 
 -module(bbsvx_sup_shared_ontologies).
+
+-moduledoc "BBSvx Shared Ontologies Supervisor\n\n"
+"One-for-one supervisor for dynamically managing shared ontology supervisors.\n\n"
+"Each child is a bbsvx_sup_shared_ontology supervisor for a specific namespace.".
 
 -author("yan").
 
