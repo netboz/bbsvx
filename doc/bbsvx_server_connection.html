@@ -1,144 +1,797 @@
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
-<html>
-<head>
-<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-<title>Module bbsvx_server_connection</title>
-<link rel="stylesheet" type="text/css" href="stylesheet.css" title="EDoc">
-</head>
-<body bgcolor="white">
-<div class="navbar"><a name="#navbar_top"></a><table width="100%" border="0" cellspacing="0" cellpadding="2" summary="navigation bar"><tr><td><a href="overview-summary.html" target="overviewFrame">Overview</a></td><td><a href="http://www.erlang.org/"><img src="erlang.png" align="right" border="0" alt="erlang logo"></a></td></tr></table></div>
-<hr>
-
-<h1>Module bbsvx_server_connection</h1>
-<ul class="index"><li><a href="#types">Data Types</a></li><li><a href="#index">Function Index</a></li><li><a href="#functions">Function Details</a></li></ul>
-
-<p><b>Behaviours:</b> <a href="gen_statem.html"><code>gen_statem</code></a>, <a href="ranch_protocol.html"><code>ranch_protocol</code></a>.</p>
-
-<h2><a name="types">Data Types</a></h2>
-
-<h3 class="typedecl"><a name="type-state">state()</a></h3>
-<p><code>state() = #state{ref = any(), my_ulid = binary() | undefined, lock = binary(), socket = any(), namespace = binary() | undefined, my_node = #node_entry{}, origin_node = #node_entry{} | undefined, transport = atom(), buffer = any()}</code></p>
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="x-ua-compatible" content="ie=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="ExDoc v0.38.2">
+    <meta name="project" content="bbsvx v0.1.0">
 
 
-<h2><a name="index">Function Index</a></h2>
-<table width="100%" border="1" cellspacing="0" cellpadding="2" summary="function index"><tr><td valign="top"><a href="#accept_exchange-2">accept_exchange/2</a></td><td></td></tr>
-<tr><td valign="top"><a href="#accept_join-2">accept_join/2</a></td><td></td></tr>
-<tr><td valign="top"><a href="#accept_register-2">accept_register/2</a></td><td></td></tr>
-<tr><td valign="top"><a href="#authenticate-3">authenticate/3</a></td><td></td></tr>
-<tr><td valign="top"><a href="#callback_mode-0">callback_mode/0</a></td><td></td></tr>
-<tr><td valign="top"><a href="#code_change-4">code_change/4</a></td><td></td></tr>
-<tr><td valign="top"><a href="#connected-3">connected/3</a></td><td></td></tr>
-<tr><td valign="top"><a href="#exchange_end-1">exchange_end/1</a></td><td></td></tr>
-<tr><td valign="top"><a href="#init-1">init/1</a></td><td></td></tr>
-<tr><td valign="top"><a href="#peer_connect_to_sample-2">peer_connect_to_sample/2</a></td><td></td></tr>
-<tr><td valign="top"><a href="#reject_exchange-2">reject_exchange/2</a></td><td></td></tr>
-<tr><td valign="top"><a href="#send_history-2">send_history/2</a></td><td></td></tr>
-<tr><td valign="top"><a href="#start_link-3">start_link/3</a></td><td></td></tr>
-<tr><td valign="top"><a href="#stop-0">stop/0</a></td><td></td></tr>
-<tr><td valign="top"><a href="#terminate-3">terminate/3</a></td><td></td></tr>
-<tr><td valign="top"><a href="#wait_for_subscription-3">wait_for_subscription/3</a></td><td></td></tr>
-</table>
+    <title>bbsvx_server_connection — bbsvx v0.1.0</title>
 
-<h2><a name="functions">Function Details</a></h2>
+    <link rel="stylesheet" href="dist/html-erlang-DQDXQC7W.css" />
 
-<h3 class="function"><a name="accept_exchange-2">accept_exchange/2</a></h3>
-<div class="spec">
-<p><code>accept_exchange(ConnectionPid, ProposedSample) -&gt; any()</code></p>
-<p> </p>
+    <script defer src="dist/sidebar_items-B3D16BE0.js"></script>
+    <script defer src="docs_config.js"></script>
+    <script defer src="dist/html-DPJLHKSM.js"></script>
+
+  </head>
+  <body>
+    <script>(()=>{var t="ex_doc:settings",e="dark";var o="dark",s="light";var E="sidebar_state",n="closed";var r="sidebar_width";var a="sidebar-open";var i=new URLSearchParams(window.location.search),S=i.get("theme")||JSON.parse(localStorage.getItem(t)||"{}").theme;(S===o||S!==s&&window.matchMedia("(prefers-color-scheme: dark)").matches)&&document.body.classList.add(e);var d=sessionStorage.getItem(E),A=d!==n&&!window.matchMedia(`screen and (max-width: ${768}px)`).matches;document.body.classList.toggle(a,A);var c=sessionStorage.getItem(r);c&&document.body.style.setProperty("--sidebarWidth",`${c}px`);var p=/(Macintosh|iPhone|iPad|iPod)/.test(window.navigator.userAgent);document.documentElement.classList.toggle("apple-os",p);})();
+</script>
+
+<div class="body-wrapper">
+
+<button id="sidebar-menu" class="sidebar-button sidebar-toggle" aria-label="toggle sidebar" aria-controls="sidebar">
+  <i class="ri-menu-line ri-lg" title="Collapse/expand sidebar"></i>
+</button>
+
+<nav id="sidebar" class="sidebar">
+
+  <div class="sidebar-header">
+    <div class="sidebar-projectInfo">
+
+      <div>
+        <a href="https://github.com/bbsvx/bbsvx" class="sidebar-projectName" translate="no">
+bbsvx
+        </a>
+        <div class="sidebar-projectVersion" translate="no">
+          v0.1.0
+        </div>
+      </div>
+    </div>
+    <ul id="sidebar-list-nav" class="sidebar-list-nav" role="tablist" data-extras=""></ul>
+  </div>
+</nav>
+
+<output role="status" id="toast"></output>
+
+<main class="content page-module" id="main" data-type="modules">
+  <div id="content" class="content-inner">
+    <div class="top-search">
+      <div class="search-settings">
+        <form class="search-bar" action="search.html">
+          <label class="search-label">
+            <span class="sr-only">Search documentation of bbsvx</span>
+            <input name="q" type="text" class="search-input" placeholder="Press / to search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+          </label>
+          <button type="submit" class="search-button" aria-label="Submit Search" tabindex="-1">
+            <i class="ri-search-2-line ri-lg" aria-hidden="true"></i>
+          </button>
+          <button type="button" tabindex="-1" class="search-close-button" aria-hidden="true">
+            <i class="ri-close-line ri-lg" title="Cancel search"></i>
+          </button>
+        </form>
+        <div class="autocomplete">
+        </div>
+        <button class="icon-settings display-settings">
+          <i class="ri-settings-3-line"></i>
+          <span class="sr-only">Settings</span>
+        </button>
+      </div>
+    </div>
+
+<div id="top-content">
+  <div class="heading-with-actions top-heading">
+    <h1>
+      <span translate="no">bbsvx_server_connection</span> 
+      <small class="app-vsn" translate="no">(bbsvx v0.1.0)</small>
+
+    </h1>
+
+      <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_server_connection.erl#L5" title="View Source" class="icon-action" rel="help">
+        <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        <span class="sr-only">View Source</span>
+      </a>
+
+  </div>
+
+
+    <section id="moduledoc">
+<p>BBSvx Server Connection</p><p>Gen State Machine for handling incoming P2P connections using Ranch protocol.</p><p>Manages connection states, protocol handshakes, and message forwarding for SPRAY protocol.</p>
+    </section>
+
 </div>
 
-<h3 class="function"><a name="accept_join-2">accept_join/2</a></h3>
-<div class="spec">
-<p><code>accept_join(ConnectionPid, Header_join_ack) -&gt; any()</code></p>
-<p> </p>
+  <section id="summary" class="details-list">
+    <h1 class="section-heading">
+      <a class="hover-link" href="#summary">
+        <i class="ri-link-m" aria-hidden="true"></i>
+      </a>
+      <span class="text">Summary</span>
+    </h1>
+<div class="summary-types summary">
+  <h2>
+    <a href="#types">Types</a>
+  </h2>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#t:erlog_state/0" data-no-tooltip="" translate="no">erlog_state()</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#t:inet_address/0" data-no-tooltip="" translate="no">inet_address()</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#t:state/0" data-no-tooltip="" translate="no">state()</a>
+
+      </div>
+
+    </div>
+
+</div>
+<div class="summary-functions summary">
+  <h2>
+    <a href="#functions">Functions</a>
+  </h2>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#accept_exchange/2" data-no-tooltip="" translate="no">accept_exchange(ConnectionPid, ProposedSample)</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#accept_join/2" data-no-tooltip="" translate="no">accept_join/2</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#accept_register/2" data-no-tooltip="" translate="no">accept_register/2</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#authenticate/3" data-no-tooltip="" translate="no">authenticate/3</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#callback_mode/0" data-no-tooltip="" translate="no">callback_mode()</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#code_change/4" data-no-tooltip="" translate="no">code_change(Vsn, State, Data, Extra)</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#connected/3" data-no-tooltip="" translate="no">connected/3</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#exchange_end/1" data-no-tooltip="" translate="no">exchange_end(ConnectionPid)</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#init/1" data-no-tooltip="" translate="no">init/1</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#peer_connect_to_sample/2" data-no-tooltip="" translate="no">peer_connect_to_sample/2</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#reject_exchange/2" data-no-tooltip="" translate="no">reject_exchange(ConnectionPid, Reason)</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#send_history/2" data-no-tooltip="" translate="no">send_history/2</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#start_link/3" data-no-tooltip="" translate="no">start_link(Ref, Transport, Opts)</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#stop/0" data-no-tooltip="" translate="no">stop()</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#terminate/3" data-no-tooltip="" translate="no">terminate/3</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#wait_for_subscription/3" data-no-tooltip="" translate="no">wait_for_subscription/3</a>
+
+      </div>
+
+    </div>
+
 </div>
 
-<h3 class="function"><a name="accept_register-2">accept_register/2</a></h3>
-<div class="spec">
-<p><code>accept_register(ConnectionPid, Header_register_ack) -&gt; any()</code></p>
-<p> </p>
+  </section>
+
+
+  <section id="types" class="details-list">
+    <h1 class="section-heading">
+      <a class="hover-link" href="#types">
+        <i class="ri-link-m" aria-hidden="true"></i>
+      </a>
+      <span class="text">Types</span>
+    </h1>
+    <div class="types-list">
+<section class="detail" id="t:erlog_state/0">
+
+  <div class="detail-header">
+    <a href="#t:erlog_state/0" class="detail-link" data-no-tooltip="" aria-label="Link to this opaque">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">erlog_state()</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/_build/docs/lib/bbsvx/include/bbsvx.hrl#L266" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">-opaque</span> erlog_state()</pre>
+
+      </div>
+
+
+  </section>
+</section>
+<section class="detail" id="t:inet_address/0">
+
+  <div class="detail-header">
+    <a href="#t:inet_address/0" class="detail-link" data-no-tooltip="" aria-label="Link to this type">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">inet_address()</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/_build/docs/lib/bbsvx/include/bbsvx.hrl#L113" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">-type</span> inet_address() :: <a href="https://www.erlang.org/doc/apps/kernel/inet.html#t:hostname/0">inet:hostname</a>() | <a href="https://www.erlang.org/doc/apps/kernel/inet.html#t:ip_address/0">inet:ip_address</a>().</pre>
+
+      </div>
+
+
+  </section>
+</section>
+<section class="detail" id="t:state/0">
+
+  <div class="detail-header">
+    <a href="#t:state/0" class="detail-link" data-no-tooltip="" aria-label="Link to this type">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">state()</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_server_connection.erl#L68" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">-type</span> state() ::
+          #state{ref :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:any/0">any</a>(),
+                 my_ulid :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:binary/0">binary</a>() | undefined,
+                 lock :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:binary/0">binary</a>(),
+                 socket :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:term/0">term</a>(),
+                 namespace :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:binary/0">binary</a>() | undefined,
+                 my_node ::
+                     #node_entry{node_id :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:binary/0">binary</a>() | undefined,
+                                 host :: <a href="#t:inet_address/0">inet_address</a>() | <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:binary/0">binary</a>() | local,
+                                 port :: <a href="https://www.erlang.org/doc/apps/kernel/inet.html#t:port_number/0">inet:port_number</a>()},
+                 origin_node ::
+                     #node_entry{node_id :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:binary/0">binary</a>() | undefined,
+                                 host :: <a href="#t:inet_address/0">inet_address</a>() | <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:binary/0">binary</a>() | local,
+                                 port :: <a href="https://www.erlang.org/doc/apps/kernel/inet.html#t:port_number/0">inet:port_number</a>()} |
+                     undefined,
+                 transport :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:atom/0">atom</a>(),
+                 buffer :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:term/0">term</a>()}.</pre>
+
+      </div>
+
+
+  </section>
+</section>
+
+    </div>
+  </section>
+
+  <section id="functions" class="details-list">
+    <h1 class="section-heading">
+      <a class="hover-link" href="#functions">
+        <i class="ri-link-m" aria-hidden="true"></i>
+      </a>
+      <span class="text">Functions</span>
+    </h1>
+    <div class="functions-list">
+<section class="detail" id="accept_exchange/2">
+
+  <div class="detail-header">
+    <a href="#accept_exchange/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">accept_exchange(ConnectionPid, ProposedSample)</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_server_connection.erl#L94" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="accept_join/2">
+
+  <div class="detail-header">
+    <a href="#accept_join/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">accept_join/2</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_server_connection.erl#L90" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="accept_register/2">
+
+  <div class="detail-header">
+    <a href="#accept_register/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">accept_register/2</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_server_connection.erl#L87" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="authenticate/3">
+
+  <div class="detail-header">
+    <a href="#authenticate/3" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">authenticate/3</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_server_connection.erl#L227" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">-spec</span> authenticate(enter | info, <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:any/0">any</a>(), <a href="#t:state/0">state</a>()) ->
+                      {keep_state, <a href="#t:state/0">state</a>()} | {next_state, <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:atom/0">atom</a>(), <a href="#t:state/0">state</a>()} | {stop, <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:any/0">any</a>(), <a href="#t:state/0">state</a>()}.</pre>
+
+      </div>
+
+
+  </section>
+</section>
+<section class="detail" id="callback_mode/0">
+
+  <div class="detail-header">
+    <a href="#callback_mode/0" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">callback_mode()</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_server_connection.erl#L212" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="code_change/4">
+
+  <div class="detail-header">
+    <a href="#code_change/4" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">code_change(Vsn, State, Data, Extra)</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_server_connection.erl#L209" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="connected/3">
+
+  <div class="detail-header">
+    <a href="#connected/3" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">connected/3</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_server_connection.erl#L321" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="exchange_end/1">
+
+  <div class="detail-header">
+    <a href="#exchange_end/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">exchange_end(ConnectionPid)</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_server_connection.erl#L100" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="init/1">
+
+  <div class="detail-header">
+    <a href="#init/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">init/1</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_server_connection.erl#L78" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="peer_connect_to_sample/2">
+
+  <div class="detail-header">
+    <a href="#peer_connect_to_sample/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">peer_connect_to_sample/2</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_server_connection.erl#L106" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="reject_exchange/2">
+
+  <div class="detail-header">
+    <a href="#reject_exchange/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">reject_exchange(ConnectionPid, Reason)</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_server_connection.erl#L97" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="send_history/2">
+
+  <div class="detail-header">
+    <a href="#send_history/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">send_history/2</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_server_connection.erl#L103" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="start_link/3">
+
+  <div class="detail-header">
+    <a href="#start_link/3" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">start_link(Ref, Transport, Opts)</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_server_connection.erl#L75" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="stop/0">
+
+  <div class="detail-header">
+    <a href="#stop/0" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">stop()</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_server_connection.erl#L114" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">-spec</span> stop() -> ok.</pre>
+
+      </div>
+
+
+  </section>
+</section>
+<section class="detail" id="terminate/3">
+
+  <div class="detail-header">
+    <a href="#terminate/3" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">terminate/3</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_server_connection.erl#L121" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="wait_for_subscription/3">
+
+  <div class="detail-header">
+    <a href="#wait_for_subscription/3" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">wait_for_subscription/3</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_server_connection.erl#L297" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+
+    </div>
+  </section>
+
+    <footer class="footer">
+      <p>
+
+          <span class="line">
+            <a href="https://hex.pm/packages/bbsvx/0.1.0" class="footer-hex-package">Hex Package</a>
+
+            <a href="https://preview.hex.pm/preview/bbsvx/0.1.0">Hex Preview</a>
+
+          </span>
+
+        <span class="line">
+          <button class="a-main footer-button display-quick-switch" title="Search HexDocs packages">
+            Search HexDocs
+          </button>
+
+            <a href="bbsvx.epub" title="ePub version">
+              Download ePub version
+            </a>
+
+        </span>
+      </p>
+
+      <p class="built-using">
+        Built using
+        <a href="https://github.com/elixir-lang/ex_doc" title="ExDoc" target="_blank" rel="help noopener" translate="no">ExDoc</a> (v0.38.2) for the
+
+          <a href="https://erlang.org" title="Erlang" target="_blank" translate="no">Erlang programming language</a>
+
+      </p>
+
+    </footer>
+  </div>
+</main>
 </div>
 
-<h3 class="function"><a name="authenticate-3">authenticate/3</a></h3>
-<div class="spec">
-<p><code>authenticate(Type::enter | info, Event::any(), State::<a href="#type-state" docgen-rel="seetype" docgen-href="#state/0">state()</a>) -&gt; {keep_state, <a href="#type-state" docgen-rel="seetype" docgen-href="#state/0">state()</a>} | {next_state, atom(), <a href="#type-state" docgen-rel="seetype" docgen-href="#state/0">state()</a>} | {stop, any(), <a href="#type-state" docgen-rel="seetype" docgen-href="#state/0">state()</a>}</code><br></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="callback_mode-0">callback_mode/0</a></h3>
-<div class="spec">
-<p><code>callback_mode() -&gt; any()</code></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="code_change-4">code_change/4</a></h3>
-<div class="spec">
-<p><code>code_change(Vsn, State, Data, Extra) -&gt; any()</code></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="connected-3">connected/3</a></h3>
-<div class="spec">
-<p><code>connected(X1, Incoming_event, State) -&gt; any()</code></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="exchange_end-1">exchange_end/1</a></h3>
-<div class="spec">
-<p><code>exchange_end(ConnectionPid) -&gt; any()</code></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="init-1">init/1</a></h3>
-<div class="spec">
-<p><code>init(X1) -&gt; any()</code></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="peer_connect_to_sample-2">peer_connect_to_sample/2</a></h3>
-<div class="spec">
-<p><code>peer_connect_to_sample(ConnectionPid, Peer_connect_to_sample) -&gt; any()</code></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="reject_exchange-2">reject_exchange/2</a></h3>
-<div class="spec">
-<p><code>reject_exchange(ConnectionPid, Reason) -&gt; any()</code></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="send_history-2">send_history/2</a></h3>
-<div class="spec">
-<p><code>send_history(ConnectionPid, Ontology_history) -&gt; any()</code></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="start_link-3">start_link/3</a></h3>
-<div class="spec">
-<p><code>start_link(Ref, Transport, Opts) -&gt; any()</code></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="stop-0">stop/0</a></h3>
-<div class="spec">
-<p><code>stop() -&gt; ok</code><br></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="terminate-3">terminate/3</a></h3>
-<div class="spec">
-<p><code>terminate(Reason, CurrentState, State) -&gt; any()</code></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="wait_for_subscription-3">wait_for_subscription/3</a></h3>
-<div class="spec">
-<p><code>wait_for_subscription(Type, Data, State) -&gt; any()</code></p>
-<p> </p>
-</div>
-<hr>
-
-<div class="navbar"><a name="#navbar_bottom"></a><table width="100%" border="0" cellspacing="0" cellpadding="2" summary="navigation bar"><tr><td><a href="overview-summary.html" target="overviewFrame">Overview</a></td><td><a href="http://www.erlang.org/"><img src="erlang.png" align="right" border="0" alt="erlang logo"></a></td></tr></table></div>
-<p><i>Generated by EDoc</i></p>
-</body>
+  </body>
 </html>

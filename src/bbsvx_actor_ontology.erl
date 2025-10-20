@@ -14,7 +14,7 @@
 
 -include_lib("logjam/include/logjam.hrl").
 -include_lib("stdlib/include/ms_transform.hrl").
-
+-include_lib("erlog/src/erlog_int.hrl").
 %%%=============================================================================
 %%% Export and Defs
 %%%=============================================================================
@@ -31,12 +31,10 @@
     initialize_ontology/3,
     wait_for_genesis_transaction/3,
     wait_for_registration/3,
-    syncing/3
-]).
+    syncing/3]).
 
 -record(state, {
     namespace :: binary(),
-    ont_state :: ont_state() | undefined,
     repos_table :: atom(),
     boot :: term(),
     db_mod :: atom(),
@@ -70,7 +68,7 @@ Starts a linked ontology actor process with custom options.
 Options may include boot mode, database module, and other configuration.
 """.
 -spec start_link(Namespace :: binary(), Options :: map()) -> gen_statem:start_ret().
-start_link(Namespace, Options) ->
+start_link(Namespace, #{} = Options) ->
     gen_statem:start_link(
         {via, gproc, {n, l, {?MODULE, Namespace}}},
         ?MODULE,
@@ -99,83 +97,34 @@ stop() ->
 %%%=============================================================================
 
 init([Namespace, Options]) ->
-    %% Get our node ID
-    MyId = bbsvx_crypto_service:my_id(),
-    %% Build empty prolog state
-    DbRepos = bbsvx_ont_service:binary_to_table_name(Namespace),
-    {DbMod, DbRef} =
-        maps:get(
-            db_mod,
-            Options,
-            {bbsvx_erlog_db_ets, DbRepos}
-        ),
-    {ok, #est{db = #db{ref = #db_differ{out_db = #db{ref = NewRef}}}} = PrologState} =
-        erlog_int:new(bbsvx_erlog_db_differ, {DbRef, DbMod}),
-
-    %% Check if we are booting or joining
-    case maps:get(boot, Options, root) of
-        root ->
-            %% we are probably booting, wait for genesis
-            %% transaction.
-            OntState =
-                #ont_state{
-                    namespace = Namespace,
-                    current_ts = 0,
-                    previous_ts = -1,
-                    current_index = 0,
-                    local_index = 0,
-                    contact_nodes = [],
-                    prolog_state = PrologState
-                },
-
-            {ok, wait_for_genesis_transaction,
-                #state{
-                    namespace = Namespace,
-                    my_id = MyId,
-                    ont_state = undefined,
-                    db_mod = DbMod,
-                    db_ref = NewRef
-                },
-                ?INIT_RECEIVE_GENESIS_TIMEOUT};
-
-        {join, ContactNodes} ->
-            %% we are joining an existing network, wait for registration
-            {ok, wait_for_registration,
-                #state{
-                    namespace = Namespace,
-                    my_id = MyId,
-                    ont_state = undefined,
-                    db_mod = DbMod,
-                    db_ref = NewRef
-                },
-                ?INIT_RECEIVE_GENESIS_TIMEOUT};
-
+    %% Verify table exists (should be created by ont_service before starting this FSM)
+    case bbsvx_ont_service:table_exists(Namespace) of
+        false ->
+            ?'log-error'("Transaction table missing for namespace ~p", [Namespace]),
+            {stop, {error, {missing_transaction_table, Namespace}}};
         true ->
-            %% Table already exists, restore state,
-
-            Boot = maps:get(boot, Options, join),
-            ContactNodes = maps:get(contact_nodes, Options, []),
-            OntState =
-                #ont_state{
-                    namespace = Namespace,
-                    current_ts = 0,
-                    previous_ts = -1,
-                    current_address = <<"0">>,
-                    next_address = <<"0">>,
-                    contact_nodes = ContactNodes,
-                    prolog_state = PrologState
-                },
-            ?'log-info'("Ontology Agent ~p starting with boot ~p", [Namespace, Boot]),
-            gproc:send({p, l, {?MODULE, Namespace}}, {initialisation, Namespace}),
-            {ok, initialize_ontology, #state{
+            %% Initialize state with minimal required fields
+            State = #state{
                 namespace = Namespace,
-                repos_table = DbRepos,
-                boot = Boot,
-                db_mod = DbMod,
-                db_ref = NewRef,
-                ont_state = OntState,
-                my_id = MyId
-            }}
+                repos_table = bbsvx_ont_service:binary_to_table_name(Namespace),
+                boot = maps:get(boot, Options, root),
+                db_mod = undefined,
+                db_ref = undefined,
+                my_id = undefined
+            },
+
+            %% Start in appropriate state based on boot mode
+            case maps:get(boot, Options, root) of
+                create ->
+                    {ok, wait_for_genesis_transaction, State, 
+                     [{timeout, ?INIT_RECEIVE_GENESIS_TIMEOUT, genesis_timeout}]};
+                connect ->
+                    {ok, wait_for_registration, State,
+                     [{timeout, ?INIT_CONNECT_TIMEOUT, registration_timeout}]};
+                reconnect ->
+                    {ok, wait_for_registration, State,
+                     [{timeout, ?INIT_RECONNECT_TIMEOUT, registration_timeout}]}
+            end
     end.
 
 terminate(_Reason, _State, _Data) ->
@@ -198,7 +147,7 @@ callback_mode() ->
 ) -> gen_statem:state_function_result().
 wait_for_genesis_transaction(enter, _, #state{namespace = Namespace} = State) ->
     ?'log-info'("Ontology Agent ~p waiting for genesis transaction", [Namespace]),
-    {keep_state, State};
+    keep_state_and_data;
 wait_for_genesis_transaction(
     info,
     #transaction{type = creation},
@@ -207,15 +156,33 @@ wait_for_genesis_transaction(
     } = State
 ) ->
     ?'log-info'("Ontology Agent ~p received genesis transaction", [Namespace]),
-    %% start transaction pipeline
-    case start_transaction_pipeline(Namespace, State#state.ont_state) of
-        {ok, _Pid} ->
-            ok;
+    case build_initial_prolog_state(Namespace, Options) of
+        {ok, PrologState} ->
+            %% Buid initial ontology state
+            OntState =
+                #ont_state{
+                    namespace = Namespace,
+                    current_ts = 0,
+                    previous_ts = -1,
+                    current_address = <<"-1">>,
+                    next_address = <<"0">>,
+                    contact_nodes = [],
+                    prolog_state = PrologState
+                },
+            %% start transaction pipeline
+            case start_transaction_pipeline(Namespace, OntState) of
+                {ok, _Pid} ->
+                    gproc:send({p, l, {bbsvx_transaction_pipeline, Namespace}}, {receive_transaction, #transaction{}}),
+                    ?'log-info'("Ontology Agent ~p started transaction pipeline", [Namespace]),
+                    {next_state, initialize_ontology, State};
+                {error, Reason} ->
+                    ?'log-error'("Ontology Agent ~p failed to start transaction pipeline ~p", [Namespace, Reason]),
+                    {stop, {error, Reason}, State}
+            end;
         {error, Reason} ->
-            ?'log-error'("Ontology Agent ~p failed to start transaction pipeline ~p", [Namespace, Reason])
-    end,
-
-    {next_state, initialize_ontology, State#state{}};
+            ?'log-error'("Ontology Agent ~p failed to build initial prolog state ~p", [Namespace, Reason]),
+            {stop, {error, Reason}, State}
+    end;
 wait_for_genesis_transaction(_EventType, _Event, State) ->
     %% Catch-all clause for unhandled events
     {keep_state, State}.
@@ -460,6 +427,22 @@ ready(Type, Event, _State) ->
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
+
+
+-doc """
+    Build initial prolog state
+""".
+-spec build_initial_prolog_state(binary(), list({term(), term()})) -> est:state().
+build_initial_prolog_state(Namespace, Options) ->
+    DbRepos = bbsvx_ont_service:binary_to_table_name(Namespace),
+    {DbMod, DbRef} =
+        maps:get(
+            db_mod,
+            Options,
+            {bbsvx_erlog_db_ets, DbRepos}
+        ),
+    
+    erlog_int:new(bbsvx_erlog_db_differ, {DbRef, DbMod}).
 
 -doc """
     Starts the supervised transaction pipeline.

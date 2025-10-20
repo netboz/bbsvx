@@ -1,74 +1,426 @@
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
-<html>
-<head>
-<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-<title>Module bbsvx_cowboy_handler_transaction</title>
-<link rel="stylesheet" type="text/css" href="stylesheet.css" title="EDoc">
-</head>
-<body bgcolor="white">
-<div class="navbar"><a name="#navbar_top"></a><table width="100%" border="0" cellspacing="0" cellpadding="2" summary="navigation bar"><tr><td><a href="overview-summary.html" target="overviewFrame">Overview</a></td><td><a href="http://www.erlang.org/"><img src="erlang.png" align="right" border="0" alt="erlang logo"></a></td></tr></table></div>
-<hr>
-
-<h1>Module bbsvx_cowboy_handler_transaction</h1>
-<ul class="index"><li><a href="#index">Function Index</a></li><li><a href="#functions">Function Details</a></li></ul>
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="x-ua-compatible" content="ie=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="ExDoc v0.38.2">
+    <meta name="project" content="bbsvx v0.1.0">
 
 
-<h2><a name="index">Function Index</a></h2>
-<table width="100%" border="1" cellspacing="0" cellpadding="2" summary="function index"><tr><td valign="top"><a href="#accept_transaction-2">accept_transaction/2</a></td><td></td></tr>
-<tr><td valign="top"><a href="#allowed_methods-2">allowed_methods/2</a></td><td></td></tr>
-<tr><td valign="top"><a href="#content_types_accepted-2">content_types_accepted/2</a></td><td></td></tr>
-<tr><td valign="top"><a href="#content_types_provided-2">content_types_provided/2</a></td><td></td></tr>
-<tr><td valign="top"><a href="#init-2">init/2</a></td><td></td></tr>
-<tr><td valign="top"><a href="#malformed_request-2">malformed_request/2</a></td><td></td></tr>
-<tr><td valign="top"><a href="#provide_transaction-2">provide_transaction/2</a></td><td></td></tr>
-</table>
+    <title>bbsvx_cowboy_handler_transaction — bbsvx v0.1.0</title>
 
-<h2><a name="functions">Function Details</a></h2>
+    <link rel="stylesheet" href="dist/html-erlang-DQDXQC7W.css" />
 
-<h3 class="function"><a name="accept_transaction-2">accept_transaction/2</a></h3>
-<div class="spec">
-<p><code>accept_transaction(Req0, State) -&gt; any()</code></p>
-<p> </p>
+    <script defer src="dist/sidebar_items-B3D16BE0.js"></script>
+    <script defer src="docs_config.js"></script>
+    <script defer src="dist/html-DPJLHKSM.js"></script>
+
+  </head>
+  <body>
+    <script>(()=>{var t="ex_doc:settings",e="dark";var o="dark",s="light";var E="sidebar_state",n="closed";var r="sidebar_width";var a="sidebar-open";var i=new URLSearchParams(window.location.search),S=i.get("theme")||JSON.parse(localStorage.getItem(t)||"{}").theme;(S===o||S!==s&&window.matchMedia("(prefers-color-scheme: dark)").matches)&&document.body.classList.add(e);var d=sessionStorage.getItem(E),A=d!==n&&!window.matchMedia(`screen and (max-width: ${768}px)`).matches;document.body.classList.toggle(a,A);var c=sessionStorage.getItem(r);c&&document.body.style.setProperty("--sidebarWidth",`${c}px`);var p=/(Macintosh|iPhone|iPad|iPod)/.test(window.navigator.userAgent);document.documentElement.classList.toggle("apple-os",p);})();
+</script>
+
+<div class="body-wrapper">
+
+<button id="sidebar-menu" class="sidebar-button sidebar-toggle" aria-label="toggle sidebar" aria-controls="sidebar">
+  <i class="ri-menu-line ri-lg" title="Collapse/expand sidebar"></i>
+</button>
+
+<nav id="sidebar" class="sidebar">
+
+  <div class="sidebar-header">
+    <div class="sidebar-projectInfo">
+
+      <div>
+        <a href="https://github.com/bbsvx/bbsvx" class="sidebar-projectName" translate="no">
+bbsvx
+        </a>
+        <div class="sidebar-projectVersion" translate="no">
+          v0.1.0
+        </div>
+      </div>
+    </div>
+    <ul id="sidebar-list-nav" class="sidebar-list-nav" role="tablist" data-extras=""></ul>
+  </div>
+</nav>
+
+<output role="status" id="toast"></output>
+
+<main class="content page-module" id="main" data-type="modules">
+  <div id="content" class="content-inner">
+    <div class="top-search">
+      <div class="search-settings">
+        <form class="search-bar" action="search.html">
+          <label class="search-label">
+            <span class="sr-only">Search documentation of bbsvx</span>
+            <input name="q" type="text" class="search-input" placeholder="Press / to search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+          </label>
+          <button type="submit" class="search-button" aria-label="Submit Search" tabindex="-1">
+            <i class="ri-search-2-line ri-lg" aria-hidden="true"></i>
+          </button>
+          <button type="button" tabindex="-1" class="search-close-button" aria-hidden="true">
+            <i class="ri-close-line ri-lg" title="Cancel search"></i>
+          </button>
+        </form>
+        <div class="autocomplete">
+        </div>
+        <button class="icon-settings display-settings">
+          <i class="ri-settings-3-line"></i>
+          <span class="sr-only">Settings</span>
+        </button>
+      </div>
+    </div>
+
+<div id="top-content">
+  <div class="heading-with-actions top-heading">
+    <h1>
+      <span translate="no">bbsvx_cowboy_handler_transaction</span> 
+      <small class="app-vsn" translate="no">(bbsvx v0.1.0)</small>
+
+    </h1>
+
+      <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/cowboy_handlers/bbsvx_cowboy_handler_transaction.erl#L5" title="View Source" class="icon-action" rel="help">
+        <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        <span class="sr-only">View Source</span>
+      </a>
+
+  </div>
+
+
+    <section id="moduledoc">
+<p>BBSvx Cowboy Transaction Handler</p><p>Cowboy REST handler for transaction operations.</p><p>Handles transaction submission and retrieval via REST API endpoints.</p>
+    </section>
+
 </div>
 
-<h3 class="function"><a name="allowed_methods-2">allowed_methods/2</a></h3>
-<div class="spec">
-<p><code>allowed_methods(Req, State) -&gt; any()</code></p>
-<p> </p>
+  <section id="summary" class="details-list">
+    <h1 class="section-heading">
+      <a class="hover-link" href="#summary">
+        <i class="ri-link-m" aria-hidden="true"></i>
+      </a>
+      <span class="text">Summary</span>
+    </h1>
+<div class="summary-types summary">
+  <h2>
+    <a href="#types">Types</a>
+  </h2>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#t:erlog_state/0" data-no-tooltip="" translate="no">erlog_state()</a>
+
+      </div>
+
+    </div>
+
+</div>
+<div class="summary-functions summary">
+  <h2>
+    <a href="#functions">Functions</a>
+  </h2>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#accept_transaction/2" data-no-tooltip="" translate="no">accept_transaction/2</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#allowed_methods/2" data-no-tooltip="" translate="no">allowed_methods(Req, State)</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#content_types_accepted/2" data-no-tooltip="" translate="no">content_types_accepted/2</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#content_types_provided/2" data-no-tooltip="" translate="no">content_types_provided/2</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#init/2" data-no-tooltip="" translate="no">init(Req0, State)</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#malformed_request/2" data-no-tooltip="" translate="no">malformed_request(Req, State)</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#provide_transaction/2" data-no-tooltip="" translate="no">provide_transaction(Req0, State)</a>
+
+      </div>
+
+    </div>
+
 </div>
 
-<h3 class="function"><a name="content_types_accepted-2">content_types_accepted/2</a></h3>
-<div class="spec">
-<p><code>content_types_accepted(Req, State) -&gt; any()</code></p>
-<p> </p>
+  </section>
+
+
+  <section id="types" class="details-list">
+    <h1 class="section-heading">
+      <a class="hover-link" href="#types">
+        <i class="ri-link-m" aria-hidden="true"></i>
+      </a>
+      <span class="text">Types</span>
+    </h1>
+    <div class="types-list">
+<section class="detail" id="t:erlog_state/0">
+
+  <div class="detail-header">
+    <a href="#t:erlog_state/0" class="detail-link" data-no-tooltip="" aria-label="Link to this opaque">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">erlog_state()</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/_build/docs/lib/bbsvx/include/bbsvx.hrl#L266" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">-opaque</span> erlog_state()</pre>
+
+      </div>
+
+
+  </section>
+</section>
+
+    </div>
+  </section>
+
+  <section id="functions" class="details-list">
+    <h1 class="section-heading">
+      <a class="hover-link" href="#functions">
+        <i class="ri-link-m" aria-hidden="true"></i>
+      </a>
+      <span class="text">Functions</span>
+    </h1>
+    <div class="functions-list">
+<section class="detail" id="accept_transaction/2">
+
+  <div class="detail-header">
+    <a href="#accept_transaction/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">accept_transaction/2</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/cowboy_handlers/bbsvx_cowboy_handler_transaction.erl#L69" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="allowed_methods/2">
+
+  <div class="detail-header">
+    <a href="#allowed_methods/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">allowed_methods(Req, State)</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/cowboy_handlers/bbsvx_cowboy_handler_transaction.erl#L36" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="content_types_accepted/2">
+
+  <div class="detail-header">
+    <a href="#content_types_accepted/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">content_types_accepted/2</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/cowboy_handlers/bbsvx_cowboy_handler_transaction.erl#L66" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="content_types_provided/2">
+
+  <div class="detail-header">
+    <a href="#content_types_provided/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">content_types_provided/2</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/cowboy_handlers/bbsvx_cowboy_handler_transaction.erl#L63" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="init/2">
+
+  <div class="detail-header">
+    <a href="#init/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">init(Req0, State)</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/cowboy_handlers/bbsvx_cowboy_handler_transaction.erl#L33" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="malformed_request/2">
+
+  <div class="detail-header">
+    <a href="#malformed_request/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">malformed_request(Req, State)</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/cowboy_handlers/bbsvx_cowboy_handler_transaction.erl#L39" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="provide_transaction/2">
+
+  <div class="detail-header">
+    <a href="#provide_transaction/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">provide_transaction(Req0, State)</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/cowboy_handlers/bbsvx_cowboy_handler_transaction.erl#L97" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+
+    </div>
+  </section>
+
+    <footer class="footer">
+      <p>
+
+          <span class="line">
+            <a href="https://hex.pm/packages/bbsvx/0.1.0" class="footer-hex-package">Hex Package</a>
+
+            <a href="https://preview.hex.pm/preview/bbsvx/0.1.0">Hex Preview</a>
+
+          </span>
+
+        <span class="line">
+          <button class="a-main footer-button display-quick-switch" title="Search HexDocs packages">
+            Search HexDocs
+          </button>
+
+            <a href="bbsvx.epub" title="ePub version">
+              Download ePub version
+            </a>
+
+        </span>
+      </p>
+
+      <p class="built-using">
+        Built using
+        <a href="https://github.com/elixir-lang/ex_doc" title="ExDoc" target="_blank" rel="help noopener" translate="no">ExDoc</a> (v0.38.2) for the
+
+          <a href="https://erlang.org" title="Erlang" target="_blank" translate="no">Erlang programming language</a>
+
+      </p>
+
+    </footer>
+  </div>
+</main>
 </div>
 
-<h3 class="function"><a name="content_types_provided-2">content_types_provided/2</a></h3>
-<div class="spec">
-<p><code>content_types_provided(Req, State) -&gt; any()</code></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="init-2">init/2</a></h3>
-<div class="spec">
-<p><code>init(Req0, State) -&gt; any()</code></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="malformed_request-2">malformed_request/2</a></h3>
-<div class="spec">
-<p><code>malformed_request(Req, State) -&gt; any()</code></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="provide_transaction-2">provide_transaction/2</a></h3>
-<div class="spec">
-<p><code>provide_transaction(Req0, State) -&gt; any()</code></p>
-<p> </p>
-</div>
-<hr>
-
-<div class="navbar"><a name="#navbar_bottom"></a><table width="100%" border="0" cellspacing="0" cellpadding="2" summary="navigation bar"><tr><td><a href="overview-summary.html" target="overviewFrame">Overview</a></td><td><a href="http://www.erlang.org/"><img src="erlang.png" align="right" border="0" alt="erlang logo"></a></td></tr></table></div>
-<p><i>Generated by EDoc</i></p>
-</body>
+  </body>
 </html>

@@ -1,152 +1,962 @@
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
-<html>
-<head>
-<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-<title>Module bbsvx_ont_service</title>
-<link rel="stylesheet" type="text/css" href="stylesheet.css" title="EDoc">
-</head>
-<body bgcolor="white">
-<div class="navbar"><a name="#navbar_top"></a><table width="100%" border="0" cellspacing="0" cellpadding="2" summary="navigation bar"><tr><td><a href="overview-summary.html" target="overviewFrame">Overview</a></td><td><a href="http://www.erlang.org/"><img src="erlang.png" align="right" border="0" alt="erlang logo"></a></td></tr></table></div>
-<hr>
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="x-ua-compatible" content="ie=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="ExDoc v0.38.2">
+    <meta name="project" content="bbsvx v0.1.0">
 
-<h1>Module bbsvx_ont_service</h1>
-<ul class="index"><li><a href="#index">Function Index</a></li><li><a href="#functions">Function Details</a></li></ul>
 
-<p><b>Behaviours:</b> <a href="gen_server.html"><code>gen_server</code></a>.</p>
+    <title>bbsvx_ont_service — bbsvx v0.1.0</title>
 
-<h2><a name="index">Function Index</a></h2>
-<table width="100%" border="1" cellspacing="0" cellpadding="2" summary="function index"><tr><td valign="top"><a href="#binary_to_table_name-1">binary_to_table_name/1</a></td><td></td></tr>
-<tr><td valign="top"><a href="#code_change-3">code_change/3</a></td><td></td></tr>
-<tr><td valign="top"><a href="#connect_ontology-1">connect_ontology/1</a></td><td></td></tr>
-<tr><td valign="top"><a href="#delete_ontology-1">delete_ontology/1</a></td><td></td></tr>
-<tr><td valign="top"><a href="#disconnect_ontology-1">disconnect_ontology/1</a></td><td></td></tr>
-<tr><td valign="top"><a href="#get_goal-1">get_goal/1</a></td><td></td></tr>
-<tr><td valign="top"><a href="#get_ontology-1">get_ontology/1</a></td><td></td></tr>
-<tr><td valign="top"><a href="#handle_call-3">handle_call/3</a></td><td></td></tr>
-<tr><td valign="top"><a href="#handle_cast-2">handle_cast/2</a></td><td></td></tr>
-<tr><td valign="top"><a href="#handle_info-2">handle_info/2</a></td><td></td></tr>
-<tr><td valign="top"><a href="#init-1">init/1</a></td><td></td></tr>
-<tr><td valign="top"><a href="#is_contact_node-2">is_contact_node/2</a></td><td></td></tr>
-<tr><td valign="top"><a href="#new_ontology-1">new_ontology/1</a></td><td></td></tr>
-<tr><td valign="top"><a href="#prove-2">prove/2</a></td><td></td></tr>
-<tr><td valign="top"><a href="#start_link-0">start_link/0</a></td><td></td></tr>
-<tr><td valign="top"><a href="#store_goal-1">store_goal/1</a></td><td></td></tr>
-<tr><td valign="top"><a href="#table_exists-1">table_exists/1</a></td><td></td></tr>
-<tr><td valign="top"><a href="#terminate-2">terminate/2</a></td><td></td></tr>
-</table>
+    <link rel="stylesheet" href="dist/html-erlang-DQDXQC7W.css" />
 
-<h2><a name="functions">Function Details</a></h2>
+    <script defer src="dist/sidebar_items-B3D16BE0.js"></script>
+    <script defer src="docs_config.js"></script>
+    <script defer src="dist/html-DPJLHKSM.js"></script>
 
-<h3 class="function"><a name="binary_to_table_name-1">binary_to_table_name/1</a></h3>
-<div class="spec">
-<p><code>binary_to_table_name(Namespace::binary()) -&gt; atom()</code><br></p>
-<p> </p>
+  </head>
+  <body>
+    <script>(()=>{var t="ex_doc:settings",e="dark";var o="dark",s="light";var E="sidebar_state",n="closed";var r="sidebar_width";var a="sidebar-open";var i=new URLSearchParams(window.location.search),S=i.get("theme")||JSON.parse(localStorage.getItem(t)||"{}").theme;(S===o||S!==s&&window.matchMedia("(prefers-color-scheme: dark)").matches)&&document.body.classList.add(e);var d=sessionStorage.getItem(E),A=d!==n&&!window.matchMedia(`screen and (max-width: ${768}px)`).matches;document.body.classList.toggle(a,A);var c=sessionStorage.getItem(r);c&&document.body.style.setProperty("--sidebarWidth",`${c}px`);var p=/(Macintosh|iPhone|iPad|iPod)/.test(window.navigator.userAgent);document.documentElement.classList.toggle("apple-os",p);})();
+</script>
+
+<div class="body-wrapper">
+
+<button id="sidebar-menu" class="sidebar-button sidebar-toggle" aria-label="toggle sidebar" aria-controls="sidebar">
+  <i class="ri-menu-line ri-lg" title="Collapse/expand sidebar"></i>
+</button>
+
+<nav id="sidebar" class="sidebar">
+
+  <div class="sidebar-header">
+    <div class="sidebar-projectInfo">
+
+      <div>
+        <a href="https://github.com/bbsvx/bbsvx" class="sidebar-projectName" translate="no">
+bbsvx
+        </a>
+        <div class="sidebar-projectVersion" translate="no">
+          v0.1.0
+        </div>
+      </div>
+    </div>
+    <ul id="sidebar-list-nav" class="sidebar-list-nav" role="tablist" data-extras=""></ul>
+  </div>
+</nav>
+
+<output role="status" id="toast"></output>
+
+<main class="content page-module" id="main" data-type="modules">
+  <div id="content" class="content-inner">
+    <div class="top-search">
+      <div class="search-settings">
+        <form class="search-bar" action="search.html">
+          <label class="search-label">
+            <span class="sr-only">Search documentation of bbsvx</span>
+            <input name="q" type="text" class="search-input" placeholder="Press / to search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+          </label>
+          <button type="submit" class="search-button" aria-label="Submit Search" tabindex="-1">
+            <i class="ri-search-2-line ri-lg" aria-hidden="true"></i>
+          </button>
+          <button type="button" tabindex="-1" class="search-close-button" aria-hidden="true">
+            <i class="ri-close-line ri-lg" title="Cancel search"></i>
+          </button>
+        </form>
+        <div class="autocomplete">
+        </div>
+        <button class="icon-settings display-settings">
+          <i class="ri-settings-3-line"></i>
+          <span class="sr-only">Settings</span>
+        </button>
+      </div>
+    </div>
+
+<div id="top-content">
+  <div class="heading-with-actions top-heading">
+    <h1>
+      <span translate="no">bbsvx_ont_service</span> 
+      <small class="app-vsn" translate="no">(bbsvx v0.1.0)</small>
+
+    </h1>
+
+      <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_ont_service.erl#L5" title="View Source" class="icon-action" rel="help">
+        <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        <span class="sr-only">View Source</span>
+      </a>
+
+  </div>
+
+
+    <section id="moduledoc">
+<p>BBSvx Ontology Service</p><p>Gen Server for managing ontology instances and Prolog knowledge base operations.</p><p>Provides API for ontology creation, querying, goal storage, and distributed connections.</p>
+    </section>
+
 </div>
 
-<h3 class="function"><a name="code_change-3">code_change/3</a></h3>
-<div class="spec">
-<p><code>code_change(OldVsn, State, Extra) -&gt; any()</code></p>
-<p> </p>
+  <section id="summary" class="details-list">
+    <h1 class="section-heading">
+      <a class="hover-link" href="#summary">
+        <i class="ri-link-m" aria-hidden="true"></i>
+      </a>
+      <span class="text">Summary</span>
+    </h1>
+<div class="summary-types summary">
+  <h2>
+    <a href="#types">Types</a>
+  </h2>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#t:erlog_state/0" data-no-tooltip="" translate="no">erlog_state()</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#t:goal/0" data-no-tooltip="" translate="no">goal()</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#t:inet_address/0" data-no-tooltip="" translate="no">inet_address()</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#t:node_entry/0" data-no-tooltip="" translate="no">node_entry()</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#t:ontology/0" data-no-tooltip="" translate="no">ontology()</a>
+
+      </div>
+
+    </div>
+
+</div>
+<div class="summary-functions summary">
+  <h2>
+    <a href="#functions">Functions</a>
+  </h2>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#binary_to_table_name/1" data-no-tooltip="" translate="no">binary_to_table_name(Namespace)</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#code_change/3" data-no-tooltip="" translate="no">code_change(OldVsn, State, Extra)</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#connect_ontology/1" data-no-tooltip="" translate="no">connect_ontology(Namespace)</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#delete_ontology/1" data-no-tooltip="" translate="no">delete_ontology(Namespace)</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#disconnect_ontology/1" data-no-tooltip="" translate="no">disconnect_ontology(Namespace)</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#get_goal/1" data-no-tooltip="" translate="no">get_goal(GoalId)</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#get_ontology/1" data-no-tooltip="" translate="no">get_ontology(Namespace)</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#handle_call/3" data-no-tooltip="" translate="no">handle_call/3</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#handle_cast/2" data-no-tooltip="" translate="no">handle_cast(Msg, State)</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#handle_info/2" data-no-tooltip="" translate="no">handle_info(Info, State)</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#init/1" data-no-tooltip="" translate="no">init/1</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#is_contact_node/2" data-no-tooltip="" translate="no">is_contact_node(NodeId, ContactNodes)</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#new_ontology/1" data-no-tooltip="" translate="no">new_ontology/1</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#prove/2" data-no-tooltip="" translate="no">prove(Namespace, Predicate)</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#start_link/0" data-no-tooltip="" translate="no">start_link()</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#store_goal/1" data-no-tooltip="" translate="no">store_goal(Goal)</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#table_exists/1" data-no-tooltip="" translate="no">table_exists(Namespace)</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#terminate/2" data-no-tooltip="" translate="no">terminate(Reason, State)</a>
+
+      </div>
+
+    </div>
+
 </div>
 
-<h3 class="function"><a name="connect_ontology-1">connect_ontology/1</a></h3>
-<div class="spec">
-<p><code>connect_ontology(Namespace::binary()) -&gt; ok | {error, atom()}</code><br></p>
-<p> </p>
+  </section>
+
+
+  <section id="types" class="details-list">
+    <h1 class="section-heading">
+      <a class="hover-link" href="#types">
+        <i class="ri-link-m" aria-hidden="true"></i>
+      </a>
+      <span class="text">Types</span>
+    </h1>
+    <div class="types-list">
+<section class="detail" id="t:erlog_state/0">
+
+  <div class="detail-header">
+    <a href="#t:erlog_state/0" class="detail-link" data-no-tooltip="" aria-label="Link to this opaque">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">erlog_state()</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/_build/docs/lib/bbsvx/include/bbsvx.hrl#L266" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">-opaque</span> erlog_state()</pre>
+
+      </div>
+
+
+  </section>
+</section>
+<section class="detail" id="t:goal/0">
+
+  <div class="detail-header">
+    <a href="#t:goal/0" class="detail-link" data-no-tooltip="" aria-label="Link to this type">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">goal()</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/_build/docs/lib/bbsvx/include/bbsvx.hrl#L144" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">-type</span> goal() ::
+          #goal{id :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:binary/0">binary</a>(),
+                timestamp :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:integer/0">integer</a>(),
+                namespace :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:binary/0">binary</a>(),
+                source_id :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:binary/0">binary</a>(),
+                diff :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:term/0">term</a>(),
+                payload :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:term/0">term</a>()}.</pre>
+
+      </div>
+
+
+  </section>
+</section>
+<section class="detail" id="t:inet_address/0">
+
+  <div class="detail-header">
+    <a href="#t:inet_address/0" class="detail-link" data-no-tooltip="" aria-label="Link to this type">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">inet_address()</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/_build/docs/lib/bbsvx/include/bbsvx.hrl#L113" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">-type</span> inet_address() :: <a href="https://www.erlang.org/doc/apps/kernel/inet.html#t:hostname/0">inet:hostname</a>() | <a href="https://www.erlang.org/doc/apps/kernel/inet.html#t:ip_address/0">inet:ip_address</a>().</pre>
+
+      </div>
+
+
+  </section>
+</section>
+<section class="detail" id="t:node_entry/0">
+
+  <div class="detail-header">
+    <a href="#t:node_entry/0" class="detail-link" data-no-tooltip="" aria-label="Link to this type">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">node_entry()</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/_build/docs/lib/bbsvx/include/bbsvx.hrl#L121" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">-type</span> node_entry() ::
+          #node_entry{node_id :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:binary/0">binary</a>() | undefined,
+                      host :: <a href="#t:inet_address/0">inet_address</a>() | <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:binary/0">binary</a>() | local,
+                      port :: <a href="https://www.erlang.org/doc/apps/kernel/inet.html#t:port_number/0">inet:port_number</a>()}.</pre>
+
+      </div>
+
+
+  </section>
+</section>
+<section class="detail" id="t:ontology/0">
+
+  <div class="detail-header">
+    <a href="#t:ontology/0" class="detail-link" data-no-tooltip="" aria-label="Link to this type">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">ontology()</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/_build/docs/lib/bbsvx/include/bbsvx.hrl#L143" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">-type</span> ontology() ::
+          #ontology{namespace :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:binary/0">binary</a>(),
+                    type :: shared | local,
+                    version :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:binary/0">binary</a>(),
+                    last_update :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:integer/0">integer</a>(),
+                    contact_nodes :: [<a href="#t:node_entry/0">node_entry</a>()]}.</pre>
+
+      </div>
+
+
+  </section>
+</section>
+
+    </div>
+  </section>
+
+  <section id="functions" class="details-list">
+    <h1 class="section-heading">
+      <a class="hover-link" href="#functions">
+        <i class="ri-link-m" aria-hidden="true"></i>
+      </a>
+      <span class="text">Functions</span>
+    </h1>
+    <div class="functions-list">
+<section class="detail" id="binary_to_table_name/1">
+
+  <div class="detail-header">
+    <a href="#binary_to_table_name/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">binary_to_table_name(Namespace)</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_ont_service.erl#L675" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">-spec</span> binary_to_table_name(<a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:binary/0">binary</a>()) -> <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:atom/0">atom</a>().</pre>
+
+      </div>
+
+
+  </section>
+</section>
+<section class="detail" id="code_change/3">
+
+  <div class="detail-header">
+    <a href="#code_change/3" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">code_change(OldVsn, State, Extra)</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_ont_service.erl#L553" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="connect_ontology/1">
+
+  <div class="detail-header">
+    <a href="#connect_ontology/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">connect_ontology(Namespace)</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_ont_service.erl#L87" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">-spec</span> connect_ontology(Namespace :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:binary/0">binary</a>()) -> ok | {error, <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:atom/0">atom</a>()}.</pre>
+
+      </div>
+
+
+  </section>
+</section>
+<section class="detail" id="delete_ontology/1">
+
+  <div class="detail-header">
+    <a href="#delete_ontology/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">delete_ontology(Namespace)</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_ont_service.erl#L80" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">-spec</span> delete_ontology(Namespace :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:binary/0">binary</a>()) -> ok | {error, <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:atom/0">atom</a>()}.</pre>
+
+      </div>
+
+
+  </section>
+</section>
+<section class="detail" id="disconnect_ontology/1">
+
+  <div class="detail-header">
+    <a href="#disconnect_ontology/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">disconnect_ontology(Namespace)</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_ont_service.erl#L93" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">-spec</span> disconnect_ontology(Namespace :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:binary/0">binary</a>()) -> ok | {error, <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:atom/0">atom</a>()}.</pre>
+
+      </div>
+
+
+  </section>
+</section>
+<section class="detail" id="get_goal/1">
+
+  <div class="detail-header">
+    <a href="#get_goal/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">get_goal(GoalId)</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_ont_service.erl#L100" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="get_ontology/1">
+
+  <div class="detail-header">
+    <a href="#get_ontology/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">get_ontology(Namespace)</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_ont_service.erl#L75" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">-spec</span> get_ontology(<a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:binary/0">binary</a>()) -> {ok, <a href="#t:ontology/0">ontology</a>()} | {error, <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:atom/0">atom</a>()}.</pre>
+
+      </div>
+
+
+  </section>
+</section>
+<section class="detail" id="handle_call/3">
+
+  <div class="detail-header">
+    <a href="#handle_call/3" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">handle_call/3</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_ont_service.erl#L346" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="handle_cast/2">
+
+  <div class="detail-header">
+    <a href="#handle_cast/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">handle_cast(Msg, State)</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_ont_service.erl#L544" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="handle_info/2">
+
+  <div class="detail-header">
+    <a href="#handle_info/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">handle_info(Info, State)</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_ont_service.erl#L547" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="init/1">
+
+  <div class="detail-header">
+    <a href="#init/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">init/1</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_ont_service.erl#L110" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="is_contact_node/2">
+
+  <div class="detail-header">
+    <a href="#is_contact_node/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">is_contact_node(NodeId, ContactNodes)</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_ont_service.erl#L646" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="new_ontology/1">
+
+  <div class="detail-header">
+    <a href="#new_ontology/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">new_ontology/1</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_ont_service.erl#L69" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">-spec</span> new_ontology(<a href="#t:ontology/0">ontology</a>()) -> ok | {error, <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:atom/0">atom</a>()}.</pre>
+
+      </div>
+
+
+  </section>
+</section>
+<section class="detail" id="prove/2">
+
+  <div class="detail-header">
+    <a href="#prove/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">prove(Namespace, Predicate)</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_ont_service.erl#L103" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="start_link/0">
+
+  <div class="detail-header">
+    <a href="#start_link/0" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">start_link()</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_ont_service.erl#L63" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">-spec</span> start_link() -> <a href="https://www.erlang.org/doc/apps/stdlib/gen_statem.html#t:start_ret/0">gen_statem:start_ret</a>().</pre>
+
+      </div>
+
+
+  </section>
+</section>
+<section class="detail" id="store_goal/1">
+
+  <div class="detail-header">
+    <a href="#store_goal/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">store_goal(Goal)</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_ont_service.erl#L97" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">-spec</span> store_goal(<a href="#t:goal/0">goal</a>()) -> ok | {error, <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:atom/0">atom</a>()}.</pre>
+
+      </div>
+
+
+  </section>
+</section>
+<section class="detail" id="table_exists/1">
+
+  <div class="detail-header">
+    <a href="#table_exists/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">table_exists(Namespace)</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_ont_service.erl#L649" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="terminate/2">
+
+  <div class="detail-header">
+    <a href="#terminate/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">terminate(Reason, State)</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_ont_service.erl#L550" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+
+    </div>
+  </section>
+
+    <footer class="footer">
+      <p>
+
+          <span class="line">
+            <a href="https://hex.pm/packages/bbsvx/0.1.0" class="footer-hex-package">Hex Package</a>
+
+            <a href="https://preview.hex.pm/preview/bbsvx/0.1.0">Hex Preview</a>
+
+          </span>
+
+        <span class="line">
+          <button class="a-main footer-button display-quick-switch" title="Search HexDocs packages">
+            Search HexDocs
+          </button>
+
+            <a href="bbsvx.epub" title="ePub version">
+              Download ePub version
+            </a>
+
+        </span>
+      </p>
+
+      <p class="built-using">
+        Built using
+        <a href="https://github.com/elixir-lang/ex_doc" title="ExDoc" target="_blank" rel="help noopener" translate="no">ExDoc</a> (v0.38.2) for the
+
+          <a href="https://erlang.org" title="Erlang" target="_blank" translate="no">Erlang programming language</a>
+
+      </p>
+
+    </footer>
+  </div>
+</main>
 </div>
 
-<h3 class="function"><a name="delete_ontology-1">delete_ontology/1</a></h3>
-<div class="spec">
-<p><code>delete_ontology(Namespace::binary()) -&gt; ok | {error, atom()}</code><br></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="disconnect_ontology-1">disconnect_ontology/1</a></h3>
-<div class="spec">
-<p><code>disconnect_ontology(Namespace::binary()) -&gt; ok | {error, atom()}</code><br></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="get_goal-1">get_goal/1</a></h3>
-<div class="spec">
-<p><code>get_goal(GoalId) -&gt; any()</code></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="get_ontology-1">get_ontology/1</a></h3>
-<div class="spec">
-<p><code>get_ontology(Namespace::binary()) -&gt; {ok, <a href="#type-ontology" docgen-rel="seetype" docgen-href="#ontology/0">ontology()</a>} | {error, atom()}</code><br></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="handle_call-3">handle_call/3</a></h3>
-<div class="spec">
-<p><code>handle_call(Request, From, State) -&gt; any()</code></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="handle_cast-2">handle_cast/2</a></h3>
-<div class="spec">
-<p><code>handle_cast(Msg, State) -&gt; any()</code></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="handle_info-2">handle_info/2</a></h3>
-<div class="spec">
-<p><code>handle_info(Info, State) -&gt; any()</code></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="init-1">init/1</a></h3>
-<div class="spec">
-<p><code>init(X1) -&gt; any()</code></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="is_contact_node-2">is_contact_node/2</a></h3>
-<div class="spec">
-<p><code>is_contact_node(NodeId, ContactNodes) -&gt; any()</code></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="new_ontology-1">new_ontology/1</a></h3>
-<div class="spec">
-<p><code>new_ontology(Ontology::<a href="#type-ontology" docgen-rel="seetype" docgen-href="#ontology/0">ontology()</a>) -&gt; ok | {error, atom()}</code><br></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="prove-2">prove/2</a></h3>
-<div class="spec">
-<p><code>prove(Namespace, Predicate) -&gt; any()</code></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="start_link-0">start_link/0</a></h3>
-<div class="spec">
-<p><code>start_link() -&gt; <a href="/home/yan/src/stdlib/doc/gen_statem.html#type-start_ret" docgen-rel="seetype" docgen-href="stdlib:gen_statem#start_ret/0">gen_statem:start_ret()</a></code><br></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="store_goal-1">store_goal/1</a></h3>
-<div class="spec">
-<p><code>store_goal(Goal::<a href="#type-goal" docgen-rel="seetype" docgen-href="#goal/0">goal()</a>) -&gt; ok | {error, atom()}</code><br></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="table_exists-1">table_exists/1</a></h3>
-<div class="spec">
-<p><code>table_exists(Namespace) -&gt; any()</code></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="terminate-2">terminate/2</a></h3>
-<div class="spec">
-<p><code>terminate(Reason, State) -&gt; any()</code></p>
-<p> </p>
-</div>
-<hr>
-
-<div class="navbar"><a name="#navbar_bottom"></a><table width="100%" border="0" cellspacing="0" cellpadding="2" summary="navigation bar"><tr><td><a href="overview-summary.html" target="overviewFrame">Overview</a></td><td><a href="http://www.erlang.org/"><img src="erlang.png" align="right" border="0" alt="erlang logo"></a></td></tr></table></div>
-<p><i>Generated by EDoc</i></p>
-</body>
+  </body>
 </html>

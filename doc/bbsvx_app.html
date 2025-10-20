@@ -1,166 +1,762 @@
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
-<html>
-<head>
-<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-<title>Module bbsvx_app</title>
-<link rel="stylesheet" type="text/css" href="stylesheet.css" title="EDoc">
-</head>
-<body bgcolor="white">
-<div class="navbar"><a name="#navbar_top"></a><table width="100%" border="0" cellspacing="0" cellpadding="2" summary="navigation bar"><tr><td><a href="overview-summary.html" target="overviewFrame">Overview</a></td><td><a href="http://www.erlang.org/"><img src="erlang.png" align="right" border="0" alt="erlang logo"></a></td></tr></table></div>
-<hr>
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="x-ua-compatible" content="ie=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="ExDoc v0.38.2">
+    <meta name="project" content="bbsvx v0.1.0">
 
-<h1>Module bbsvx_app</h1>
-<ul class="index"><li><a href="#index">Function Index</a></li><li><a href="#functions">Function Details</a></li></ul>
 
-<p><b>Behaviours:</b> <a href="application.html"><code>application</code></a>.</p>
+    <title>bbsvx_app — bbsvx v0.1.0</title>
 
-<h2><a name="index">Function Index</a></h2>
-<table width="100%" border="1" cellspacing="0" cellpadding="2" summary="function index"><tr><td valign="top"><a href="#create_ontology-2">create_ontology/2</a></td><td></td></tr>
-<tr><td valign="top"><a href="#get_all_config-0">get_all_config/0</a></td><td></td></tr>
-<tr><td valign="top"><a href="#get_basic_status-0">get_basic_status/0</a></td><td></td></tr>
-<tr><td valign="top"><a href="#get_contact_nodes-0">get_contact_nodes/0</a></td><td></td></tr>
-<tr><td valign="top"><a href="#get_full_status-0">get_full_status/0</a></td><td></td></tr>
-<tr><td valign="top"><a href="#get_http_port-0">get_http_port/0</a></td><td></td></tr>
-<tr><td valign="top"><a href="#get_network_status-0">get_network_status/0</a></td><td></td></tr>
-<tr><td valign="top"><a href="#get_ontology_status-0">get_ontology_status/0</a></td><td></td></tr>
-<tr><td valign="top"><a href="#get_p2p_port-0">get_p2p_port/0</a></td><td></td></tr>
-<tr><td valign="top"><a href="#get_status_json-0">get_status_json/0</a></td><td></td></tr>
-<tr><td valign="top"><a href="#init_user_config-0">init_user_config/0</a></td><td></td></tr>
-<tr><td valign="top"><a href="#init_user_config-2">init_user_config/2</a></td><td></td></tr>
-<tr><td valign="top"><a href="#list_ontologies-0">list_ontologies/0</a></td><td></td></tr>
-<tr><td valign="top"><a href="#locate_config_file-0">locate_config_file/0</a></td><td></td></tr>
-<tr><td valign="top"><a href="#set_boot_mode-1">set_boot_mode/1</a></td><td></td></tr>
-<tr><td valign="top"><a href="#set_contact_nodes-1">set_contact_nodes/1</a></td><td></td></tr>
-<tr><td valign="top"><a href="#set_http_port-1">set_http_port/1</a></td><td></td></tr>
-<tr><td valign="top"><a href="#set_p2p_port-1">set_p2p_port/1</a></td><td></td></tr>
-<tr><td valign="top"><a href="#start-2">start/2</a></td><td></td></tr>
-<tr><td valign="top"><a href="#stop-1">stop/1</a></td><td></td></tr>
-</table>
+    <link rel="stylesheet" href="dist/html-erlang-DQDXQC7W.css" />
 
-<h2><a name="functions">Function Details</a></h2>
+    <script defer src="dist/sidebar_items-B3D16BE0.js"></script>
+    <script defer src="docs_config.js"></script>
+    <script defer src="dist/html-DPJLHKSM.js"></script>
 
-<h3 class="function"><a name="create_ontology-2">create_ontology/2</a></h3>
-<div class="spec">
-<p><code>create_ontology(Namespace, Type) -&gt; any()</code></p>
-<p> </p>
+  </head>
+  <body>
+    <script>(()=>{var t="ex_doc:settings",e="dark";var o="dark",s="light";var E="sidebar_state",n="closed";var r="sidebar_width";var a="sidebar-open";var i=new URLSearchParams(window.location.search),S=i.get("theme")||JSON.parse(localStorage.getItem(t)||"{}").theme;(S===o||S!==s&&window.matchMedia("(prefers-color-scheme: dark)").matches)&&document.body.classList.add(e);var d=sessionStorage.getItem(E),A=d!==n&&!window.matchMedia(`screen and (max-width: ${768}px)`).matches;document.body.classList.toggle(a,A);var c=sessionStorage.getItem(r);c&&document.body.style.setProperty("--sidebarWidth",`${c}px`);var p=/(Macintosh|iPhone|iPad|iPod)/.test(window.navigator.userAgent);document.documentElement.classList.toggle("apple-os",p);})();
+</script>
+
+<div class="body-wrapper">
+
+<button id="sidebar-menu" class="sidebar-button sidebar-toggle" aria-label="toggle sidebar" aria-controls="sidebar">
+  <i class="ri-menu-line ri-lg" title="Collapse/expand sidebar"></i>
+</button>
+
+<nav id="sidebar" class="sidebar">
+
+  <div class="sidebar-header">
+    <div class="sidebar-projectInfo">
+
+      <div>
+        <a href="https://github.com/bbsvx/bbsvx" class="sidebar-projectName" translate="no">
+bbsvx
+        </a>
+        <div class="sidebar-projectVersion" translate="no">
+          v0.1.0
+        </div>
+      </div>
+    </div>
+    <ul id="sidebar-list-nav" class="sidebar-list-nav" role="tablist" data-extras=""></ul>
+  </div>
+</nav>
+
+<output role="status" id="toast"></output>
+
+<main class="content page-module" id="main" data-type="modules">
+  <div id="content" class="content-inner">
+    <div class="top-search">
+      <div class="search-settings">
+        <form class="search-bar" action="search.html">
+          <label class="search-label">
+            <span class="sr-only">Search documentation of bbsvx</span>
+            <input name="q" type="text" class="search-input" placeholder="Press / to search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+          </label>
+          <button type="submit" class="search-button" aria-label="Submit Search" tabindex="-1">
+            <i class="ri-search-2-line ri-lg" aria-hidden="true"></i>
+          </button>
+          <button type="button" tabindex="-1" class="search-close-button" aria-hidden="true">
+            <i class="ri-close-line ri-lg" title="Cancel search"></i>
+          </button>
+        </form>
+        <div class="autocomplete">
+        </div>
+        <button class="icon-settings display-settings">
+          <i class="ri-settings-3-line"></i>
+          <span class="sr-only">Settings</span>
+        </button>
+      </div>
+    </div>
+
+<div id="top-content">
+  <div class="heading-with-actions top-heading">
+    <h1>
+      <span translate="no">bbsvx_app</span> 
+      <small class="app-vsn" translate="no">(bbsvx v0.1.0)</small>
+
+    </h1>
+
+      <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_app.erl#L5" title="View Source" class="icon-action" rel="help">
+        <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        <span class="sr-only">View Source</span>
+      </a>
+
+  </div>
+
+
+    <section id="moduledoc">
+<p>BBSvx Application Module</p><p>OTP application module for BBSvx blockchain-powered BBS system.</p><p>Initializes system components, HTTP routing, telemetry, and starts the supervisor tree.</p>
+    </section>
+
 </div>
 
-<h3 class="function"><a name="get_all_config-0">get_all_config/0</a></h3>
-<div class="spec">
-<p><code>get_all_config() -&gt; any()</code></p>
-<p> </p>
+  <section id="summary" class="details-list">
+    <h1 class="section-heading">
+      <a class="hover-link" href="#summary">
+        <i class="ri-link-m" aria-hidden="true"></i>
+      </a>
+      <span class="text">Summary</span>
+    </h1>
+<div class="summary-functions summary">
+  <h2>
+    <a href="#functions">Functions</a>
+  </h2>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#create_ontology/2" data-no-tooltip="" translate="no">create_ontology(Namespace, Type)</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#get_all_config/0" data-no-tooltip="" translate="no">get_all_config()</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#get_basic_status/0" data-no-tooltip="" translate="no">get_basic_status()</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#get_contact_nodes/0" data-no-tooltip="" translate="no">get_contact_nodes()</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#get_full_status/0" data-no-tooltip="" translate="no">get_full_status()</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#get_http_port/0" data-no-tooltip="" translate="no">get_http_port()</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#get_network_status/0" data-no-tooltip="" translate="no">get_network_status()</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#get_ontology_status/0" data-no-tooltip="" translate="no">get_ontology_status()</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#get_p2p_port/0" data-no-tooltip="" translate="no">get_p2p_port()</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#get_status_json/0" data-no-tooltip="" translate="no">get_status_json()</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#init_user_config/0" data-no-tooltip="" translate="no">init_user_config()</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#init_user_config/2" data-no-tooltip="" translate="no">init_user_config(ConfigPath, IsForce)</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#list_ontologies/0" data-no-tooltip="" translate="no">list_ontologies()</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#locate_config_file/0" data-no-tooltip="" translate="no">locate_config_file()</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#set_boot_mode/1" data-no-tooltip="" translate="no">set_boot_mode/1</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#set_contact_nodes/1" data-no-tooltip="" translate="no">set_contact_nodes/1</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#set_http_port/1" data-no-tooltip="" translate="no">set_http_port(Port)</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#set_p2p_port/1" data-no-tooltip="" translate="no">set_p2p_port(Port)</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#start/2" data-no-tooltip="" translate="no">start(StartType, StartArgs)</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#stop/1" data-no-tooltip="" translate="no">stop(State)</a>
+
+      </div>
+
+    </div>
+
 </div>
 
-<h3 class="function"><a name="get_basic_status-0">get_basic_status/0</a></h3>
-<div class="spec">
-<p><code>get_basic_status() -&gt; any()</code></p>
-<p> </p>
+  </section>
+
+
+  <section id="functions" class="details-list">
+    <h1 class="section-heading">
+      <a class="hover-link" href="#functions">
+        <i class="ri-link-m" aria-hidden="true"></i>
+      </a>
+      <span class="text">Functions</span>
+    </h1>
+    <div class="functions-list">
+<section class="detail" id="create_ontology/2">
+
+  <div class="detail-header">
+    <a href="#create_ontology/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">create_ontology(Namespace, Type)</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_app.erl#L384" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="get_all_config/0">
+
+  <div class="detail-header">
+    <a href="#get_all_config/0" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">get_all_config()</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_app.erl#L284" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="get_basic_status/0">
+
+  <div class="detail-header">
+    <a href="#get_basic_status/0" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">get_basic_status()</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_app.erl#L339" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="get_contact_nodes/0">
+
+  <div class="detail-header">
+    <a href="#get_contact_nodes/0" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">get_contact_nodes()</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_app.erl#L281" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="get_full_status/0">
+
+  <div class="detail-header">
+    <a href="#get_full_status/0" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">get_full_status()</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_app.erl#L347" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="get_http_port/0">
+
+  <div class="detail-header">
+    <a href="#get_http_port/0" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">get_http_port()</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_app.erl#L278" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="get_network_status/0">
+
+  <div class="detail-header">
+    <a href="#get_network_status/0" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">get_network_status()</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_app.erl#L356" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="get_ontology_status/0">
+
+  <div class="detail-header">
+    <a href="#get_ontology_status/0" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">get_ontology_status()</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_app.erl#L364" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="get_p2p_port/0">
+
+  <div class="detail-header">
+    <a href="#get_p2p_port/0" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">get_p2p_port()</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_app.erl#L275" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="get_status_json/0">
+
+  <div class="detail-header">
+    <a href="#get_status_json/0" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">get_status_json()</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_app.erl#L353" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="init_user_config/0">
+
+  <div class="detail-header">
+    <a href="#init_user_config/0" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">init_user_config()</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_app.erl#L296" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="init_user_config/2">
+
+  <div class="detail-header">
+    <a href="#init_user_config/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">init_user_config(ConfigPath, IsForce)</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_app.erl#L299" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="list_ontologies/0">
+
+  <div class="detail-header">
+    <a href="#list_ontologies/0" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">list_ontologies()</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_app.erl#L375" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="locate_config_file/0">
+
+  <div class="detail-header">
+    <a href="#locate_config_file/0" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">locate_config_file()</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_app.erl#L326" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="set_boot_mode/1">
+
+  <div class="detail-header">
+    <a href="#set_boot_mode/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">set_boot_mode/1</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_app.erl#L266" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="set_contact_nodes/1">
+
+  <div class="detail-header">
+    <a href="#set_contact_nodes/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">set_contact_nodes/1</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_app.erl#L257" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="set_http_port/1">
+
+  <div class="detail-header">
+    <a href="#set_http_port/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">set_http_port(Port)</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_app.erl#L253" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="set_p2p_port/1">
+
+  <div class="detail-header">
+    <a href="#set_p2p_port/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">set_p2p_port(Port)</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_app.erl#L249" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="start/2">
+
+  <div class="detail-header">
+    <a href="#start/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">start(StartType, StartArgs)</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_app.erl#L42" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="stop/1">
+
+  <div class="detail-header">
+    <a href="#stop/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">stop(State)</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_app.erl#L81" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+
+    </div>
+  </section>
+
+    <footer class="footer">
+      <p>
+
+          <span class="line">
+            <a href="https://hex.pm/packages/bbsvx/0.1.0" class="footer-hex-package">Hex Package</a>
+
+            <a href="https://preview.hex.pm/preview/bbsvx/0.1.0">Hex Preview</a>
+
+          </span>
+
+        <span class="line">
+          <button class="a-main footer-button display-quick-switch" title="Search HexDocs packages">
+            Search HexDocs
+          </button>
+
+            <a href="bbsvx.epub" title="ePub version">
+              Download ePub version
+            </a>
+
+        </span>
+      </p>
+
+      <p class="built-using">
+        Built using
+        <a href="https://github.com/elixir-lang/ex_doc" title="ExDoc" target="_blank" rel="help noopener" translate="no">ExDoc</a> (v0.38.2) for the
+
+          <a href="https://erlang.org" title="Erlang" target="_blank" translate="no">Erlang programming language</a>
+
+      </p>
+
+    </footer>
+  </div>
+</main>
 </div>
 
-<h3 class="function"><a name="get_contact_nodes-0">get_contact_nodes/0</a></h3>
-<div class="spec">
-<p><code>get_contact_nodes() -&gt; any()</code></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="get_full_status-0">get_full_status/0</a></h3>
-<div class="spec">
-<p><code>get_full_status() -&gt; any()</code></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="get_http_port-0">get_http_port/0</a></h3>
-<div class="spec">
-<p><code>get_http_port() -&gt; any()</code></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="get_network_status-0">get_network_status/0</a></h3>
-<div class="spec">
-<p><code>get_network_status() -&gt; any()</code></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="get_ontology_status-0">get_ontology_status/0</a></h3>
-<div class="spec">
-<p><code>get_ontology_status() -&gt; any()</code></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="get_p2p_port-0">get_p2p_port/0</a></h3>
-<div class="spec">
-<p><code>get_p2p_port() -&gt; any()</code></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="get_status_json-0">get_status_json/0</a></h3>
-<div class="spec">
-<p><code>get_status_json() -&gt; any()</code></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="init_user_config-0">init_user_config/0</a></h3>
-<div class="spec">
-<p><code>init_user_config() -&gt; any()</code></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="init_user_config-2">init_user_config/2</a></h3>
-<div class="spec">
-<p><code>init_user_config(ConfigPath, IsForce) -&gt; any()</code></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="list_ontologies-0">list_ontologies/0</a></h3>
-<div class="spec">
-<p><code>list_ontologies() -&gt; any()</code></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="locate_config_file-0">locate_config_file/0</a></h3>
-<div class="spec">
-<p><code>locate_config_file() -&gt; any()</code></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="set_boot_mode-1">set_boot_mode/1</a></h3>
-<div class="spec">
-<p><code>set_boot_mode(Mode) -&gt; any()</code></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="set_contact_nodes-1">set_contact_nodes/1</a></h3>
-<div class="spec">
-<p><code>set_contact_nodes(Nodes) -&gt; any()</code></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="set_http_port-1">set_http_port/1</a></h3>
-<div class="spec">
-<p><code>set_http_port(Port) -&gt; any()</code></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="set_p2p_port-1">set_p2p_port/1</a></h3>
-<div class="spec">
-<p><code>set_p2p_port(Port) -&gt; any()</code></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="start-2">start/2</a></h3>
-<div class="spec">
-<p><code>start(StartType, StartArgs) -&gt; any()</code></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="stop-1">stop/1</a></h3>
-<div class="spec">
-<p><code>stop(State) -&gt; any()</code></p>
-<p> </p>
-</div>
-<hr>
-
-<div class="navbar"><a name="#navbar_bottom"></a><table width="100%" border="0" cellspacing="0" cellpadding="2" summary="navigation bar"><tr><td><a href="overview-summary.html" target="overviewFrame">Overview</a></td><td><a href="http://www.erlang.org/"><img src="erlang.png" align="right" border="0" alt="erlang logo"></a></td></tr></table></div>
-<p><i>Generated by EDoc</i></p>
-</body>
+  </body>
 </html>

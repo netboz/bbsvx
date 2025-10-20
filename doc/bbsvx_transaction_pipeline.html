@@ -1,96 +1,773 @@
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
-<html>
-<head>
-<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-<title>Module bbsvx_transaction_pipeline</title>
-<link rel="stylesheet" type="text/css" href="stylesheet.css" title="EDoc">
-</head>
-<body bgcolor="white">
-<div class="navbar"><a name="#navbar_top"></a><table width="100%" border="0" cellspacing="0" cellpadding="2" summary="navigation bar"><tr><td><a href="overview-summary.html" target="overviewFrame">Overview</a></td><td><a href="http://www.erlang.org/"><img src="erlang.png" align="right" border="0" alt="erlang logo"></a></td></tr></table></div>
-<hr>
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="x-ua-compatible" content="ie=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="ExDoc v0.38.2">
+    <meta name="project" content="bbsvx v0.1.0">
 
-<h1>Module bbsvx_transaction_pipeline</h1>
-<ul class="index"><li><a href="#index">Function Index</a></li><li><a href="#functions">Function Details</a></li></ul>
 
-<p><b>Behaviours:</b> <a href="gen_server.html"><code>gen_server</code></a>.</p>
+    <title>bbsvx_transaction_pipeline — bbsvx v0.1.0</title>
 
-<h2><a name="index">Function Index</a></h2>
-<table width="100%" border="1" cellspacing="0" cellpadding="2" summary="function index"><tr><td valign="top"><a href="#accept_transaction-1">accept_transaction/1</a></td><td></td></tr>
-<tr><td valign="top"><a href="#accept_transaction_result-1">accept_transaction_result/1</a></td><td></td></tr>
-<tr><td valign="top"><a href="#code_change-3">code_change/3</a></td><td></td></tr>
-<tr><td valign="top"><a href="#handle_call-3">handle_call/3</a></td><td></td></tr>
-<tr><td valign="top"><a href="#handle_cast-2">handle_cast/2</a></td><td></td></tr>
-<tr><td valign="top"><a href="#handle_info-2">handle_info/2</a></td><td></td></tr>
-<tr><td valign="top"><a href="#init-1">init/1</a></td><td></td></tr>
-<tr><td valign="top"><a href="#receive_transaction-1">receive_transaction/1</a></td><td></td></tr>
-<tr><td valign="top"><a href="#start_link-3">start_link/3</a></td><td></td></tr>
-<tr><td valign="top"><a href="#terminate-2">terminate/2</a></td><td></td></tr>
-</table>
+    <link rel="stylesheet" href="dist/html-erlang-DQDXQC7W.css" />
 
-<h2><a name="functions">Function Details</a></h2>
+    <script defer src="dist/sidebar_items-B3D16BE0.js"></script>
+    <script defer src="docs_config.js"></script>
+    <script defer src="dist/html-DPJLHKSM.js"></script>
 
-<h3 class="function"><a name="accept_transaction-1">accept_transaction/1</a></h3>
-<div class="spec">
-<p><code>accept_transaction(Transaction::<a href="#type-transaction" docgen-rel="seetype" docgen-href="#transaction/0">transaction()</a>) -&gt; ok</code><br></p>
-<p> </p>
+  </head>
+  <body>
+    <script>(()=>{var t="ex_doc:settings",e="dark";var o="dark",s="light";var E="sidebar_state",n="closed";var r="sidebar_width";var a="sidebar-open";var i=new URLSearchParams(window.location.search),S=i.get("theme")||JSON.parse(localStorage.getItem(t)||"{}").theme;(S===o||S!==s&&window.matchMedia("(prefers-color-scheme: dark)").matches)&&document.body.classList.add(e);var d=sessionStorage.getItem(E),A=d!==n&&!window.matchMedia(`screen and (max-width: ${768}px)`).matches;document.body.classList.toggle(a,A);var c=sessionStorage.getItem(r);c&&document.body.style.setProperty("--sidebarWidth",`${c}px`);var p=/(Macintosh|iPhone|iPad|iPod)/.test(window.navigator.userAgent);document.documentElement.classList.toggle("apple-os",p);})();
+</script>
+
+<div class="body-wrapper">
+
+<button id="sidebar-menu" class="sidebar-button sidebar-toggle" aria-label="toggle sidebar" aria-controls="sidebar">
+  <i class="ri-menu-line ri-lg" title="Collapse/expand sidebar"></i>
+</button>
+
+<nav id="sidebar" class="sidebar">
+
+  <div class="sidebar-header">
+    <div class="sidebar-projectInfo">
+
+      <div>
+        <a href="https://github.com/bbsvx/bbsvx" class="sidebar-projectName" translate="no">
+bbsvx
+        </a>
+        <div class="sidebar-projectVersion" translate="no">
+          v0.1.0
+        </div>
+      </div>
+    </div>
+    <ul id="sidebar-list-nav" class="sidebar-list-nav" role="tablist" data-extras=""></ul>
+  </div>
+</nav>
+
+<output role="status" id="toast"></output>
+
+<main class="content page-module" id="main" data-type="modules">
+  <div id="content" class="content-inner">
+    <div class="top-search">
+      <div class="search-settings">
+        <form class="search-bar" action="search.html">
+          <label class="search-label">
+            <span class="sr-only">Search documentation of bbsvx</span>
+            <input name="q" type="text" class="search-input" placeholder="Press / to search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+          </label>
+          <button type="submit" class="search-button" aria-label="Submit Search" tabindex="-1">
+            <i class="ri-search-2-line ri-lg" aria-hidden="true"></i>
+          </button>
+          <button type="button" tabindex="-1" class="search-close-button" aria-hidden="true">
+            <i class="ri-close-line ri-lg" title="Cancel search"></i>
+          </button>
+        </form>
+        <div class="autocomplete">
+        </div>
+        <button class="icon-settings display-settings">
+          <i class="ri-settings-3-line"></i>
+          <span class="sr-only">Settings</span>
+        </button>
+      </div>
+    </div>
+
+<div id="top-content">
+  <div class="heading-with-actions top-heading">
+    <h1>
+      <span translate="no">bbsvx_transaction_pipeline</span> 
+      <small class="app-vsn" translate="no">(bbsvx v0.1.0)</small>
+
+    </h1>
+
+      <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_transaction_pipeline.erl#L5" title="View Source" class="icon-action" rel="help">
+        <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        <span class="sr-only">View Source</span>
+      </a>
+
+  </div>
+
+
+    <section id="moduledoc">
+<h1>BBSvx Transaction Pipeline</h1><p>A gen_server that orchestrates the complete transaction processing pipeline for the BBSvx blockchain-powered BBS system.</p><h2 id="module-overview" class="section-heading"><a href="#module-overview" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Overview</span></h2><p>The transaction pipeline implements a multi-stage processing system that handles:</p><ol><li><strong>Transaction Acceptance</strong> - Initial reception and broadcasting of transactions</li><li><strong>Transaction Validation</strong> - Ordering, indexing, and validation against blockchain state  </li><li><strong>Transaction Processing</strong> - Execution of goals through the Prolog knowledge base</li><li><strong>Post-processing</strong> - Recording final results and metrics collection</li></ol><h2 id="module-architecture" class="section-heading"><a href="#module-architecture" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Architecture</span></h2><p>The pipeline uses the <code class="inline">jobs</code> application to create separate queues for each processing stage:</p><ul><li><code class="inline">stage_transaction_accept</code> - Accepts and broadcasts new transactions</li><li><code class="inline">stage_transaction_validate</code> - Validates transaction order and readiness</li><li><code class="inline">stage_transaction_process</code> - Executes transaction goals via Prolog</li><li><code class="inline">stage_transaction_postprocess</code> - Records results and updates metrics</li><li><code class="inline">stage_transaction_results</code> - Handles goal execution results from leaders</li></ul><p>Each stage runs in a separate spawned process linked to the main gen_server for fault tolerance.</p><h2 id="module-transaction-flow" class="section-heading"><a href="#module-transaction-flow" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Transaction Flow</span></h2><pre><code class="makeup erlang" translate="no"><span class="ss">accept_transaction</span><span class="p">/</span><span class="mi">1</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">Accept</span><span class="w"> </span><span class="n">Queue</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">EPTO</span><span class="w"> </span><span class="n">Broadcast</span><span class="w">
+                                           </span><span class="err">↓</span><span class="w">
+</span><span class="ss">receive_transaction</span><span class="p">/</span><span class="mi">1</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">Validate</span><span class="w"> </span><span class="n">Queue</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">Process</span><span class="w"> </span><span class="n">Queue</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">Postprocess</span><span class="w"> </span><span class="n">Queue</span><span class="w">
+                                                              </span><span class="err">↓</span><span class="w">
+                                                    </span><span class="n">Record</span><span class="w"> </span><span class="err">&amp;</span><span class="w"> </span><span class="n">Metrics</span></code></pre><h2 id="module-leader-vs-follower-behavior" class="section-heading"><a href="#module-leader-vs-follower-behavior" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Leader vs Follower Behavior</span></h2><ul><li><strong>Leaders</strong>: Execute goals directly through the Prolog engine and broadcast results</li><li><strong>Followers</strong>: Wait for goal results from leaders and apply diffs to their state</li></ul><h2 id="module-state-management" class="section-heading"><a href="#module-state-management" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">State Management</span></h2><p>The pipeline maintains blockchain state including:</p><ul><li>Current transaction index and address</li><li>Local index for processed transactions  </li><li>Pending transactions awaiting proper ordering</li><li>Integration with the ontology service for knowledge base updates</li></ul>
+    </section>
+
 </div>
 
-<h3 class="function"><a name="accept_transaction_result-1">accept_transaction_result/1</a></h3>
-<div class="spec">
-<p><code>accept_transaction_result(Goal_result::<a href="#type-goal_result" docgen-rel="seetype" docgen-href="#goal_result/0">goal_result()</a>) -&gt; ok</code><br></p>
-<p> </p>
+  <section id="summary" class="details-list">
+    <h1 class="section-heading">
+      <a class="hover-link" href="#summary">
+        <i class="ri-link-m" aria-hidden="true"></i>
+      </a>
+      <span class="text">Summary</span>
+    </h1>
+<div class="summary-types summary">
+  <h2>
+    <a href="#types">Types</a>
+  </h2>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#t:erlog_state/0" data-no-tooltip="" translate="no">erlog_state()</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#t:goal_result/0" data-no-tooltip="" translate="no">goal_result()</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#t:inet_address/0" data-no-tooltip="" translate="no">inet_address()</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#t:node_entry/0" data-no-tooltip="" translate="no">node_entry()</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#t:ont_state/0" data-no-tooltip="" translate="no">ont_state()</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#t:transaction/0" data-no-tooltip="" translate="no">transaction()</a>
+
+      </div>
+
+    </div>
+
+</div>
+<div class="summary-functions summary">
+  <h2>
+    <a href="#functions">Functions</a>
+  </h2>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#accept_transaction/1" data-no-tooltip="" translate="no">accept_transaction/1</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Entry point for locally created transactions that need to be broadcast to the network.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#accept_transaction_result/1" data-no-tooltip="" translate="no">accept_transaction_result/1</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Entry point for goal execution results broadcast by leader nodes.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#code_change/3" data-no-tooltip="" translate="no">code_change(OldVsn, LoopState, Extra)</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#handle_call/3" data-no-tooltip="" translate="no">handle_call/3</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#handle_cast/2" data-no-tooltip="" translate="no">handle_cast(Msg, LoopState)</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#handle_info/2" data-no-tooltip="" translate="no">handle_info(Info, LoopState)</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#init/1" data-no-tooltip="" translate="no">init/1</a>
+
+      </div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#receive_transaction/1" data-no-tooltip="" translate="no">receive_transaction/1</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Entry point for transactions received from the network via EPTO broadcast.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#start_link/3" data-no-tooltip="" translate="no">start_link(Namespace, OntState, Options)</a>
+
+      </div>
+
+        <div class="summary-synopsis"><p>Starts the transaction pipeline gen_server for a specific namespace.</p></div>
+
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-signature">
+        <a href="#terminate/2" data-no-tooltip="" translate="no">terminate/2</a>
+
+      </div>
+
+    </div>
+
 </div>
 
-<h3 class="function"><a name="code_change-3">code_change/3</a></h3>
-<div class="spec">
-<p><code>code_change(OldVsn, LoopState, Extra) -&gt; any()</code></p>
-<p> </p>
+  </section>
+
+
+  <section id="types" class="details-list">
+    <h1 class="section-heading">
+      <a class="hover-link" href="#types">
+        <i class="ri-link-m" aria-hidden="true"></i>
+      </a>
+      <span class="text">Types</span>
+    </h1>
+    <div class="types-list">
+<section class="detail" id="t:erlog_state/0">
+
+  <div class="detail-header">
+    <a href="#t:erlog_state/0" class="detail-link" data-no-tooltip="" aria-label="Link to this opaque">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">erlog_state()</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/_build/docs/lib/bbsvx/include/bbsvx.hrl#L266" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">-opaque</span> erlog_state()</pre>
+
+      </div>
+
+
+  </section>
+</section>
+<section class="detail" id="t:goal_result/0">
+
+  <div class="detail-header">
+    <a href="#t:goal_result/0" class="detail-link" data-no-tooltip="" aria-label="Link to this type">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">goal_result()</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/_build/docs/lib/bbsvx/include/bbsvx.hrl#L35" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">-type</span> goal_result() ::
+          #goal_result{namespace :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:binary/0">binary</a>(),
+                       result :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:atom/0">atom</a>(),
+                       diff :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:term/0">term</a>(),
+                       address :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:binary/0">binary</a>(),
+                       signature :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:binary/0">binary</a>()}.</pre>
+
+      </div>
+
+
+  </section>
+</section>
+<section class="detail" id="t:inet_address/0">
+
+  <div class="detail-header">
+    <a href="#t:inet_address/0" class="detail-link" data-no-tooltip="" aria-label="Link to this type">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">inet_address()</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/_build/docs/lib/bbsvx/include/bbsvx.hrl#L113" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">-type</span> inet_address() :: <a href="https://www.erlang.org/doc/apps/kernel/inet.html#t:hostname/0">inet:hostname</a>() | <a href="https://www.erlang.org/doc/apps/kernel/inet.html#t:ip_address/0">inet:ip_address</a>().</pre>
+
+      </div>
+
+
+  </section>
+</section>
+<section class="detail" id="t:node_entry/0">
+
+  <div class="detail-header">
+    <a href="#t:node_entry/0" class="detail-link" data-no-tooltip="" aria-label="Link to this type">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">node_entry()</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/_build/docs/lib/bbsvx/include/bbsvx.hrl#L121" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">-type</span> node_entry() ::
+          #node_entry{node_id :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:binary/0">binary</a>() | undefined,
+                      host :: <a href="#t:inet_address/0">inet_address</a>() | <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:binary/0">binary</a>() | local,
+                      port :: <a href="https://www.erlang.org/doc/apps/kernel/inet.html#t:port_number/0">inet:port_number</a>()}.</pre>
+
+      </div>
+
+
+  </section>
+</section>
+<section class="detail" id="t:ont_state/0">
+
+  <div class="detail-header">
+    <a href="#t:ont_state/0" class="detail-link" data-no-tooltip="" aria-label="Link to this type">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">ont_state()</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/_build/docs/lib/bbsvx/include/bbsvx.hrl#L71" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">-type</span> ont_state() ::
+          #ont_state{namespace :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:binary/0">binary</a>(),
+                     previous_ts :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:integer/0">integer</a>(),
+                     current_ts :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:integer/0">integer</a>(),
+                     prolog_state :: <a href="#t:erlog_state/0">erlog_state</a>(),
+                     local_index :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:integer/0">integer</a>(),
+                     current_index :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:integer/0">integer</a>(),
+                     current_address :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:binary/0">binary</a>(),
+                     next_address :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:binary/0">binary</a>(),
+                     contact_nodes :: [<a href="#t:node_entry/0">node_entry</a>()]}.</pre>
+
+      </div>
+
+
+  </section>
+</section>
+<section class="detail" id="t:transaction/0">
+
+  <div class="detail-header">
+    <a href="#t:transaction/0" class="detail-link" data-no-tooltip="" aria-label="Link to this type">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">transaction()</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/_build/docs/lib/bbsvx/include/bbsvx.hrl#L104" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">-type</span> transaction() ::
+          #transaction{index :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:integer/0">integer</a>(),
+                       type :: creation | goal,
+                       signature :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:binary/0">binary</a>(),
+                       ts_created :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:integer/0">integer</a>(),
+                       ts_posted :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:integer/0">integer</a>(),
+                       ts_delivered :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:integer/0">integer</a>(),
+                       ts_processed :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:integer/0">integer</a>(),
+                       source_ontology_id :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:binary/0">binary</a>(),
+                       prev_address :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:binary/0">binary</a>(),
+                       prev_hash :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:binary/0">binary</a>(),
+                       current_address :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:binary/0">binary</a>(),
+                       namespace :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:binary/0">binary</a>(),
+                       leader :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:binary/0">binary</a>() | undefined,
+                       external_predicates :: [<a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:atom/0">atom</a>()],
+                       payload :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:term/0">term</a>(),
+                       diff :: [<a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:term/0">term</a>()],
+                       status :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:atom/0">atom</a>()}.</pre>
+
+      </div>
+
+
+  </section>
+</section>
+
+    </div>
+  </section>
+
+  <section id="functions" class="details-list">
+    <h1 class="section-heading">
+      <a class="hover-link" href="#functions">
+        <i class="ri-link-m" aria-hidden="true"></i>
+      </a>
+      <span class="text">Functions</span>
+    </h1>
+    <div class="functions-list">
+<section class="detail" id="accept_transaction/1">
+
+  <div class="detail-header">
+    <a href="#accept_transaction/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">accept_transaction/1</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_transaction_pipeline.erl#L167" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">-spec</span> accept_transaction(<a href="#t:transaction/0">transaction</a>()) -> ok.</pre>
+
+      </div>
+
+<p>Entry point for locally created transactions that need to be broadcast to the network.</p><p>This is the starting point for new transactions originating from this node. The transaction
+is queued for acceptance processing where it will be broadcast via EPTO to all network peers.</p><h2 id="accept_transaction/1-parameters" class="section-heading"><a href="#accept_transaction/1-parameters" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Parameters</span></h2><ul><li><code class="inline">Transaction</code> - A transaction record with status <code class="inline">created</code></li></ul><h2 id="accept_transaction/1-flow" class="section-heading"><a href="#accept_transaction/1-flow" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Flow</span></h2><ol><li>Extracts namespace from transaction</li><li>Enqueues transaction in the accept stage queue</li><li>Accept stage worker broadcasts transaction via EPTO</li><li>Returns immediately without waiting for processing</li></ol>
+  </section>
+</section>
+<section class="detail" id="accept_transaction_result/1">
+
+  <div class="detail-header">
+    <a href="#accept_transaction_result/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">accept_transaction_result/1</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_transaction_pipeline.erl#L231" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">-spec</span> accept_transaction_result(<a href="#t:goal_result/0">goal_result</a>()) -> ok.</pre>
+
+      </div>
+
+<p>Entry point for goal execution results broadcast by leader nodes.</p><p>When a leader node executes a goal (Prolog query), it broadcasts the result to all followers.
+This function receives those results and queues them for follower nodes to apply the
+resulting state changes.</p><h2 id="accept_transaction_result/1-parameters" class="section-heading"><a href="#accept_transaction_result/1-parameters" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Parameters</span></h2><ul><li><code class="inline">GoalResult</code> - Result of goal execution including success/failure and state diffs</li></ul><h2 id="accept_transaction_result/1-flow" class="section-heading"><a href="#accept_transaction_result/1-flow" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Flow</span></h2><ol><li>Extracts namespace from goal result</li><li>Enqueues result in the transaction results queue</li><li>Follower processing applies the result diff to local state</li><li>Returns immediately without waiting for application</li></ol>
+  </section>
+</section>
+<section class="detail" id="code_change/3">
+
+  <div class="detail-header">
+    <a href="#code_change/3" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">code_change(OldVsn, LoopState, Extra)</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_transaction_pipeline.erl#L302" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="handle_call/3">
+
+  <div class="detail-header">
+    <a href="#handle_call/3" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">handle_call/3</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_transaction_pipeline.erl#L285" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="handle_cast/2">
+
+  <div class="detail-header">
+    <a href="#handle_cast/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">handle_cast(Msg, LoopState)</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_transaction_pipeline.erl#L288" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="handle_info/2">
+
+  <div class="detail-header">
+    <a href="#handle_info/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">handle_info(Info, LoopState)</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_transaction_pipeline.erl#L291" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="init/1">
+
+  <div class="detail-header">
+    <a href="#init/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">init/1</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_transaction_pipeline.erl#L238" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+<section class="detail" id="receive_transaction/1">
+
+  <div class="detail-header">
+    <a href="#receive_transaction/1" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">receive_transaction/1</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_transaction_pipeline.erl#L189" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">-spec</span> receive_transaction(<a href="#t:transaction/0">transaction</a>()) -> ok.</pre>
+
+      </div>
+
+<p>Entry point for transactions received from the network via EPTO broadcast.</p><p>This handles transactions that have been broadcast by other nodes and delivered through
+the EPTO consensus protocol. These transactions enter the validation stage to be ordered
+and processed according to the blockchain's sequential requirements.</p><h2 id="receive_transaction/1-parameters" class="section-heading"><a href="#receive_transaction/1-parameters" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Parameters</span></h2><ul><li><code class="inline">Transaction</code> - A transaction record received from network peers</li></ul><h2 id="receive_transaction/1-flow" class="section-heading"><a href="#receive_transaction/1-flow" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Flow</span></h2><ol><li>Logs the received transaction for debugging</li><li>Enqueues transaction in the validation stage queue  </li><li>Validation stage orders transactions by index before processing</li><li>Returns immediately without waiting for validation</li></ol>
+  </section>
+</section>
+<section class="detail" id="start_link/3">
+
+  <div class="detail-header">
+    <a href="#start_link/3" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">start_link(Namespace, OntState, Options)</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_transaction_pipeline.erl#L137" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+      <div class="specs">
+
+          <pre translate="no"><span class="attribute">-spec</span> start_link(Namespace :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:binary/0">binary</a>(), OntState :: <a href="#t:ont_state/0">ont_state</a>(), Options :: <a href="https://www.erlang.org/doc/apps/erts/erlang.html#t:map/0">map</a>()) ->
+                    <a href="https://www.erlang.org/doc/apps/stdlib/gen_server.html#t:start_ret/0">gen_server:start_ret</a>().</pre>
+
+      </div>
+
+<p>Starts the transaction pipeline gen_server for a specific namespace.</p><p>The server is registered with gproc using the pattern <code class="inline">{bbsvx_transaction_pipeline, Namespace}</code>
+to allow unique pipeline processes per namespace.</p><h2 id="start_link/3-parameters" class="section-heading"><a href="#start_link/3-parameters" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Parameters</span></h2><ul><li><code class="inline">Namespace</code> - Binary namespace identifier for the ontology</li><li><code class="inline">OntState</code> - Current ontology state containing blockchain indices and addresses</li><li><code class="inline">Options</code> - Configuration map (currently unused)</li></ul><h2 id="start_link/3-returns" class="section-heading"><a href="#start_link/3-returns" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Returns</span></h2><p>Standard gen_server start result (<code class="inline">{ok, Pid}</code> | <code class="inline">{error, Reason}</code>)</p><h2 id="start_link/3-side-effects" class="section-heading"><a href="#start_link/3-side-effects" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Side Effects</span></h2><ul><li>Creates job queues for all transaction processing stages</li><li>Spawns linked worker processes for each stage</li><li>Registers the process with gproc for namespace-based lookup</li></ul>
+  </section>
+</section>
+<section class="detail" id="terminate/2">
+
+  <div class="detail-header">
+    <a href="#terminate/2" class="detail-link" data-no-tooltip="" aria-label="Link to this function">
+      <i class="ri-link-m" aria-hidden="true"></i>
+    </a>
+    <div class="heading-with-actions">
+      <h1 class="signature" translate="no">terminate/2</h1>
+
+
+        <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/src/bbsvx_transaction_pipeline.erl#L294" class="icon-action" rel="help" aria-label="View Source">
+          <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        </a>
+
+    </div>
+  </div>
+
+  <section class="docstring">
+
+
+  </section>
+</section>
+
+    </div>
+  </section>
+
+    <footer class="footer">
+      <p>
+
+          <span class="line">
+            <a href="https://hex.pm/packages/bbsvx/0.1.0" class="footer-hex-package">Hex Package</a>
+
+            <a href="https://preview.hex.pm/preview/bbsvx/0.1.0">Hex Preview</a>
+
+          </span>
+
+        <span class="line">
+          <button class="a-main footer-button display-quick-switch" title="Search HexDocs packages">
+            Search HexDocs
+          </button>
+
+            <a href="bbsvx.epub" title="ePub version">
+              Download ePub version
+            </a>
+
+        </span>
+      </p>
+
+      <p class="built-using">
+        Built using
+        <a href="https://github.com/elixir-lang/ex_doc" title="ExDoc" target="_blank" rel="help noopener" translate="no">ExDoc</a> (v0.38.2) for the
+
+          <a href="https://erlang.org" title="Erlang" target="_blank" translate="no">Erlang programming language</a>
+
+      </p>
+
+    </footer>
+  </div>
+</main>
 </div>
 
-<h3 class="function"><a name="handle_call-3">handle_call/3</a></h3>
-<div class="spec">
-<p><code>handle_call(X1, From, LoopState) -&gt; any()</code></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="handle_cast-2">handle_cast/2</a></h3>
-<div class="spec">
-<p><code>handle_cast(Msg, LoopState) -&gt; any()</code></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="handle_info-2">handle_info/2</a></h3>
-<div class="spec">
-<p><code>handle_info(Info, LoopState) -&gt; any()</code></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="init-1">init/1</a></h3>
-<div class="spec">
-<p><code>init(X1) -&gt; any()</code></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="receive_transaction-1">receive_transaction/1</a></h3>
-<div class="spec">
-<p><code>receive_transaction(Transaction::<a href="#type-transaction" docgen-rel="seetype" docgen-href="#transaction/0">transaction()</a>) -&gt; ok</code><br></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="start_link-3">start_link/3</a></h3>
-<div class="spec">
-<p><code>start_link(Namespace::binary(), OntState::<a href="#type-ont_state" docgen-rel="seetype" docgen-href="#ont_state/0">ont_state()</a>, Options::map()) -&gt; <a href="/home/yan/src/stdlib/doc/gen_server.html#type-start_ret" docgen-rel="seetype" docgen-href="stdlib:gen_server#start_ret/0">gen_server:start_ret()</a></code><br></p>
-<p> </p>
-</div>
-
-<h3 class="function"><a name="terminate-2">terminate/2</a></h3>
-<div class="spec">
-<p><code>terminate(Reason, State) -&gt; any()</code></p>
-<p> </p>
-</div>
-<hr>
-
-<div class="navbar"><a name="#navbar_bottom"></a><table width="100%" border="0" cellspacing="0" cellpadding="2" summary="navigation bar"><tr><td><a href="overview-summary.html" target="overviewFrame">Overview</a></td><td><a href="http://www.erlang.org/"><img src="erlang.png" align="right" border="0" alt="erlang logo"></a></td></tr></table></div>
-<p><i>Generated by EDoc</i></p>
-</body>
+  </body>
 </html>

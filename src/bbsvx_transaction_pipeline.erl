@@ -250,7 +250,7 @@ init([
         "Starting transaction pipeline for ~p current index:~p  local_index:~p",
         [Namespace, CurrentIndex, LocalIndex]
     ),
-    %% @TOOD: jobs offers many options, we may use them to simplify
+    %% @TODO: jobs offers many options, we may use them to simplify
     ok = jobs:add_queue({stage_transaction_validate, Namespace}, [passive]),
 
     ok = jobs:add_queue({stage_transaction_process, Namespace}, [passive]),
