@@ -73,6 +73,7 @@ The pipeline maintains blockchain state including:
     accept_transaction_result/1,
     receive_transaction/1
 ]).
+
 %% Callbacks
 -export([
     init/1,
