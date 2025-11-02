@@ -736,10 +736,10 @@ transaction_validate_worker(Namespace, Parent) ->
                     %% Transaction is stored in pending map, parent owns it now
                     Parent ! {validation_state_updated, NewValidationState};
 
-                {history_accepted, Index, CurrentAddress, NewValidationState} ->
+                {history_accepted, Index, NewAddr, NewValidationState} ->
                     %% History transaction accepted, send to parent
                     %% Parent will check pending and re-queue if needed
-                    Parent ! {history_transaction_accepted, Index, CurrentAddress, NewValidationState}
+                    Parent ! {history_transaction_accepted, Index, NewAddr, NewValidationState}
             end;
 
         {error, Reason} ->

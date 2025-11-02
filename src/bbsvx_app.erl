@@ -239,6 +239,11 @@ init_metrics() ->
         {name, <<"bbsvx_spray_edge_info">>},
         {labels, [<<"id">>, <<"source">>, <<"target">>, <<"namespace">>]},
         {help, "Edge information for Node Graph visualization"}
+    ]),
+    prometheus_gauge:declare([
+        {name, <<"bbsvx_pending_transactions">>},
+        {labels, [<<"namespace">>]},
+        {help, "Number of pending (out-of-order) transactions waiting to be processed"}
     ]).
 
 %%%=============================================================================

@@ -11,7 +11,8 @@
       "WebSearch",
       "Bash(rebar3 release:*)",
       "Bash(timeout 10s rebar3 shell:*)",
-      "Bash(rebar3 shell:*)"
+      "Bash(rebar3 shell:*)",
+      "Bash(rebar3 ct --dir ct/bbsvx --suite bbsvx_ontology_actor_SUITE --group pending_transactions)"
     ],
     "deny": [],
     "ask": []
