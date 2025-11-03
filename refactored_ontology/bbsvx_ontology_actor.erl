@@ -243,29 +243,48 @@ init([Namespace, Options]) ->
             ?'log-error'("Transaction table missing for namespace ~p", [Namespace]),
             {stop, {error, {missing_transaction_table, Namespace}}};
         true ->
-            State = #state{
-                namespace = Namespace,
-                repos_table = bbsvx_ont_service:binary_to_table_name(Namespace),
-                boot = maps:get(boot, Options, create),
-                ont_state = undefined,
-                validation_state = #validation_state{}
-            },
+            %% Build initial Prolog state for all boot modes
+            case build_initial_prolog_state(Namespace) of
+                {ok, PrologState} ->
+                    %% Create initial ont_state with Prolog state
+                    OntState = #ont_state{
+                        namespace = Namespace,
+                        current_ts = 0,
+                        previous_ts = -1,
+                        local_index = -1,
+                        current_index = -1,
+                        current_address = <<"-1">>,
+                        next_address = <<"0">>,
+                        contact_nodes = [],
+                        prolog_state = PrologState
+                    },
 
-            %% Start in appropriate state based on boot mode
-            %% Only 3 valid boot modes: create, connect, reconnect
-            case maps:get(boot, Options, create) of
-                create ->
-                    %% Creating new ontology - wait for genesis transaction
-                    {ok, wait_for_genesis_transaction, State,
-                     [{state_timeout, 5000, genesis_timeout}]};
-                connect ->
-                    %% Connecting to existing ontology - wait for network registration
-                    {ok, wait_for_registration, State,
-                     [{state_timeout, 30000, registration_timeout}]};
-                reconnect ->
-                    %% Reconnecting to ontology after restart - wait for registration
-                    {ok, wait_for_registration, State,
-                     [{state_timeout, 60000, registration_timeout}]}
+                    State = #state{
+                        namespace = Namespace,
+                        repos_table = bbsvx_ont_service:binary_to_table_name(Namespace),
+                        boot = maps:get(boot, Options, create),
+                        ont_state = OntState,
+                        validation_state = #validation_state{}
+                    },
+
+                    %% Start in appropriate state based on boot mode
+                    %% Only 3 valid boot modes: create, connect, reconnect
+                    case maps:get(boot, Options, create) of
+                        create ->
+                            %% Creating new ontology - wait for genesis transaction
+                            {ok, wait_for_genesis_transaction, State,
+                             [{state_timeout, 5000, genesis_timeout}]};
+                        connect ->
+                            %% Connecting to existing ontology - wait for network registration
+                            {ok, wait_for_registration, State,
+                             [{state_timeout, 30000, registration_timeout}]};
+                        reconnect ->
+                            %% Reconnecting to ontology after restart - load history first
+                            {ok, initialize_ontology, State}
+                    end;
+                {error, Reason} ->
+                    ?'log-error'("Failed to build initial Prolog state: ~p", [Reason]),
+                    {stop, {error, {prolog_init_failed, Reason}}}
             end
     end.
 
@@ -299,44 +318,32 @@ wait_for_genesis_transaction(enter, _, #state{namespace = Namespace} = State) ->
 wait_for_genesis_transaction(
     info,
     #transaction{type = creation, namespace = Namespace} = GenesisTx,
-    #state{namespace = Namespace} = State
+    #state{namespace = Namespace, ont_state = OntState} = State
 ) ->
     ?'log-info'("Ontology Actor ~p received genesis transaction", [Namespace]),
 
-    %% Build initial Prolog state
-    case build_initial_prolog_state(Namespace) of
-        {ok, PrologState} ->
-            %% Create initial ontology state (no history for new ontology)
-            OntState = #ont_state{
-                namespace = Namespace,
-                current_ts = 0,
-                previous_ts = -1,
-                local_index = 0,
-                current_index = 0,
-                current_address = <<"0">>,
-                next_address = <<"1">>,
-                contact_nodes = [],
-                prolog_state = PrologState
-            },
+    %% Update ontology state for genesis (ont_state already created in init)
+    UpdatedOntState = OntState#ont_state{
+        local_index = 0,
+        current_index = 0,
+        current_address = <<"0">>,
+        next_address = <<"1">>
+    },
 
-            %% Record genesis transaction with proper indices and addresses
-            ProcessedGenesisTx = GenesisTx#transaction{
-                index = 0,
-                status = processed,
-                prev_address = <<"-1">>,
-                current_address = <<"0">>
-            },
-            bbsvx_transaction:record_transaction(ProcessedGenesisTx),
+    %% Record genesis transaction with proper indices and addresses
+    ProcessedGenesisTx = GenesisTx#transaction{
+        index = 0,
+        status = processed,
+        prev_address = <<"-1">>,
+        current_address = <<"0">>
+    },
+    bbsvx_transaction:record_transaction(ProcessedGenesisTx),
 
-            ?'log-info'("Genesis transaction stored for ontology ~p", [Namespace]),
+    ?'log-info'("Genesis transaction stored for ontology ~p", [Namespace]),
 
-            %% For boot=create, skip initialize_ontology (no history to load)
-            %% Go directly to syncing state
-            {next_state, syncing, State#state{ont_state = OntState}};
-        {error, Reason} ->
-            ?'log-error'("Failed to build initial Prolog state: ~p", [Reason]),
-            {stop, {error, Reason}, State}
-    end;
+    %% For boot=create, skip initialize_ontology (no history to load)
+    %% Go directly to syncing state
+    {next_state, syncing, State#state{ont_state = UpdatedOntState}};
 
 wait_for_genesis_transaction(state_timeout, genesis_timeout, State) ->
     ?'log-error'("Timeout waiting for genesis transaction"),
@@ -349,23 +356,24 @@ wait_for_genesis_transaction(_EventType, _Event, _State) ->
 %% initialize_ontology State
 %%-----------------------------------------------------------------------------
 
-initialize_ontology(
-    enter,
-    _,
-    #state{namespace = Namespace, ont_state = OntState} = State
-) ->
+initialize_ontology(enter, _, #state{namespace = Namespace} = State) ->
+    ?'log-info'("Ontology Actor ~p entering initialize_ontology state", [Namespace]),
+    %% Use timeout to trigger history loading (enter callbacks can only use timeout actions)
+    {keep_state, State, [{state_timeout, 0, load_history}]};
+
+initialize_ontology(state_timeout, load_history, #state{namespace = Namespace, ont_state = OntState, repos_table = ReposTable} = State) ->
     ?'log-info'("Ontology Actor ~p loading history", [Namespace]),
 
-    case load_history(OntState, State#state.repos_table) of
-        #ont_state{} = NewOntState ->
-            ?'log-info'(
-                "Loaded history: local_index=~p, current_index=~p",
-                [NewOntState#ont_state.local_index, NewOntState#ont_state.current_index]
-            ),
+    %% Load history (this can be slow, but we're not blocking init)
+    case load_history(OntState, ReposTable) of
+        #ont_state{local_index = LocalIndex, current_index = CurrentIndex} = NewOntState ->
+            ?'log-info'("Loaded history: local_index=~p, current_index=~p", [LocalIndex, CurrentIndex]),
+
+            %% Transition to wait_for_registration with loaded state
             {next_state, wait_for_registration, State#state{ont_state = NewOntState}};
         {error, Reason} ->
             ?'log-error'("Failed to load history: ~p", [Reason]),
-            {stop, {error, Reason}, State}
+            {stop, {error, {load_history_failed, Reason}}, State}
     end;
 
 initialize_ontology(_EventType, _Event, _State) ->
@@ -377,7 +385,7 @@ initialize_ontology(_EventType, _Event, _State) ->
 
 wait_for_registration(enter, _, #state{namespace = Namespace} = State) ->
     ?'log-info'("Ontology Actor ~p waiting for network registration", [Namespace]),
-    {keep_state, State};
+    {keep_state, State, [{state_timeout, 60000, registration_timeout}]};
 
 wait_for_registration(
     info,
@@ -526,11 +534,12 @@ syncing(
     #state{namespace = Namespace, ont_state = OntState} = State
 ) ->
     NewOntState = OntState#ont_state{
+        current_index = Index,
         local_index = Index,
         current_address = CurrentAddress
     },
 
-    ?'log-info'("History transaction ~p accepted, local_index updated", [Index]),
+    ?'log-info'("History transaction ~p accepted, current_index and local_index updated to ~p", [Index, Index]),
 
     %% Check if next transaction is pending and re-queue it
     NextIndex = Index + 1,
