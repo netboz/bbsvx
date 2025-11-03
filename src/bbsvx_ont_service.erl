@@ -23,6 +23,7 @@
 %% External API
 -export([
     start_link/0,
+    new_ontology/1,
     new_ontology/2,
     get_ontology/1,
     delete_ontology/1,
@@ -64,6 +65,10 @@
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
+
+-spec new_ontology(ontology()) -> ok | {error, atom()}.
+new_ontology(Ontology) ->
+    new_ontology(Ontology, #{}).
 
 -spec new_ontology(ontology(), map()) -> ok | {error, atom()}.
 new_ontology(#ontology{namespace = Namespace}, Options) ->
