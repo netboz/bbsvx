@@ -23,13 +23,14 @@
 %% External API
 -export([
     start_link/0,
-    new_ontology/1,
-    new_ontology/2,
+    create_ontology/1,
+    create_ontology/2,
     get_ontology/1,
     delete_ontology/1,
     prove/2,
     store_goal/1,
     get_goal/1,
+    connect_ontology/1,
     connect_ontology/2,
     reconnect_ontology/1,
     disconnect_ontology/1,
@@ -66,14 +67,18 @@ start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 
--spec new_ontology(ontology()) -> ok | {error, atom()}.
-new_ontology(Ontology) ->
-    new_ontology(Ontology, #{}).
+-spec create_ontology(Namespace :: binary()) -> ok | {error, atom()}.
+create_ontology(Namespace) when is_binary(Namespace) ->
+    create_ontology(Namespace, #{}).
 
--spec new_ontology(ontology(), map()) -> ok | {error, atom()}.
-new_ontology(#ontology{namespace = Namespace}, Options) ->
-    gen_server:call(?SERVER, {new_ontology, Namespace, Options}).
+-spec create_ontology(Namespace :: binary(), map()) -> ok | {error, atom()}.
+create_ontology(Namespace, Options) when is_binary(Namespace) ->
+    gen_server:call(?SERVER, {create_ontology, Namespace, Options}).
 
+
+-spec connect_ontology(Namespace :: binary()) -> ok | {error, atom()}.
+connect_ontology(Namespace) ->
+    connect_ontology(Namespace, #{}).
 
 -spec connect_ontology(Namespace :: binary(), map()) -> ok | {error, atom()}.
 connect_ontology(Namespace, Options) ->

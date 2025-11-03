@@ -5,7 +5,7 @@
 %%% @end
 %%%-----------------------------------------------------------------------------
 
--module(bbsvx_ontology_actor_SUITE).
+-module(bbsvx_actor_ontology_SUITE).
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("stdlib/include/assert.hrl").

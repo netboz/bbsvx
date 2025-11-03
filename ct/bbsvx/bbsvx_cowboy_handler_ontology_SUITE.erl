@@ -32,9 +32,25 @@ all() ->
      updating_an_ont_from_shared_to_local].
 
 init_per_suite(Config) ->
-    application:ensure_all_started(bbsvx),
-    application:start(bbsvx),
-    Config.
+    %% Start HTTP client
+    {ok, _} = application:ensure_all_started(inets),
+
+    %% Start dependencies in order
+    {ok, _} = application:ensure_all_started(gproc),
+    {ok, _} = application:ensure_all_started(jobs),
+    {ok, _} = application:ensure_all_started(mnesia),
+    {ok, _} = application:ensure_all_started(cowboy),
+
+    %% Start bbsvx application (which starts the HTTP server)
+    case application:ensure_all_started(bbsvx) of
+        {ok, Started} ->
+            ct:pal("Started applications: ~p", [Started]),
+            %% Give HTTP server time to start
+            timer:sleep(1000),
+            [{started_apps, Started} | Config];
+        {error, {AppName, Reason}} ->
+            ct:fail("Failed to start ~p: ~p", [AppName, Reason])
+    end.
 
 init_per_testcase(_TestName, Config) ->
     Config.
@@ -43,16 +59,18 @@ end_per_testcase(_TestName, Config) ->
     Config.
 
 end_per_suite(Config) ->
-    Config.
+    %% Stop applications in reverse order
+    Started = proplists:get_value(started_apps, Config, []),
+    [application:stop(App) || App <- lists:reverse(Started)],
+    application:stop(inets),
+    ok.
 
 %%%=============================================================================
 %%% Tests
 %%%=============================================================================
 
 can_create_local_ontology(_Config) ->
-    application:ensure_all_started(bbsvx),
-    application:start(bbsvx),
-    ct:pal("coucou"),
+    %% Application already started in init_per_suite
     DBody = jiffy:encode(#{namespace => <<"ont_test">>, type => <<"local">>}),
     ct:pal("DBody ~p", [DBody]),
     {ok, {{Version, ReturnCode, ReasonPhrase}, Headers, RetBody}} =
