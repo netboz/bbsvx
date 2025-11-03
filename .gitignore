@@ -10,7 +10,6 @@ _vendor
 *.swo
 .erlang.cookie
 ebin
-doc
 log
 *.log
 Mnesia.*

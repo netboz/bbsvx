@@ -1,11 +1,12 @@
 %%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Gen Server built from template.
-%%% @author yan
-%%% @end
+%%% BBSvx Cryptographic Service
 %%%-----------------------------------------------------------------------------
 
 -module(bbsvx_crypto_service).
+
+-moduledoc "BBSvx Cryptographic Service\n\n"
+"Gen Server for cryptographic operations including key generation, signing, and hashing.\n\n"
+"Provides node identity, digital signatures, and transaction address calculation.".
 
 -author("yan").
 
@@ -15,7 +16,6 @@
 
 -include_lib("logjam/include/logjam.hrl").
 
-
 %%%=============================================================================
 %%% Export and Defs
 %%%=============================================================================
@@ -23,8 +23,14 @@
 %% External API
 -export([start_link/0, my_id/0, sign/1, get_public_key/0, calculate_hash_address/2]).
 %% Callbacks
--export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
-         code_change/3]).
+-export([
+    init/1,
+    handle_call/3,
+    handle_cast/2,
+    handle_info/2,
+    terminate/2,
+    code_change/3
+]).
 
 -record(state, {privkey :: binary(), pubkey :: binary(), node_id :: binary()}).
 
@@ -36,13 +42,7 @@
 start_link() ->
     gen_server:start_link({via, gproc, {n, l, ?MODULE}}, ?MODULE, [], []).
 
-%%%-----------------------------------------------------------------------------
-%%% @doc
-%%% my_id() -> binary().
-%%% Returns the id of this node.
-%%% At this moent, it is the public key stored into the state of the gen_server
-%%% @end
-%%%-----------------------------------------------------------------------------
+%% Returns the ID of this node (base64-encoded public key)
 
 -spec my_id() -> binary().
 my_id() ->
@@ -56,23 +56,24 @@ sign(Data) ->
 get_public_key() ->
     gen_server:call({via, gproc, {n, l, ?MODULE}}, get_public_key).
 
-calculate_hash_address(Index,
-                       #transaction{ts_created = TsCreated,
-                                    source_ontology_id = SourceOntologyId,
-                                    prev_address = PrevAddress,
-                                    prev_hash = PrevHash,
-                                    namespace = Namespace,
-                                    leader = Leader,
-                                    payload = Payload}) ->
-    crypto:hash(blake2b,
-                term_to_binary({Index,
-                                TsCreated,
-                                SourceOntologyId,
-                                PrevAddress,
-                                PrevHash,
-                                Namespace,
-                                Leader,
-                                Payload})).
+calculate_hash_address(
+    Index,
+    #transaction{
+        ts_created = TsCreated,
+        source_ontology_id = SourceOntologyId,
+        prev_address = PrevAddress,
+        prev_hash = PrevHash,
+        namespace = Namespace,
+        leader = Leader,
+        payload = Payload
+    }
+) ->
+    crypto:hash(
+        blake2b,
+        term_to_binary(
+            {Index, TsCreated, SourceOntologyId, PrevAddress, PrevHash, Namespace, Leader, Payload}
+        )
+    ).
 
 %%%=============================================================================
 %%% Gen Server Callbacks
@@ -82,10 +83,11 @@ init([]) ->
     ?'log-info'("Starting crypto service"),
     %% Create a private ets table to store the data loaded from DETS
     {PubKey, PrivKey} = crypto:generate_key(eddsa, ed25519),
-    {ok,
-     #state{privkey = PrivKey,
-            pubkey = PubKey,
-            node_id = base64:encode(PubKey, #{padding => false, mode => urlsafe})}}.
+    {ok, #state{
+        privkey = PrivKey,
+        pubkey = PubKey,
+        node_id = base64:encode(PubKey, #{padding => false, mode => urlsafe})
+    }}.
 
 handle_call(my_id, _From, State) ->
     {reply, State#state.node_id, State};

@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="x-ua-compatible" content="ie=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="ExDoc v0.38.2">
+    <meta name="project" content="bbsvx v0.1.0">
+
+
+    <title>Overview — bbsvx v0.1.0</title>
+
+    <link rel="stylesheet" href="dist/html-erlang-DQDXQC7W.css" />
+
+    <script defer src="dist/sidebar_items-B3D16BE0.js"></script>
+    <script defer src="docs_config.js"></script>
+    <script defer src="dist/html-DPJLHKSM.js"></script>
+
+  </head>
+  <body>
+    <script>(()=>{var t="ex_doc:settings",e="dark";var o="dark",s="light";var E="sidebar_state",n="closed";var r="sidebar_width";var a="sidebar-open";var i=new URLSearchParams(window.location.search),S=i.get("theme")||JSON.parse(localStorage.getItem(t)||"{}").theme;(S===o||S!==s&&window.matchMedia("(prefers-color-scheme: dark)").matches)&&document.body.classList.add(e);var d=sessionStorage.getItem(E),A=d!==n&&!window.matchMedia(`screen and (max-width: ${768}px)`).matches;document.body.classList.toggle(a,A);var c=sessionStorage.getItem(r);c&&document.body.style.setProperty("--sidebarWidth",`${c}px`);var p=/(Macintosh|iPhone|iPad|iPod)/.test(window.navigator.userAgent);document.documentElement.classList.toggle("apple-os",p);})();
+</script>
+
+<div class="body-wrapper">
+
+<button id="sidebar-menu" class="sidebar-button sidebar-toggle" aria-label="toggle sidebar" aria-controls="sidebar">
+  <i class="ri-menu-line ri-lg" title="Collapse/expand sidebar"></i>
+</button>
+
+<nav id="sidebar" class="sidebar">
+
+  <div class="sidebar-header">
+    <div class="sidebar-projectInfo">
+
+      <div>
+        <a href="https://github.com/bbsvx/bbsvx" class="sidebar-projectName" translate="no">
+bbsvx
+        </a>
+        <div class="sidebar-projectVersion" translate="no">
+          v0.1.0
+        </div>
+      </div>
+    </div>
+    <ul id="sidebar-list-nav" class="sidebar-list-nav" role="tablist" data-extras=""></ul>
+  </div>
+</nav>
+
+<output role="status" id="toast"></output>
+
+<main class="content page-extra" id="main" data-type="extras">
+  <div id="content" class="content-inner">
+    <div class="top-search">
+      <div class="search-settings">
+        <form class="search-bar" action="search.html">
+          <label class="search-label">
+            <span class="sr-only">Search documentation of bbsvx</span>
+            <input name="q" type="text" class="search-input" placeholder="Press / to search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+          </label>
+          <button type="submit" class="search-button" aria-label="Submit Search" tabindex="-1">
+            <i class="ri-search-2-line ri-lg" aria-hidden="true"></i>
+          </button>
+          <button type="button" tabindex="-1" class="search-close-button" aria-hidden="true">
+            <i class="ri-close-line ri-lg" title="Cancel search"></i>
+          </button>
+        </form>
+        <div class="autocomplete">
+        </div>
+        <button class="icon-settings display-settings">
+          <i class="ri-settings-3-line"></i>
+          <span class="sr-only">Settings</span>
+        </button>
+      </div>
+    </div>
+
+<div id="top-content">
+  <div class="heading-with-actions top-heading">
+    <h1>BBSvx 🫧</h1>
+
+
+      <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/README.md#L1" title="View Source" class="icon-action" rel="help">
+        <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        <span class="sr-only">View Source</span>
+      </a>
+
+  </div>
+
+
+<h3 id="a-blockchain-powered-distributed-vr-system-that-actually-makes-sense" class="section-heading"><a href="#a-blockchain-powered-distributed-vr-system-that-actually-makes-sense" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text"><em>A Blockchain-Powered Distributed VR System That Actually Makes Sense</em></span></h3><hr class="thin"/><h2 id="what-s-a-bubble" class="section-heading"><a href="#what-s-a-bubble" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">What's a Bubble ? 🤔</span></h2><p>BBSvx have nothing related to what we used to know as BBS ( Bulletin Board System ).</p><p>The base unit of BBSvx is the onthology ( basically a set of concepts and the relations between them ).</p><p>Ontologies are mutable.</p><p>Onthologies can be shared or not.</p><p>All participants of a shared ontology are forming a blockchain.</p><p>An Ontology ( concepts, relations ) can be virtualized as a bounded 3D space. This is called a Bubble.</p><p>Changes in ontholgies are triguerred by agents, being themselves ontologies.</p><p>Hence Ontologies are interacting with ontologies, as the support of a virtualed 3D space.</p><p>This is BBSvx</p><hr class="thin"/><h2 id="the-distributed-bottle-emptying-problem" class="section-heading"><a href="#the-distributed-bottle-emptying-problem" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">The &quot;Distributed Bottle Emptying&quot; Problem 🍺</span></h2><p>Imagine an agent trying to empty a bottle. In traditional systems, there's usually only one rigid path to achieve this goal. But BBSvx's ontology system let you provides multiple action pathways:</p><pre><code class="prolog">action(drink_bottle(Bottle), [cap_opened(Bottle)], empty(Bottle)).
+action(wait(hour(1)), [cap_opened(Bottle), upside_down(Bottle)], empty(Bottle)).</code></pre><p>Here we see two different ways to achieve the same goal (<code class="inline">empty(Bottle)</code>): either by drinking it (requiring an opened cap) or by waiting an hour with the bottle upside down and cap opened. The agent will:</p><ol><li>Check if the goal <code class="inline">empty(Bottle)</code> is already achieved</li><li>If not, attempt to satisfy prerequisites like <code class="inline">cap_opened(Bottle)</code></li><li>Execute the transition to reach the final state</li></ol><p>This demonstrates how BBSvx's distributed ontologies enable flexible, intelligent problem-solving across the network. Knowledge about different action strategies bubbles up naturally and spreads through the SPRAY protocol, creating a shared understanding of multiple solution paths.</p><p><em>This is the real power of BubbleSoap Systems: structured knowledge that flows naturally through distributed networks, enabling emergent intelligence.</em></p><h2 id="architecture-the-bubblesoap-factory-️" class="section-heading"><a href="#architecture-the-bubblesoap-factory-️" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Architecture: The BubbleSoap Factory 🏗️</span></h2><p>BBSvx operates like a sophisticated bubble-making apparatus where each node generates and manages knowledge bubbles that interact with bubbles from other nodes. This creates a dynamic, self-organizing system powered by:</p><ul><li><strong><a href="https://hal.science/hal-01203363">SPRAY Protocol</a></strong>: Like air currents that carry bubbles, managing how nodes discover and interact with each other</li><li><strong><a href="https://www.dpss.inesc-id.pt/~mm/papers/2015/middleware_epto.pdf">EPTO Protocol</a></strong>: Ensuring bubbles merge and split in a consistent order across the network</li><li><strong>Leader Election</strong>: Because even in bubble dynamics, surface tension needs coordination</li><li><strong>Prolog Integration</strong>: Using <a href="https://github.com/rvirding/erlog">Erlog</a> to give our bubbles structured knowledge and reasoning capabilities</li></ul><hr class="thin"/><h2 id="current-status" class="section-heading"><a href="#current-status" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Current Status 📊</span></h2><p><strong>Alpha Release</strong> - Like a bubble mixture that's just reached the perfect consistency:</p><ul><li>✅ <strong>SPRAY Network</strong>: Bubbles are forming and spreading beautifully</li><li>✅ <strong>EPTO Messaging</strong>: Bubble interactions are consistently ordered</li><li>✅ <strong>Leader Election</strong>: Surface tension dynamics working perfectly</li><li>✅ <strong>Blockchain Integration</strong>: Knowledge bubbles are cryptographically secured</li><li>✅ <strong>Smart Configuration</strong>: No more command-line argument complexity</li><li>🚧 <strong>Documentation</strong>: You're reading the improved bubble manual right now!</li></ul><hr class="thin"/><h2 id="configuration-made-simple-️" class="section-heading"><a href="#configuration-made-simple-️" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Configuration Made Simple 🛠️</span></h2><p>Gone are the days of wrestling with complex command-line arguments. BBSvx now features intelligent configuration management that adapts like soap film to changing conditions.</p><h3 id="user-friendly-config-files" class="section-heading"><a href="#user-friendly-config-files" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">User-Friendly Config Files 📝</span></h3><p>BBSvx automatically searches for config files in user-friendly locations:</p><ol><li><strong>Environment variable</strong>: <code class="inline">BBSVX_CONFIG_FILE=/path/to/config</code></li><li><strong>User space</strong>: <code class="inline">~/.bbsvx/bbsvx.conf</code> (recommended for development)</li><li><strong>Current directory</strong>: <code class="inline">./bbsvx.conf</code></li><li><strong>Release default</strong>: <code class="inline">etc/bbsvx.conf</code> (production)</li></ol><p><strong>Create your personal config with one command:</strong></p><pre><code class="makeup bash" translate="no"><span class=""># Initialize user config in ~/.bbsvx/bbsvx.conf
+</span><span class="">./bin/bbsvx config init
+</span><span class="">
+</span><span class=""># Or specify a custom location
+</span><span class="">./bin/bbsvx config init --path ./my-bbsvx.conf
+</span><span class="">
+</span><span class=""># Check where your config file is located
+</span><span class="">./bin/bbsvx config locate
+</span><span class="">
+</span><span class=""># View current configuration
+</span><span class="">./bin/bbsvx show
+</span><span class="">
+</span><span class=""># Set configuration values
+</span><span class="">./bin/bbsvx set boot=root
+</span><span class="">./bin/bbsvx set network.p2p_port=3000
+</span></code></pre><p><strong>Quick config editing examples:</strong></p><pre><code class="makeup bash" translate="no"><span class=""># First time? Create the initial bubble (in your home directory)
+</span><span class="">echo &quot;boot = root&quot; &gt;&gt; ~/.bbsvx/bbsvx.conf
+</span><span class="">./bin/bbsvx start
+</span><span class="">
+</span><span class=""># Joining an existing bubble cluster? Easy as soap
+</span><span class="">echo &quot;boot = join existing.node.com 2304&quot; &gt;&gt; ~/.bbsvx/bbsvx.conf  
+</span><span class="">./bin/bbsvx start
+</span><span class="">
+</span><span class=""># Restarting? We&#39;re smart enough to detect existing bubble patterns
+</span><span class="">echo &quot;boot = auto&quot; &gt;&gt; ~/.bbsvx/bbsvx.conf
+</span><span class="">./bin/bbsvx start
+</span><span class="">
+</span><span class=""># Using current directory config
+</span><span class="">echo &quot;boot = root&quot; &gt;&gt; ./bbsvx.conf
+</span><span class="">./bin/bbsvx start
+</span></code></pre><p><strong>Environment variables work like bubble wands:</strong></p><pre><code class="makeup bash" translate="no"><span class=""># Override config file location
+</span><span class="">BBSVX_CONFIG_FILE=./my-config.conf ./bin/bbsvx start
+</span><span class="">
+</span><span class=""># Quick parameter overrides
+</span><span class="">BBSVX_BOOT=&quot;root&quot; ./bin/bbsvx start
+</span><span class="">BBSVX_P2P_PORT=3000 BBSVX_HTTP_PORT=9000 ./bin/bbsvx start
+</span></code></pre><hr class="thin"/><h2 id="dependencies" class="section-heading"><a href="#dependencies" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Dependencies 📦</span></h2><h3 id="system-requirements" class="section-heading"><a href="#system-requirements" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">System Requirements</span></h3><ul><li><strong>Erlang/OTP</strong>: 26.2 or higher (the bubble solution base)</li><li><strong>Docker</strong>: Latest version (for containerized bubble environments)</li><li><strong>GNU Make</strong>: For building the bubble apparatus</li><li><strong>GCC</strong>: The molecular compiler</li><li><strong>Git</strong>: For version control of bubble recipes</li></ul><h3 id="development-tools" class="section-heading"><a href="#development-tools" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Development Tools</span></h3><ul><li><strong>libexpat</strong>: 1.95+ (XML parsing for bubble metadata)</li><li><strong>libyaml</strong>: 0.1.4+ (YAML configuration for bubble parameters)</li><li><strong>OpenSSL</strong>: 1.0.0+ (cryptographic bubble integrity)</li><li><strong>curl</strong>: For testing bubble HTTP APIs</li></ul><h3 id="runtime-dependencies-automatically-managed" class="section-heading"><a href="#runtime-dependencies-automatically-managed" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Runtime Dependencies (Automatically Managed)</span></h3><p>BBSvx orchestrates these excellent Erlang bubble-formation libraries:</p><ul><li><strong>Cowboy</strong>: HTTP server framework (bubble communication protocol)</li><li><strong>Gproc</strong>: Process registry (bubble tracking system)</li><li><strong>Cuttlefish</strong>: Configuration management (bubble configuration schema)</li><li><strong>OpenTelemetry</strong>: Observability (bubble behavior analysis)</li><li><strong>Prometheus</strong>: Metrics collection (bubble dynamics measurement)</li><li><strong>And many more...</strong> (check <code class="inline">rebar.config</code> for the complete bubble recipe)</li></ul><hr class="thin"/><h2 id="quick-start" class="section-heading"><a href="#quick-start" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Quick Start 🚀</span></h2><h3 id="option-1-docker-recommended-for-first-bubbles" class="section-heading"><a href="#option-1-docker-recommended-for-first-bubbles" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Option 1: Docker (Recommended for First Bubbles)</span></h3><pre><code class="makeup bash" translate="no"><span class=""># Build the bubble-making image
+</span><span class="">docker build . -t bbsvx
+</span><span class="">
+</span><span class=""># Start with one root bubble and one client bubble
+</span><span class="">docker compose up --scale bbsvx_client=1
+</span><span class="">
+</span><span class=""># Feeling adventurous? Create a bubble storm!
+</span><span class="">docker compose up --scale bbsvx_client=5 -d
+</span></code></pre><p><strong>Watch the bubble dance:</strong> Visit <a href="http://localhost:3000">Grafana</a> to see your distributed bubbles in action. The &quot;Spray Monitoring&quot; dashboard shows the beautiful bubble network topology in real-time.</p><h3 id="option-2-native-build-for-bubble-scientists" class="section-heading"><a href="#option-2-native-build-for-bubble-scientists" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Option 2: Native Build (For Bubble Scientists)</span></h3><pre><code class="makeup bash" translate="no"><span class=""># Set the magic bubble environment
+</span><span class="">export BUILD_WITHOUT_QUIC=true
+</span><span class="">
+</span><span class=""># Mix the bubble solution
+</span><span class="">rebar3 compile
+</span><span class="">rebar3 release
+</span><span class="">
+</span><span class=""># Create user-friendly config and blow your first bubble
+</span><span class="">_build/default/rel/bbsvx/bin/bbsvx config init
+</span><span class="">echo &quot;boot = root&quot; &gt;&gt; ~/.bbsvx/bbsvx.conf
+</span><span class="">_build/default/rel/bbsvx/bin/bbsvx start
+</span><span class="">
+</span><span class=""># Or use current directory config
+</span><span class="">echo &quot;boot = root&quot; &gt;&gt; ./bbsvx.conf
+</span><span class="">_build/default/rel/bbsvx/bin/bbsvx start
+</span></code></pre><h3 id="option-3-development-mode-bubble-laboratory" class="section-heading"><a href="#option-3-development-mode-bubble-laboratory" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Option 3: Development Mode (Bubble Laboratory)</span></h3><pre><code class="makeup bash" translate="no"><span class=""># For hot bubble reloading and experimentation
+</span><span class="">rebar3 shell
+</span></code></pre><hr class="thin"/><h2 id="monitoring-observability" class="section-heading"><a href="#monitoring-observability" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Monitoring &amp; Observability 📊</span></h2><p>BBSvx comes with a complete bubble observation deck:</p><ul><li><strong>Grafana</strong> (<code class="inline">:3000</code>): Beautiful bubble topology visualization</li><li><strong>Prometheus</strong> (<code class="inline">:9090</code>): Bubble metrics collection</li><li><strong>Victoria Metrics</strong> (<code class="inline">:8428</code>): Time-series bubble data</li><li><strong>Loki</strong> (<code class="inline">:3100</code>): Bubble event log aggregation</li><li><strong>Dozzle</strong> (<code class="inline">:9999</code>): Real-time bubble formation logs</li></ul><hr class="thin"/><h2 id="cli-commands" class="section-heading"><a href="#cli-commands" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">CLI Commands 💻</span></h2><p>BBSvx provides a unified command interface for all operations:</p><pre><code class="makeup bash" translate="no"><span class=""># System status and information
+</span><span class="">./bin/bbsvx status                    # Basic status
+</span><span class="">./bin/bbsvx status --verbose         # Detailed status
+</span><span class="">./bin/bbsvx status --json            # JSON output
+</span><span class="">
+</span><span class=""># Configuration management
+</span><span class="">./bin/bbsvx show                     # Show all configuration
+</span><span class="">./bin/bbsvx show boot                # Show specific config key
+</span><span class="">./bin/bbsvx set boot=root            # Set configuration value
+</span><span class="">./bin/bbsvx config init              # Initialize user config file
+</span><span class="">./bin/bbsvx config locate            # Show config file location
+</span><span class="">
+</span><span class=""># Ontology management
+</span><span class="">./bin/bbsvx ontology list            # List ontologies
+</span><span class="">./bin/bbsvx ontology create myapp    # Create local ontology
+</span><span class="">./bin/bbsvx ontology create myapp --type shared  # Create shared ontology
+</span><span class="">
+</span><span class=""># Testing and utilities
+</span><span class="">./bin/bbsvx test                     # Run system tests
+</span></code></pre><h2 id="api-endpoints" class="section-heading"><a href="#api-endpoints" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">API Endpoints 🌐</span></h2><p>Interact with your bubble network through HTTP APIs (default port 8085):</p><pre><code class="makeup bash" translate="no"><span class=""># Check bubble network status
+</span><span class="">curl http://localhost:8085/spray/nodes
+</span><span class="">
+</span><span class=""># Examine knowledge bubbles
+</span><span class="">curl http://localhost:8085/ontologies/bbsvx:root
+</span><span class="">
+</span><span class=""># Create new bubbles with transactions
+</span><span class="">curl -X POST http://localhost:8085/transaction \
+</span><span class="">  -H &quot;Content-Type: application/json&quot; \
+</span><span class="">  -d &#39;{&quot;namespace&quot;: &quot;test&quot;, &quot;data&quot;: &quot;bubble_knowledge_here&quot;}&#39;
+</span></code></pre><hr class="thin"/><h2 id="testing" class="section-heading"><a href="#testing" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Testing 🧪</span></h2><pre><code class="makeup bash" translate="no"><span class=""># Test bubble integrity
+</span><span class="">rebar3 ct
+</span><span class="">
+</span><span class=""># Format bubble code (because beautiful bubbles need beautiful code)
+</span><span class="">rebar3 erlfmt
+</span><span class="">
+</span><span class=""># Bubble type checking (because even bubbles need structure)
+</span><span class="">rebar3 dialyzer
+</span></code></pre><hr class="thin"/><h2 id="contributing" class="section-heading"><a href="#contributing" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Contributing 🤝</span></h2><p>Found a bubble that won't pop properly? Have ideas for new bubble formations? Want to improve our bubble analogies? </p><ol><li><strong>Issues</strong>: Report bubble anomalies with detailed reproduction steps</li><li><strong>Pull Requests</strong>: Keep them focused like a perfect soap bubble</li><li><strong>Documentation</strong>: More bubble science is always welcome</li><li><strong>Code Style</strong>: Run <code class="inline">rebar3 erlfmt</code> to keep your code as smooth as soap film</li></ol><hr class="thin"/><h2 id="architecture-deep-dive-️" class="section-heading"><a href="#architecture-deep-dive-️" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Architecture Deep Dive 🏗️</span></h2><p>For those who want to understand the bubble physics:</p><ul><li><strong>Application Entry</strong>: <code class="inline">bbsvx_app.erl</code> - The bubble machine startup</li><li><strong>Ontology Management</strong>: <code class="inline">bbsvx_ont_service.erl</code> - The bubble knowledge engine</li><li><strong>Network Layer</strong>: <code class="inline">bbsvx_actor_spray.erl</code> - Bubble distribution dynamics</li><li><strong>Consensus</strong>: <code class="inline">bbsvx_epto_service.erl</code> - Bubble interaction ordering</li><li><strong>Blockchain</strong>: <code class="inline">bbsvx_transaction_pipeline.erl</code> - Bubble transaction processing</li><li><strong>Configuration</strong>: <code class="inline">priv/bbsvx.schema</code> - Cuttlefish-powered bubble parameters</li></ul><hr class="thin"/><h2 id="the-bubblesoap-philosophy" class="section-heading"><a href="#the-bubblesoap-philosophy" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">The BubbleSoap Philosophy 🫧</span></h2><p>BBSvx embodies the BubbleSoap philosophy: knowledge should flow naturally and beautifully through distributed systems, just like soap bubbles floating on air currents. Each bubble carries structured information, and when bubbles meet, they can merge their knowledge or split to explore new territories.</p><p>Unlike rigid systems that force information through predefined channels, BBSvx lets knowledge bubble up organically, creating emergent patterns of understanding that are both resilient and aesthetically pleasing to observe.</p><hr class="thin"/><h2 id="ontologies" class="section-heading"><a href="#ontologies" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Ontologies 🧠</span></h2><p>Ontologies in BBSvx are knowledge repositories that help agents perform tasks within specific domains. They serve as the foundation for distributed reasoning and action coordination across the network.</p><h3 id="namespace-structure" class="section-heading"><a href="#namespace-structure" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Namespace Structure</span></h3><p>Ontologies follow a hierarchical namespace format:</p><pre><code class="makeup erlang" translate="no"><span class="nc">bbsvx</span><span class="p">:</span><span class="nc">subdomain1</span><span class="p">:</span><span class="nc">subdomain2</span><span class="p">:</span><span class="p">.</span><span class="p">.</span><span class="p">.</span><span class="p">:</span><span class="ss">subdomain_N</span></code></pre><p><strong>Example namespaces:</strong></p><ul><li><code class="inline">&quot;bbsvx:agent&quot;</code> - System ontology for agent management</li><li><code class="inline">&quot;bbsvx:mts:client:mqtt&quot;</code> - Message transport ontologies</li><li><code class="inline">&quot;bbsvx:workflow:automation&quot;</code> - Workflow management ontologies</li><li><code class="inline">&quot;bbsvx:security:auth&quot;</code> - Authentication and security ontologies</li></ul><p>Each namespace creates an isolated knowledge domain that can be independently managed, versioned, and distributed across the network.</p><h3 id="ontology-types" class="section-heading"><a href="#ontology-types" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Ontology Types</span></h3><ul><li><strong>Shared Ontologies</strong>: Distributed across the network, synchronized through SPRAY and EPTO protocols</li><li><strong>Local Ontologies</strong>: Node-specific knowledge that remains private</li><li><strong>System Ontologies</strong>: Core BBSvx functionality (like <code class="inline">bbsvx:root</code>)</li></ul><hr class="thin"/><h2 id="actions" class="section-heading"><a href="#actions" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Actions 🎯</span></h2><p>Actions in BBSvx follow a structured Prolog-based design pattern that enables flexible goal achievement and intelligent planning.</p><h3 id="action-predicate-structure" class="section-heading"><a href="#action-predicate-structure" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Action Predicate Structure</span></h3><p>Every action follows this pattern:</p><pre><code class="prolog">action(Transition, [Prerequisites], FinalState).</code></pre><p><strong>Components:</strong></p><ul><li><strong>Transition</strong>: The action to be performed</li><li><strong>Prerequisites</strong>: List of conditions that must be satisfied before execution</li><li><strong>FinalState</strong>: The desired outcome after action completion</li></ul><h3 id="practical-example-bottle-emptying-strategies" class="section-heading"><a href="#practical-example-bottle-emptying-strategies" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Practical Example: Bottle Emptying Strategies</span></h3><pre><code class="prolog">% Direct approach - drink the bottle
+action(drink_bottle(Bottle), [cap_opened(Bottle)], empty(Bottle)).
+
+% Patient approach - wait for gravity
+action(wait(hour(1)), [cap_opened(Bottle), upside_down(Bottle)], empty(Bottle)).
+
+% Prerequisite actions
+action(open_cap(Bottle), [has_bottle_opener], cap_opened(Bottle)).
+action(turn_upside_down(Bottle), [], upside_down(Bottle)).</code></pre><h3 id="goal-resolution-process" class="section-heading"><a href="#goal-resolution-process" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Goal Resolution Process</span></h3><p>When an agent receives a goal like <code class="inline">empty(bottle_1)</code>, the system:</p><ol><li><strong>Goal Check</strong>: Verify if <code class="inline">empty(bottle_1)</code> is already achieved</li><li><strong>Action Discovery</strong>: Find all actions that result in <code class="inline">empty(Bottle)</code></li><li><strong>Prerequisite Resolution</strong>: Recursively satisfy prerequisites for chosen actions</li><li><strong>Execution</strong>: Perform the transition and update the knowledge base</li><li><strong>Propagation</strong>: Share the outcome across the distributed network</li></ol><p>This approach enables emergent problem-solving where agents can discover multiple solution paths and share successful strategies across the bubble network.</p><hr class="thin"/><h2 id="license" class="section-heading"><a href="#license" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">License 📄</span></h2><p>This project is licensed under the Apache License 2.0 - see the LICENSE file for details.</p><hr class="thin"/><h2 id="final-words" class="section-heading"><a href="#final-words" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Final Words 🍻</span></h2><p>BBSvx represents the evolution of distributed knowledge systems from rigid hierarchies to organic, bubble-like formations. It's like upgrading from industrial plumbing to a beautiful soap bubble display – same information flow, but now with natural beauty and emergent complexity.</p><p>Whether you're building distributed knowledge systems, experimenting with blockchain technology, or just fascinated by the parallels between soap bubble physics and distributed computing, BBSvx offers a unique perspective on how information can flow naturally through networks.</p><p><em>Remember: In the BubbleSoap System, every node is both a bubble maker and a bubble observer. The beauty emerges from the interactions, not from central control.</em></p><hr class="thin"/><p><strong>Questions? Issues? Bubble formation tips?</strong><br/>Check out the issues tab or start a discussion. We're always excited to talk about distributed systems, blockchain technology, or the optimal surface tension for knowledge propagation in P2P networks.</p><p>Happy bubbling! 🫧✨</p>
+
+</div>
+
+<div class="bottom-actions" id="bottom-actions">
+  <div class="bottom-actions-item">
+
+  </div>
+  <div class="bottom-actions-item">
+
+      <a href="claude.html" class="bottom-actions-button" rel="next">
+        <span class="subheader">
+          Next Page →
+        </span>
+        <span class="title">
+Development Guide
+        </span>
+      </a>
+
+  </div>
+</div>
+    <footer class="footer">
+      <p>
+
+          <span class="line">
+            <a href="https://hex.pm/packages/bbsvx/0.1.0" class="footer-hex-package">Hex Package</a>
+
+            <a href="https://preview.hex.pm/preview/bbsvx/0.1.0">Hex Preview</a>
+
+              (<a href="https://preview.hex.pm/preview/bbsvx/0.1.0/show/README.md">current file</a>)
+
+          </span>
+
+        <span class="line">
+          <button class="a-main footer-button display-quick-switch" title="Search HexDocs packages">
+            Search HexDocs
+          </button>
+
+            <a href="bbsvx.epub" title="ePub version">
+              Download ePub version
+            </a>
+
+        </span>
+      </p>
+
+      <p class="built-using">
+        Built using
+        <a href="https://github.com/elixir-lang/ex_doc" title="ExDoc" target="_blank" rel="help noopener" translate="no">ExDoc</a> (v0.38.2) for the
+
+          <a href="https://erlang.org" title="Erlang" target="_blank" translate="no">Erlang programming language</a>
+
+      </p>
+
+    </footer>
+  </div>
+</main>
+</div>
+
+  </body>
+</html>

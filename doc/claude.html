@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="x-ua-compatible" content="ie=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="ExDoc v0.38.2">
+    <meta name="project" content="bbsvx v0.1.0">
+
+
+    <title>Development Guide — bbsvx v0.1.0</title>
+
+    <link rel="stylesheet" href="dist/html-erlang-DQDXQC7W.css" />
+
+    <script defer src="dist/sidebar_items-B3D16BE0.js"></script>
+    <script defer src="docs_config.js"></script>
+    <script defer src="dist/html-DPJLHKSM.js"></script>
+
+  </head>
+  <body>
+    <script>(()=>{var t="ex_doc:settings",e="dark";var o="dark",s="light";var E="sidebar_state",n="closed";var r="sidebar_width";var a="sidebar-open";var i=new URLSearchParams(window.location.search),S=i.get("theme")||JSON.parse(localStorage.getItem(t)||"{}").theme;(S===o||S!==s&&window.matchMedia("(prefers-color-scheme: dark)").matches)&&document.body.classList.add(e);var d=sessionStorage.getItem(E),A=d!==n&&!window.matchMedia(`screen and (max-width: ${768}px)`).matches;document.body.classList.toggle(a,A);var c=sessionStorage.getItem(r);c&&document.body.style.setProperty("--sidebarWidth",`${c}px`);var p=/(Macintosh|iPhone|iPad|iPod)/.test(window.navigator.userAgent);document.documentElement.classList.toggle("apple-os",p);})();
+</script>
+
+<div class="body-wrapper">
+
+<button id="sidebar-menu" class="sidebar-button sidebar-toggle" aria-label="toggle sidebar" aria-controls="sidebar">
+  <i class="ri-menu-line ri-lg" title="Collapse/expand sidebar"></i>
+</button>
+
+<nav id="sidebar" class="sidebar">
+
+  <div class="sidebar-header">
+    <div class="sidebar-projectInfo">
+
+      <div>
+        <a href="https://github.com/bbsvx/bbsvx" class="sidebar-projectName" translate="no">
+bbsvx
+        </a>
+        <div class="sidebar-projectVersion" translate="no">
+          v0.1.0
+        </div>
+      </div>
+    </div>
+    <ul id="sidebar-list-nav" class="sidebar-list-nav" role="tablist" data-extras=""></ul>
+  </div>
+</nav>
+
+<output role="status" id="toast"></output>
+
+<main class="content page-extra" id="main" data-type="extras">
+  <div id="content" class="content-inner">
+    <div class="top-search">
+      <div class="search-settings">
+        <form class="search-bar" action="search.html">
+          <label class="search-label">
+            <span class="sr-only">Search documentation of bbsvx</span>
+            <input name="q" type="text" class="search-input" placeholder="Press / to search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+          </label>
+          <button type="submit" class="search-button" aria-label="Submit Search" tabindex="-1">
+            <i class="ri-search-2-line ri-lg" aria-hidden="true"></i>
+          </button>
+          <button type="button" tabindex="-1" class="search-close-button" aria-hidden="true">
+            <i class="ri-close-line ri-lg" title="Cancel search"></i>
+          </button>
+        </form>
+        <div class="autocomplete">
+        </div>
+        <button class="icon-settings display-settings">
+          <i class="ri-settings-3-line"></i>
+          <span class="sr-only">Settings</span>
+        </button>
+      </div>
+    </div>
+
+<div id="top-content">
+  <div class="heading-with-actions top-heading">
+    <h1>CLAUDE.md</h1>
+
+
+      <a href="https://github.com/bbsvx/bbsvx/blob/v0.1.0/CLAUDE.md#L1" title="View Source" class="icon-action" rel="help">
+        <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+        <span class="sr-only">View Source</span>
+      </a>
+
+  </div>
+
+
+<p>This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.</p><h2 id="build-and-development-commands" class="section-heading"><a href="#build-and-development-commands" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Build and Development Commands</span></h2><h3 id="basic-build" class="section-heading"><a href="#basic-build" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Basic Build</span></h3><pre><code class="makeup bash" translate="no"><span class="">export BUILD_WITHOUT_QUIC=true
+</span><span class="">rebar3 compile
+</span></code></pre><h3 id="configuration-management" class="section-heading"><a href="#configuration-management" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Configuration Management</span></h3><p>BBSvx supports intelligent configuration with automatic file location detection:</p><ul><li><code class="inline">BBSVX_CONFIG_FILE=/path/to/config</code> - Environment variable override</li><li><code class="inline">~/.bbsvx/bbsvx.conf</code> - User space config (recommended for development)</li><li><code class="inline">./bbsvx.conf</code> - Current directory config</li><li><code class="inline">etc/bbsvx.conf</code> - Release default (production)</li></ul><h4>Smart Boot Modes</h4><p>BBSvx provides intelligent boot mode detection to prevent data conflicts:</p><ul><li><p><strong><code class="inline">boot = auto</code></strong> - Automatic detection (restarts only)</p><ul><li>Detects existing data and restarts appropriately</li><li>Prevents accidental data loss on existing nodes</li><li>First-time starts require explicit intent (<code class="inline">root</code> or <code class="inline">join</code>)</li></ul></li><li><p><strong><code class="inline">boot = root</code></strong> - Start new cluster (fresh data only)</p><ul><li>Creates new cluster as root node</li><li>Prevents accidental overwrites of existing data</li><li>Validates no existing data directory</li></ul></li><li><p><strong><code class="inline">boot = join &lt;host&gt; &lt;port&gt;</code></strong> - Join existing cluster</p><ul><li>Connects to existing cluster at specified host/port</li><li>Default port is 2304 if not specified</li></ul></li></ul><p>Initialize user config: <code class="inline">./bin/bbsvx config init</code></p><h3 id="enhanced-command-line-interface" class="section-heading"><a href="#enhanced-command-line-interface" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Enhanced Command Line Interface</span></h3><p>BBSvx provides enhanced command line interface following the Riak pattern, eliminating the need for custom startup scripts. Configuration is managed through <strong>cuttlefish</strong> schemas with commands directly integrated with the release system.</p><h4>Simple Command Interface</h4><p>BBSvx uses standard OTP release commands with environment variable configuration:</p><pre><code class="makeup bash" translate="no"><span class=""># Simple Environment Variable Startup
+</span><span class="">BBSVX_BOOT=root ./bin/bbsvx start                    # Start new cluster
+</span><span class="">BBSVX_BOOT=&quot;join 192.168.1.100 2304&quot; ./bin/bbsvx start  # Join existing cluster
+</span><span class="">BBSVX_BOOT=auto ./bin/bbsvx start                    # Auto-detect mode
+</span><span class="">
+</span><span class=""># Standard Node Operations
+</span><span class="">./bin/bbsvx start                    # Start with config file
+</span><span class="">./bin/bbsvx stop                     # Stop node
+</span><span class="">./bin/bbsvx console                  # Start with interactive console
+</span><span class="">./bin/bbsvx foreground               # Start in foreground mode
+</span><span class="">./bin/bbsvx ping                     # Check if node is responding
+</span><span class="">
+</span><span class=""># Administration via bbsvx-admin
+</span><span class="">./bin/bbsvx-admin status             # Show system status
+</span><span class="">./bin/bbsvx-admin ping               # Ping the node
+</span><span class="">./bin/bbsvx-admin show               # Show configuration
+</span><span class="">./bin/bbsvx-admin show boot          # Show specific config key
+</span><span class="">
+</span><span class=""># Build the release first
+</span><span class="">export BUILD_WITHOUT_QUIC=true
+</span><span class="">rebar3 release
+</span><span class="">
+</span><span class=""># Start the node
+</span><span class="">_build/default/rel/bbsvx/bin/bbsvx start
+</span><span class="">
+</span><span class=""># Configuration management (on running node)
+</span><span class="">_build/default/rel/bbsvx/bin/bbsvx rpc bbsvx_cli show
+</span><span class="">_build/default/rel/bbsvx/bin/bbsvx rpc bbsvx_cli show network.p2p_port  
+</span><span class="">_build/default/rel/bbsvx/bin/bbsvx rpc bbsvx_cli set network.p2p_port 3000
+</span><span class="">_build/default/rel/bbsvx/bin/bbsvx rpc bbsvx_cli set network.contact_nodes node1@host1,node2@host2
+</span><span class="">
+</span><span class=""># System status and management
+</span><span class="">_build/default/rel/bbsvx/bin/bbsvx rpc bbsvx_cli status
+</span><span class="">_build/default/rel/bbsvx/bin/bbsvx rpc bbsvx_cli status verbose
+</span><span class="">
+</span><span class=""># Ontology management  
+</span><span class="">_build/default/rel/bbsvx/bin/bbsvx rpc bbsvx_cli ontology list
+</span><span class="">_build/default/rel/bbsvx/bin/bbsvx rpc bbsvx_cli ontology create my_namespace
+</span></code></pre><h4>Startup Configuration</h4><pre><code class="makeup bash" translate="no"><span class=""># Smart boot mode examples
+</span><span class="">
+</span><span class=""># First time - start new cluster
+</span><span class="">echo &quot;boot = root&quot; &gt;&gt; _build/default/rel/bbsvx/etc/bbsvx.conf
+</span><span class="">_build/default/rel/bbsvx/bin/bbsvx start
+</span><span class="">
+</span><span class=""># First time - join existing cluster  
+</span><span class="">echo &quot;boot = join existing.node.com 2304&quot; &gt;&gt; _build/default/rel/bbsvx/etc/bbsvx.conf
+</span><span class="">_build/default/rel/bbsvx/bin/bbsvx start
+</span><span class="">
+</span><span class=""># Restart existing node - auto-detect
+</span><span class="">echo &quot;boot = auto&quot; &gt;&gt; _build/default/rel/bbsvx/etc/bbsvx.conf
+</span><span class="">_build/default/rel/bbsvx/bin/bbsvx start
+</span><span class="">
+</span><span class=""># Environment variables for deployment
+</span><span class="">export BBSVX_NODE_NAME=&quot;production@10.0.1.100&quot;
+</span><span class="">export BBSVX_P2P_PORT=2305
+</span><span class="">export BBSVX_BOOT=&quot;join cluster.internal 2304&quot;
+</span><span class="">_build/default/rel/bbsvx/bin/bbsvx start
+</span></code></pre><h4>Deployment Example</h4><pre><code class="makeup bash" translate="no"><span class=""># Production deployment with smart boot detection
+</span><span class="">cat &gt; production.conf &lt;&lt; EOF
+</span><span class=""># Smart boot mode - auto-detect on restart, explicit join for first start
+</span><span class="">boot = join node1@10.0.1.101 2304
+</span><span class="">
+</span><span class=""># Node configuration
+</span><span class="">nodename = prod@10.0.1.100
+</span><span class="">node.cookie = production_secret
+</span><span class="">
+</span><span class=""># Network settings
+</span><span class="">network.p2p_port = 2305
+</span><span class="">network.http_port = 8086
+</span><span class="">network.contact_nodes = node1@10.0.1.101,node2@10.0.1.102
+</span><span class="">
+</span><span class=""># Storage paths
+</span><span class="">paths.data_dir = /var/lib/bbsvx
+</span><span class="">paths.log_dir = /var/log/bbsvx
+</span><span class="">EOF
+</span><span class="">
+</span><span class="">cp production.conf _build/default/rel/bbsvx/etc/bbsvx.conf
+</span><span class="">_build/default/rel/bbsvx/bin/bbsvx start
+</span><span class="">
+</span><span class=""># Runtime configuration changes
+</span><span class="">_build/default/rel/bbsvx/bin/bbsvx rpc bbsvx_cli set network.contact_nodes node1@10.0.1.101,node2@10.0.1.102,node3@10.0.1.103
+</span></code></pre><h4>Key Features</h4><ul><li><strong>Unified Command Interface</strong>: Single <code class="inline">bbsvx</code> command for all operations via RPC</li><li><strong>Smart Boot Detection</strong>: Prevents data conflicts with intelligent boot modes</li><li><strong>Runtime Configuration</strong>: Live configuration changes without restart using RPC calls</li><li><strong>Type-Safe Configuration</strong>: Cuttlefish schema validation with helpful error messages</li><li><strong>Standard OTP Release</strong>: Follows Erlang/OTP best practices like Riak</li><li><strong>Production Ready</strong>: Environment variable support for containerized deployments</li><li><strong>Data Protection</strong>: Prevents accidental data loss through boot mode validation</li></ul><h3 id="testing" class="section-heading"><a href="#testing" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Testing</span></h3><pre><code class="makeup bash" translate="no"><span class="">rebar3 ct                    # Run Common Test suites
+</span><span class="">rebar3 eunit                 # Run EUnit tests (if any)
+</span></code></pre><h3 id="release-management" class="section-heading"><a href="#release-management" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Release Management</span></h3><pre><code class="makeup bash" translate="no"><span class="">rebar3 release               # Build release
+</span><span class="">rebar3 shell                 # Start development shell
+</span></code></pre><h3 id="code-quality" class="section-heading"><a href="#code-quality" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Code Quality</span></h3><pre><code class="makeup bash" translate="no"><span class="">rebar3 dialyzer             # Type checking
+</span><span class="">rebar3 erlfmt               # Format code
+</span><span class="">rebar3 eqwalizer            # Additional type checking
+</span></code></pre><h3 id="docker-development" class="section-heading"><a href="#docker-development" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Docker Development</span></h3><pre><code class="makeup bash" translate="no"><span class="">docker build . -t bbsvx
+</span><span class="">docker compose up  --scale bbsvx_client=1    # Run with 1 client
+</span><span class="">docker compose up  --scale bbsvx_client=N -d # Scale to N clients
+</span></code></pre><h2 id="architecture-overview" class="section-heading"><a href="#architecture-overview" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Architecture Overview</span></h2><p>BBSvx is a blockchain-powered BBS (Bulletin Board System) built on Erlang/OTP with the following key components:</p><h3 id="core-systems" class="section-heading"><a href="#core-systems" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Core Systems</span></h3><ul><li><strong>P2P Network</strong>: SPRAY protocol implementation for overlay network formation (<code class="inline">bbsvx_actor_spray.erl</code>)</li><li><strong>Consensus</strong>: EPTO protocol for consistent event ordering (<code class="inline">bbsvx_epto_service.erl</code>)</li><li><strong>Ontology Management</strong>: Prolog-based knowledge bases using Erlog (<code class="inline">bbsvx_actor_ontology.erl</code>, <code class="inline">bbsvx_ont_service.erl</code>)</li><li><strong>Transaction Processing</strong>: Blockchain-style transactions with validation pipeline (<code class="inline">bbsvx_transaction_pipeline.erl</code>)</li><li><strong>HTTP API</strong>: Cowboy-based REST API for external interactions (port 8085)</li></ul><h3 id="key-module-relationships" class="section-heading"><a href="#key-module-relationships" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Key Module Relationships</span></h3><ul><li><strong>Application Flow</strong>: <code class="inline">bbsvx_app</code> → <code class="inline">bbsvx_sup</code> → service processes</li><li><strong>Ontology Operations</strong>: <code class="inline">bbsvx_ont_service</code> ↔ <code class="inline">bbsvx_actor_ontology</code> ↔ <code class="inline">bbsvx_erlog_db_*</code></li><li><strong>Network Layer</strong>: <code class="inline">bbsvx_network_service</code> ↔ <code class="inline">bbsvx_actor_spray</code> ↔ connection handlers</li><li><strong>Transaction Flow</strong>: HTTP API → <code class="inline">bbsvx_transaction_pipeline</code> → <code class="inline">bbsvx_actor_ontology</code></li></ul><h3 id="database-layer" class="section-heading"><a href="#database-layer" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Database Layer</span></h3><ul><li><strong>ETS-based storage</strong>: <code class="inline">bbsvx_erlog_db_ets.erl</code> for Erlog facts and rules</li><li><strong>Change tracking</strong>: <code class="inline">bbsvx_erlog_db_differ.erl</code> for transaction diffs</li><li><strong>Mnesia</strong>: Used for distributed persistence</li></ul><h2 id="development-environment" class="section-heading"><a href="#development-environment" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Development Environment</span></h2><h3 id="configuration" class="section-heading"><a href="#configuration" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Configuration</span></h3><ul><li>Main config: <code class="inline">config/sys.config.src</code></li><li>VM args: <code class="inline">config/vm.args</code></li><li>Cuttlefish config: <code class="inline">priv/bbsvx.schema</code></li></ul><h3 id="testing-structure" class="section-heading"><a href="#testing-structure" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Testing Structure</span></h3><ul><li>Common Test suites in <code class="inline">ct/bbsvx/</code> directory</li><li>Integration tests using Robot Framework in <code class="inline">tests/integration/</code></li><li>Key test suites: ontology service, SPRAY protocol, database operations</li></ul><h3 id="monitoring-and-observability" class="section-heading"><a href="#monitoring-and-observability" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Monitoring and Observability</span></h3><ul><li><strong>Prometheus metrics</strong> for performance monitoring</li><li><strong>OpenTelemetry</strong> for distributed tracing</li><li><strong>Grafana dashboards</strong> for network visualization (accessible at <a href="http://localhost:3000">http://localhost:3000</a>)</li><li><strong>Structured logging</strong> with JSON format</li></ul><h3 id="dependencies" class="section-heading"><a href="#dependencies" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Dependencies</span></h3><ul><li><strong>erlog</strong>: Prolog implementation for knowledge representation</li><li><strong>cowboy</strong>: HTTP server framework</li><li><strong>gproc</strong>: Process registry for service discovery</li><li><strong>riak_dt</strong>: Distributed data types</li><li><strong>jiffy</strong>: JSON processing</li></ul><h2 id="recent-work-and-improvements" class="section-heading"><a href="#recent-work-and-improvements" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Recent Work and Improvements</span></h2><h3 id="protocol-performance-asn-1-implementation" class="section-heading"><a href="#protocol-performance-asn-1-implementation" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Protocol Performance (ASN.1 Implementation)</span></h3><p>BBSvx now uses <strong>ASN.1 encoding as the default protocol format</strong> for superior performance:</p><ul><li><strong>Performance</strong>: ASN.1 is 102x faster than Erlang term encoding (0.34 μs vs 34.5 μs per operation)</li><li><strong>Size</strong>: ASN.1 produces 2.4x smaller messages (90 bytes vs 118 bytes)</li><li><strong>Interoperability</strong>: Standardized format enables cross-language compatibility</li><li><strong>Migration</strong>: Automatic format detection maintains backward compatibility with term encoding</li></ul><h4>Protocol Codec Usage</h4><pre><code class="makeup erlang" translate="no"><span class="c1">%% Default encoding (ASN.1)</span><span class="w">
+</span><span class="p" data-group-id="0158859357-1">{</span><span class="ss">ok</span><span class="p">,</span><span class="w"> </span><span class="n">Binary</span><span class="p" data-group-id="0158859357-1">}</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nc">bbsvx_protocol_codec</span><span class="p">:</span><span class="nf">encode</span><span class="p" data-group-id="0158859357-2">(</span><span class="n">Message</span><span class="p" data-group-id="0158859357-2">)</span><span class="p">,</span><span class="w">
+</span><span class="p" data-group-id="0158859357-3">{</span><span class="ss">ok</span><span class="p">,</span><span class="w"> </span><span class="n">DecodedMessage</span><span class="p" data-group-id="0158859357-3">}</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nc">bbsvx_protocol_codec</span><span class="p">:</span><span class="nf">decode</span><span class="p" data-group-id="0158859357-4">(</span><span class="n">Binary</span><span class="p" data-group-id="0158859357-4">)</span><span class="p">,</span><span class="w">
+
+</span><span class="c1">%% Explicit format selection</span><span class="w">
+</span><span class="p" data-group-id="0158859357-5">{</span><span class="ss">ok</span><span class="p">,</span><span class="w"> </span><span class="n">ASN1Binary</span><span class="p" data-group-id="0158859357-5">}</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nc">bbsvx_protocol_codec</span><span class="p">:</span><span class="nf">encode</span><span class="p" data-group-id="0158859357-6">(</span><span class="n">Message</span><span class="p">,</span><span class="w"> </span><span class="ss">asn1</span><span class="p" data-group-id="0158859357-6">)</span><span class="p">,</span><span class="w">
+</span><span class="p" data-group-id="0158859357-7">{</span><span class="ss">ok</span><span class="p">,</span><span class="w"> </span><span class="n">TermBinary</span><span class="p" data-group-id="0158859357-7">}</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nc">bbsvx_protocol_codec</span><span class="p">:</span><span class="nf">encode</span><span class="p" data-group-id="0158859357-8">(</span><span class="n">Message</span><span class="p">,</span><span class="w"> </span><span class="ss">term</span><span class="p" data-group-id="0158859357-8">)</span><span class="p">,</span><span class="w">
+
+</span><span class="c1">%% Auto-detection for migration</span><span class="w">
+</span><span class="p" data-group-id="0158859357-9">{</span><span class="ss">ok</span><span class="p">,</span><span class="w"> </span><span class="n">Message</span><span class="p" data-group-id="0158859357-9">}</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nc">bbsvx_protocol_codec</span><span class="p">:</span><span class="nf">decode</span><span class="p" data-group-id="0158859357-10">(</span><span class="n">Binary</span><span class="p">,</span><span class="w"> </span><span class="ss">auto</span><span class="p" data-group-id="0158859357-10">)</span><span class="p">,</span></code></pre><h4>Benchmarking</h4><p>Use <code class="inline">benchmark_test:run().</code> to compare encoding performance:</p><pre><code class="makeup bash" translate="no"><span class=""># In Erlang shell
+</span><span class="">rebar3 shell
+</span><span class="">&gt; benchmark_test:run().
+</span></code></pre><h3 id="spray-protocol-stability-fixes" class="section-heading"><a href="#spray-protocol-stability-fixes" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">SPRAY Protocol Stability Fixes</span></h3><p>Fixed critical race conditions in arc exchange that caused &quot;depleted views&quot;:</p><h4>Issue Resolved</h4><ul><li><strong>Problem</strong>: Arc swapping sequence created isolation windows during exchanges</li><li><strong>Root Cause</strong>: <code class="inline">gproc:unreg_other()</code> → <code class="inline">gproc:reg()</code> gap where no process owned arc ULIDs</li><li><strong>Impact</strong>: <code class="inline">get_inview/1</code>/<code class="inline">get_outview/1</code> returned empty results, showing as depleted views in Grafana</li></ul><h4>Solution Implemented</h4><p>Atomic arc swapping in <code class="inline">bbsvx_server_connection.erl</code> and <code class="inline">bbsvx_server_connection_asn1.erl</code>:</p><pre><code class="makeup erlang" translate="no"><span class="c1">%% Atomic arc swap: register new connection first, then unregister old</span><span class="w">
+</span><span class="k">try</span><span class="w">
+  </span><span class="nc">gproc</span><span class="p">:</span><span class="nf">reg</span><span class="p" data-group-id="3782284454-1">(</span><span class="p" data-group-id="3782284454-2">{</span><span class="ss">n</span><span class="p">,</span><span class="w"> </span><span class="ss">l</span><span class="p">,</span><span class="w"> </span><span class="p" data-group-id="3782284454-3">{</span><span class="ss">arc</span><span class="p">,</span><span class="w"> </span><span class="ss">in</span><span class="o">/</span><span class="ss">out</span><span class="p">,</span><span class="w"> </span><span class="n">Ulid</span><span class="p" data-group-id="3782284454-3">}</span><span class="p" data-group-id="3782284454-2">}</span><span class="p">,</span><span class="w"> </span><span class="n">NewLock</span><span class="p" data-group-id="3782284454-1">)</span><span class="w">
+</span><span class="k">catch</span><span class="w">
+  </span><span class="nc">error</span><span class="p">:</span><span class="p" data-group-id="3782284454-4">{</span><span class="ss">already_registered</span><span class="p">,</span><span class="w"> </span><span class="p" data-group-id="3782284454-5">{</span><span class="ss">n</span><span class="p">,</span><span class="w"> </span><span class="ss">l</span><span class="p">,</span><span class="w"> </span><span class="p" data-group-id="3782284454-6">{</span><span class="ss">arc</span><span class="p">,</span><span class="w"> </span><span class="ss">in</span><span class="o">/</span><span class="ss">out</span><span class="p">,</span><span class="w"> </span><span class="n">Ulid</span><span class="p" data-group-id="3782284454-6">}</span><span class="p" data-group-id="3782284454-5">}</span><span class="p" data-group-id="3782284454-4">}</span><span class="w"> </span><span class="p">-&gt;</span><span class="w">
+    </span><span class="nc">gproc</span><span class="p">:</span><span class="nf">unreg_other</span><span class="p" data-group-id="3782284454-7">(</span><span class="p" data-group-id="3782284454-8">{</span><span class="ss">n</span><span class="p">,</span><span class="w"> </span><span class="ss">l</span><span class="p">,</span><span class="w"> </span><span class="p" data-group-id="3782284454-9">{</span><span class="ss">arc</span><span class="p">,</span><span class="w"> </span><span class="ss">in</span><span class="o">/</span><span class="ss">out</span><span class="p">,</span><span class="w"> </span><span class="n">Ulid</span><span class="p" data-group-id="3782284454-9">}</span><span class="p" data-group-id="3782284454-8">}</span><span class="p">,</span><span class="w"> </span><span class="n">OtherConnectionPid</span><span class="p" data-group-id="3782284454-7">)</span><span class="p">,</span><span class="w">
+    </span><span class="nc">gproc</span><span class="p">:</span><span class="nf">reg</span><span class="p" data-group-id="3782284454-10">(</span><span class="p" data-group-id="3782284454-11">{</span><span class="ss">n</span><span class="p">,</span><span class="w"> </span><span class="ss">l</span><span class="p">,</span><span class="w"> </span><span class="p" data-group-id="3782284454-12">{</span><span class="ss">arc</span><span class="p">,</span><span class="w"> </span><span class="ss">in</span><span class="o">/</span><span class="ss">out</span><span class="p">,</span><span class="w"> </span><span class="n">Ulid</span><span class="p" data-group-id="3782284454-12">}</span><span class="p" data-group-id="3782284454-11">}</span><span class="p">,</span><span class="w"> </span><span class="n">NewLock</span><span class="p" data-group-id="3782284454-10">)</span><span class="w">
+</span><span class="k">end</span></code></pre><p>This ensures nodes maintain permanent arc connectivity during exchanges, preventing temporary isolation.</p><h3 id="network-visualization-graph-visualizer" class="section-heading"><a href="#network-visualization-graph-visualizer" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Network Visualization (Graph Visualizer)</span></h3><p>Integrated real-time network topology visualization:</p><ul><li><strong>Location</strong>: <code class="inline">priv/graph-visualizer/</code> - Web-based vis.js visualization</li><li><strong>Access</strong>: <a href="http://localhost:3400">http://localhost:3400</a> when running with Docker Compose</li><li><strong>Features</strong>: <ul><li>Real-time arc visualization with WebSocket updates</li><li>Right-click node inspection for inview/outview analysis</li><li>Race condition protection for accurate arc display</li><li>Docker Compose integration for development</li></ul></li></ul><h3 id="monitoring-and-observability-enhancements" class="section-heading"><a href="#monitoring-and-observability-enhancements" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Monitoring and Observability Enhancements</span></h3><p>Enhanced Grafana dashboards with additional SPRAY protocol metrics:</p><ul><li><strong>Total Connection Slopes</strong>: Aggregated inview/outview connections across cluster</li><li><strong>Arc Exchange Monitoring</strong>: Real-time tracking of SPRAY protocol exchanges</li><li><strong>Performance Metrics</strong>: Protocol encoding/decoding performance tracking</li><li><strong>Race Condition Detection</strong>: Monitoring for depleted views and isolation events</li></ul><h2 id="important-notes" class="section-heading"><a href="#important-notes" class="hover-link"><i class="ri-link-m" aria-hidden="true"></i></a><span class="text">Important Notes</span></h2><ul><li>Always set <code class="inline">BUILD_WITHOUT_QUIC=true</code> for compilation</li><li><strong>Default Protocol</strong>: ASN.1 encoding (102x faster, 2.4x smaller than term encoding)</li><li>P2P network runs on port 2304 (configurable)</li><li>HTTP API runs on port 8085</li><li>Graph visualizer runs on port 3400 (Docker only)</li><li>Leader election is used for side effects in Prolog queries</li><li>The system is designed for distributed deployment with contact nodes</li><li>Proper OTP supervision trees ensure fault tolerance</li><li><strong>SPRAY Protocol</strong>: Arc exchanges are now atomic to prevent isolation during swaps</li></ul>
+
+</div>
+
+<div class="bottom-actions" id="bottom-actions">
+  <div class="bottom-actions-item">
+
+      <a href="readme.html" class="bottom-actions-button" rel="prev">
+        <span class="subheader">
+          ← Previous Page
+        </span>
+        <span class="title">
+Overview
+        </span>
+      </a>
+
+  </div>
+  <div class="bottom-actions-item">
+
+  </div>
+</div>
+    <footer class="footer">
+      <p>
+
+          <span class="line">
+            <a href="https://hex.pm/packages/bbsvx/0.1.0" class="footer-hex-package">Hex Package</a>
+
+            <a href="https://preview.hex.pm/preview/bbsvx/0.1.0">Hex Preview</a>
+
+              (<a href="https://preview.hex.pm/preview/bbsvx/0.1.0/show/CLAUDE.md">current file</a>)
+
+          </span>
+
+        <span class="line">
+          <button class="a-main footer-button display-quick-switch" title="Search HexDocs packages">
+            Search HexDocs
+          </button>
+
+            <a href="bbsvx.epub" title="ePub version">
+              Download ePub version
+            </a>
+
+        </span>
+      </p>
+
+      <p class="built-using">
+        Built using
+        <a href="https://github.com/elixir-lang/ex_doc" title="ExDoc" target="_blank" rel="help noopener" translate="no">ExDoc</a> (v0.38.2) for the
+
+          <a href="https://erlang.org" title="Erlang" target="_blank" translate="no">Erlang programming language</a>
+
+      </p>
+
+    </footer>
+  </div>
+</main>
+</div>
+
+  </body>
+</html>

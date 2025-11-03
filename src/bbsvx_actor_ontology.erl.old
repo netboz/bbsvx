@@ -1,0 +1,587 @@
+%%%-----------------------------------------------------------------------------
+%%% BBSvx Ontology Actor
+%%%-----------------------------------------------------------------------------
+
+-module(bbsvx_actor_ontology).
+
+-moduledoc "BBSvx Ontology Actor\n\n"
+"Gen State Machine for managing ontology state and Prolog knowledge bases.\n\n"
+"Handles ontology initialization, synchronization, and transaction processing.".
+
+-behaviour(gen_statem).
+
+-include("bbsvx.hrl").
+
+-include_lib("logjam/include/logjam.hrl").
+-include_lib("stdlib/include/ms_transform.hrl").
+-include_lib("erlog/src/erlog_int.hrl").
+%%%=============================================================================
+%%% Export and Defs
+%%%=============================================================================
+
+-define(SERVER, ?MODULE).
+-define(INIT_RECEIVE_GENESIS_TIMEOUT, 5000).
+%% External API
+-export([start_link/1, start_link/2, stop/0, request_segment/3, get_current_index/1]).
+%% Gen State Machine Callbacks
+-export([init/1, code_change/4, callback_mode/0, terminate/3]).
+%% State transitions
+-export([
+    ready/3,
+    initialize_ontology/3,
+    wait_for_genesis_transaction/3,
+    wait_for_registration/3,
+    syncing/3]).
+
+-record(state, {
+    namespace :: binary(),
+    repos_table :: atom(),
+    boot :: term(),
+    db_mod :: atom(),
+    db_ref :: term(),
+    my_id :: binary() | undefined
+}).
+
+-type state() :: #state{}.
+
+%%%=============================================================================
+%%% API
+%%%=============================================================================
+
+-doc """
+Starts a linked ontology actor process for the specified namespace.
+
+Uses default options for initialization.
+""".
+-spec start_link(Namespace :: binary()) -> gen_statem:start_ret().
+start_link(Namespace) ->
+    gen_statem:start_link(
+        {via, gproc, {n, l, {?MODULE, Namespace}}},
+        ?MODULE,
+        [Namespace, #{}],
+        []
+    ).
+
+-doc """
+Starts a linked ontology actor process with custom options.
+
+Options may include boot mode, database module, and other configuration.
+""".
+-spec start_link(Namespace :: binary(), Options :: map()) -> gen_statem:start_ret().
+start_link(Namespace, #{} = Options) ->
+    gen_statem:start_link(
+        {via, gproc, {n, l, {?MODULE, Namespace}}},
+        ?MODULE,
+        [Namespace, Options],
+        []
+    ).
+
+-doc """
+Retrieves the current transaction index for the specified namespace.
+
+Used to query the current state of the ontology transaction log.
+""".
+-spec get_current_index(Namespace :: binary()) -> {ok, integer()}.
+get_current_index(Namespace) ->
+    gen_statem:call({via, gproc, {n, l, {?MODULE, Namespace}}}, get_current_index).
+
+-doc """
+Stops the ontology actor server gracefully.
+""".
+-spec stop() -> ok.
+stop() ->
+    gen_statem:stop(?SERVER).
+
+%%%=============================================================================
+%%% Gen State Machine Callbacks
+%%%=============================================================================
+
+init([Namespace, Options]) ->
+    %% Verify table exists (should be created by ont_service before starting this FSM)
+    case bbsvx_ont_service:table_exists(Namespace) of
+        false ->
+            ?'log-error'("Transaction table missing for namespace ~p", [Namespace]),
+            {stop, {error, {missing_transaction_table, Namespace}}};
+        true ->
+            %% Initialize state with minimal required fields
+            State = #state{
+                namespace = Namespace,
+                repos_table = bbsvx_ont_service:binary_to_table_name(Namespace),
+                boot = maps:get(boot, Options, root),
+                db_mod = undefined,
+                db_ref = undefined,
+                my_id = undefined
+            },
+
+            %% Start in appropriate state based on boot mode
+            case maps:get(boot, Options, root) of
+                create ->
+                    {ok, wait_for_genesis_transaction, State, 
+                     [{timeout, ?INIT_RECEIVE_GENESIS_TIMEOUT, genesis_timeout}]};
+                connect ->
+                    {ok, wait_for_registration, State,
+                     [{timeout, ?INIT_CONNECT_TIMEOUT, registration_timeout}]};
+                reconnect ->
+                    {ok, wait_for_registration, State,
+                     [{timeout, ?INIT_RECONNECT_TIMEOUT, registration_timeout}]}
+            end
+    end.
+
+terminate(_Reason, _State, _Data) ->
+    void.
+
+code_change(_Vsn, State, Data, _Extra) ->
+    {ok, State, Data}.
+
+callback_mode() ->
+    [state_functions, state_enter].
+
+%%%=============================================================================
+%%% State transitions
+%%%=============================================================================
+
+-spec wait_for_genesis_transaction(
+    gen_statem:event_type(),
+    transaction() | term(),
+    state()
+) -> gen_statem:state_function_result().
+wait_for_genesis_transaction(enter, _, #state{namespace = Namespace} = State) ->
+    ?'log-info'("Ontology Agent ~p waiting for genesis transaction", [Namespace]),
+    keep_state_and_data;
+wait_for_genesis_transaction(
+    info,
+    #transaction{type = creation},
+    #state{
+        namespace = Namespace
+    } = State
+) ->
+    ?'log-info'("Ontology Agent ~p received genesis transaction", [Namespace]),
+    case build_initial_prolog_state(Namespace, Options) of
+        {ok, PrologState} ->
+            %% Buid initial ontology state
+            OntState =
+                #ont_state{
+                    namespace = Namespace,
+                    current_ts = 0,
+                    previous_ts = -1,
+                    current_address = <<"-1">>,
+                    next_address = <<"0">>,
+                    contact_nodes = [],
+                    prolog_state = PrologState
+                },
+            %% start transaction pipeline
+            case start_transaction_pipeline(Namespace, OntState) of
+                {ok, _Pid} ->
+                    gproc:send({p, l, {bbsvx_transaction_pipeline, Namespace}}, {receive_transaction, #transaction{}}),
+                    ?'log-info'("Ontology Agent ~p started transaction pipeline", [Namespace]),
+                    {next_state, initialize_ontology, State};
+                {error, Reason} ->
+                    ?'log-error'("Ontology Agent ~p failed to start transaction pipeline ~p", [Namespace, Reason]),
+                    {stop, {error, Reason}, State}
+            end;
+        {error, Reason} ->
+            ?'log-error'("Ontology Agent ~p failed to build initial prolog state ~p", [Namespace, Reason]),
+            {stop, {error, Reason}, State}
+    end;
+wait_for_genesis_transaction(_EventType, _Event, State) ->
+    %% Catch-all clause for unhandled events
+    {keep_state, State}.
+
+initialize_ontology(
+    enter,
+    _,
+    #state{
+        namespace = Namespace,
+        ont_state = OntState,
+        boot = root
+    } =
+        State
+) ->
+    gproc:reg({p, l, {?MODULE, Namespace}}),
+    ?'log-info'("Ontology Agent ~p booting  ontology as root", [Namespace]),
+    %% For now we consider booting allowed to have history
+    case load_history(OntState, State#state.repos_table) of
+        #ont_state{} = NewOntState ->
+            ?'log-info'(
+                "Ontology Agent ~p loaded history as root local index: ~p current "
+                "index: ~p",
+                [
+                    Namespace,
+                    NewOntState#ont_state.local_index,
+                    NewOntState#ont_state.current_index
+                ]
+            ),
+
+            %% Register to events from pipeline
+            gproc:reg({p, l, {bbsvx_transaction_pipeline, Namespace}}),
+
+            gproc:send({p, l, {?MODULE, Namespace}}, {syncing, Namespace}),
+            {keep_state, State#state{
+                ont_state = NewOntState#ont_state{current_index = 0}, boot = root
+            }};
+        {error, Reason} ->
+            ?'log-error'("Ontology Agent ~p failed to load history ~p", [Namespace, Reason]),
+            {stop, {error, Reason}, State}
+    end;
+initialize_ontology(
+    enter,
+    _,
+    #state{
+        namespace = Namespace,
+        boot = join,
+        ont_state = #ont_state{} = OntState
+    } =
+        State
+) ->
+    gproc:reg({p, l, {?MODULE, Namespace}}),
+    ?'log-info'("Ontology Agent ~p booting joined ontology", [Namespace]),
+    case load_history(OntState, State#state.repos_table) of
+        #ont_state{} = NewOntState ->
+            ?'log-info'(
+                "Ontology Agent ~p loaded history as join, local index: ~p current "
+                "index: ~p",
+                [
+                    Namespace,
+                    NewOntState#ont_state.local_index,
+                    NewOntState#ont_state.current_index
+                ]
+            ),
+
+            %% Register to events from pipeline
+            gproc:reg({p, l, {bbsvx_transaction_pipeline, Namespace}}),
+
+            gproc:send({p, l, {?MODULE, Namespace}}, {wait_current_index, Namespace}),
+
+            {keep_state, State#state{ont_state = NewOntState}};
+        {error, Reason} ->
+            ?'log-error'("Ontology Agent ~p failed to load history ~p", [Namespace, Reason]),
+            {stop, {error, Reason}, State}
+    end;
+initialize_ontology(info, {registered, _CurrentIndex}, State) ->
+    %% Postpone the event
+    {keep_state, State, [{pospone, true}]};
+initialize_ontology(
+    info,
+    {syncing, _},
+    #state{
+        boot = root,
+        ont_state = OntState,
+        namespace = Namespace
+    } =
+        State
+) ->
+    ?'log-info'("Setting current index to local index: ~p", [OntState#ont_state.local_index]),
+    {ok, _Pid} =
+        supervisor:start_child(
+            {via, gproc, {n, l, {bbsvx_sup_shared_ontology, Namespace}}},
+            #{
+                id => {bbsvx_transaction_pipeline, Namespace},
+                start =>
+                    {bbsvx_transaction_pipeline, start_link, [
+                        Namespace,
+                        OntState#ont_state{
+                            current_index =
+                                OntState#ont_state.local_index
+                        },
+                        #{}
+                    ]},
+                restart => transient,
+                shutdown => 1000,
+                type => worker,
+                modules => [bbsvx_transaction_pipeline]
+            }
+        ),
+    {next_state, syncing, State};
+initialize_ontology(info, {wait_current_index, _}, #state{boot = join} = State) ->
+    {next_state, wait_for_registration, State}.
+
+wait_for_registration(enter, _, State) ->
+    ?'log-info'("Ontology actor ~p waiting for registration", [State#state.namespace]),
+    %% TODO remove this when ontalogy startup is fixed
+    case State#state.boot of
+        root ->
+            self() ! {registered, 0};
+        join ->
+            ok
+    end,
+    {keep_state, State};
+wait_for_registration(
+    info,
+    {registered, CurrentIndex},
+    #state{
+        namespace = Namespace,
+        ont_state = #ont_state{local_index = LocalIndex} = OntState
+    } =
+        State
+) ->
+    ?'log-info'("Actor ~p received registration ~p", [Namespace, CurrentIndex]),
+    {ok, _Pid} =
+        supervisor:start_child(
+            {via, gproc, {n, l, {bbsvx_sup_shared_ontology, Namespace}}},
+            #{
+                id => {bbsvx_transaction_pipeline, Namespace},
+                start =>
+                    {bbsvx_transaction_pipeline, start_link, [
+                        Namespace,
+                        OntState#ont_state{current_index = CurrentIndex},
+                        #{}
+                    ]},
+                restart => transient,
+                shutdown => 1000,
+                type => worker,
+                modules => [bbsvx_transaction_pipeline]
+            }
+        ),
+    case {CurrentIndex, LocalIndex} of
+        {C, L} when C > L ->
+            bbsvx_actor_ontology:request_segment(Namespace, LocalIndex + 1, CurrentIndex);
+        {C, L} when C == L ->
+            ok;
+        _ ->
+            ?'log-error'(
+                "Current index ~p is lower than local index ~p",
+                [CurrentIndex, LocalIndex]
+            )
+    end,
+
+    {next_state, syncing, State#state{ont_state = OntState#ont_state{current_index = CurrentIndex}}}.
+
+%% TODO : crypto: diff needs to be signed
+syncing(enter, _, #state{namespace = Namespace} = State) ->
+    ?'log-info'("Ontology Agent ~p syncing", [Namespace]),
+    {keep_state, State};
+syncing(
+    {call, From},
+    get_current_index,
+    #state{ont_state = #ont_state{current_index = Index}} = State
+) ->
+    gen_statem:reply(From, {ok, Index}),
+    {keep_state, State};
+syncing({call, From}, get_db_ref, #state{db_ref = Ref} = State) ->
+    gen_statem:reply(From, {ok, Ref}),
+    {keep_state, State};
+syncing(
+    info,
+    #ontology_history_request{
+        namespace = Namespace,
+        %% TODO : change node_entry to arc
+        requester =
+            %%#node_entry{pid = RequesterPid},
+            ReqUlid,
+        oldest_index = OldestIndex,
+        younger_index = YoungerIndex
+    },
+    #state{} = State
+) ->
+    %% TODO : May some checks should be done to see if we indeed
+    %% have segment and forward request if needed
+    History = retrieve_transaction_history(Namespace, OldestIndex, YoungerIndex),
+    YoungerIndexRetrieved =
+        case History of
+            [] ->
+                OldestIndex;
+            _ ->
+                Y = lists:last(History),
+                Y#transaction.index
+        end,
+    OldestIndexRetrieved =
+        case History of
+            [] ->
+                YoungerIndex;
+            [O | _] ->
+                O#transaction.index
+        end,
+    %% TODO : change self to valid destination
+    gen_statem:cast(
+        {via, gproc, {n, l, {arc, in, ReqUlid}}},
+        {send_history, #ontology_history{
+            namespace = Namespace,
+            list_tx = History,
+            oldest_index = OldestIndexRetrieved,
+            younger_index = YoungerIndexRetrieved
+        }}
+    ),
+
+    {next_state, syncing, State};
+syncing(info, {transaction_validated, Index}, #state{ont_state = OntState} = State) ->
+    {keep_state, State#state{ont_state = OntState#ont_state{current_index = Index}}};
+syncing(info, #ontology_history{list_tx = ListTransactions}, #state{} = State) ->
+    logger:info("Received transactions history : ~p", [ListTransactions]),
+    lists:foreach(
+        fun(#transaction{} = Transaction) ->
+            bbsvx_transaction_pipeline:receive_transaction(Transaction)
+        end,
+        ListTransactions
+    ),
+    {next_state, syncing, State};
+%%catch all
+syncing(Type, Event, _State) ->
+    ?'log-warning'("Ontology Agent syncing received invalid call :~p", [{Type, Event}]),
+    keep_state_and_data.
+
+%% Catch all for ready state
+ready(Type, Event, _State) ->
+    ?'log-warning'("Ontology Agent ready received invalid call :~p", [{Type, Event}]),
+    keep_state_and_data.
+
+%%%=============================================================================
+%%% Internal functions
+%%%=============================================================================
+
+
+-doc """
+    Build initial prolog state
+""".
+-spec build_initial_prolog_state(binary(), list({term(), term()})) -> est:state().
+build_initial_prolog_state(Namespace, Options) ->
+    DbRepos = bbsvx_ont_service:binary_to_table_name(Namespace),
+    {DbMod, DbRef} =
+        maps:get(
+            db_mod,
+            Options,
+            {bbsvx_erlog_db_ets, DbRepos}
+        ),
+    
+    erlog_int:new(bbsvx_erlog_db_differ, {DbRef, DbMod}).
+
+-doc """
+    Starts the supervised transaction pipeline.
+""".
+-spec start_transaction_pipeline(binary(), ont_state()) -> supervisor:startchild_ret().
+start_transaction_pipeline(Namespace, OntState) ->
+    supervisor:start_child(
+            {via, gproc, {n, l, {bbsvx_sup_shared_ontology, Namespace}}},
+            #{
+                id => {bbsvx_transaction_pipeline, Namespace},
+                start =>
+                    {bbsvx_transaction_pipeline, start_link, [
+                        Namespace,
+                        OntState#ont_state{
+                            current_index =
+                                OntState#ont_state.local_index
+                        },
+                        #{}
+                    ]},
+                restart => transient,
+                shutdown => 1000,
+                type => worker,
+                modules => [bbsvx_transaction_pipeline]
+            }
+        ).
+
+-doc """
+Requests a segment of transaction history from the network.
+
+Broadcasts a request to other nodes for missing transaction data.
+""".
+-spec request_segment(binary(), integer(), integer()) -> {ok, integer()}.
+request_segment(Namespace, OldestIndex, YoungerIndex) ->
+    ?'log-info'("Requesting segment ~p ~p ~p", [Namespace, OldestIndex, YoungerIndex]),
+    bbsvx_actor_spray:broadcast_unique_random_subset(
+        Namespace,
+        #ontology_history_request{
+            namespace =
+                Namespace,
+            oldest_index =
+                OldestIndex,
+            younger_index =
+                YoungerIndex
+        },
+        1
+    ).
+
+-doc """
+Loads transaction history from persistent storage into the ontology state.
+
+Restores the Prolog knowledge base from stored transaction diffs.
+""".
+-spec load_history(ont_state(), atom()) -> ont_state() | {error, term()}.
+load_history(OntState, ReposTable) ->
+    FrstTransationKey = mnesia:dirty_first(ReposTable),
+    %% This is not beautifull but fix ELP warning
+    case FrstTransationKey of
+        '$end_of_table' ->
+            do_load_history('$end_of_table', OntState, ReposTable);
+        Key when is_number(Key) ->
+            do_load_history(Key, OntState, ReposTable)
+    end.
+
+-doc """
+Recursive helper function for loading transaction history.
+
+Applies transaction diffs sequentially to rebuild the ontology state.
+""".
+-spec do_load_history(term(), ont_state(), atom()) ->
+    ont_state() | {error, term()}.
+do_load_history('$end_of_table', #ont_state{} = OntState, _ReposTable) ->
+    OntState;
+do_load_history(Key, #ont_state{prolog_state = PrologState} = OntState, ReposTable) ->
+    OntDb = PrologState#est.db,
+    %% TODO : Current Adrress should match the transaction previous address field
+    TransacEntry = bbsvx_transaction:read_transaction(ReposTable, Key),
+    case TransacEntry of
+        not_found ->
+            ?'log-error'("Transaction ~p not found", [Key]),
+            {error, {not_found, Key}};
+        #transaction{} ->
+            {ok, #db{ref = Ref} = NewOntDb} =
+                bbsvx_erlog_db_differ:apply_diff(TransacEntry#transaction.diff, OntDb),
+            NextKey = mnesia:dirty_next(ReposTable, Key),
+            %% TODO : The way op_fifo is resetted is not good and coud be done by using
+            %% standard erlog state instead of differ
+            do_load_history(
+                NextKey,
+                OntState#ont_state{
+                    prolog_state =
+                        PrologState#est{
+                            db =
+                                NewOntDb#db{
+                                    ref =
+                                        Ref#db_differ{
+                                            op_fifo =
+                                                []
+                                        }
+                                }
+                        },
+                    current_address =
+                        TransacEntry#transaction.current_address,
+                    local_index = TransacEntry#transaction.index
+                },
+                ReposTable
+            )
+    end.
+
+-doc """
+Retrieves a range of transactions from the repository.
+
+Returns transactions sorted by index within the specified range.
+""".
+retrieve_transaction_history(Namespace, OldestIndex, YoungerIndex) ->
+    TableName = bbsvx_ont_service:binary_to_table_name(Namespace),
+    SelectFun =
+        ets:fun2ms(fun(#transaction{index = Index} = Transaction) when
+            Index >= OldestIndex, Index =< YoungerIndex
+        ->
+            Transaction
+        end),
+    ?'log-info'("Selecting history ~p ~p ~p", [Namespace, OldestIndex, YoungerIndex]),
+    HistResult = mnesia:dirty_select(TableName, SelectFun),
+    ?'log-info'("History ~p", [HistResult]),
+    lists:sort(
+        fun(#transaction{index = A}, #transaction{index = B}) -> A =< B end,
+        HistResult
+    ).
+
+%%%=============================================================================
+
+%%% Eunit Tests
+%%%=============================================================================
+
+-ifdef(TEST).
+
+-include_lib("eunit/include/eunit.hrl").
+
+example_test() ->
+    ?assertEqual(true, true).
+
+-endif.

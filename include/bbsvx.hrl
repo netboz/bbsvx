@@ -92,6 +92,7 @@
     current_address :: binary(),
     namespace :: binary(),
     leader :: binary() | undefined,
+    external_predicates = [] :: [atom()],
     payload :: term(),
     diff = [] :: [term()],
     status = created :: atom()
@@ -148,10 +149,7 @@
 
 -type incoming_event() :: #incoming_event{}.
 
--record(evt_registration_accepted, {ulid :: binary(), source :: node_entry()}).
-
--type evt_registration_accepted() :: #evt_registration_accepted{}.
-
+%% Arc events
 -record(evt_arc_connected_in, {
     ulid :: binary(),
     source :: node_entry(),
@@ -164,11 +162,26 @@
     lock :: binary(),
     spread :: {boolean(), binary()} | undefined
 }).
--record(evt_arc_swapped_in, {ulid :: binary(), newlock :: binary(), new_source :: node_entry()}).
+-record(evt_arc_swapped_in, {
+    ulid :: binary(),
+    newlock :: binary(),
+    previous_source :: node_entry(),
+    new_source :: node_entry(),
+    destination :: node_entry()
+}).
+-record(evt_arc_mirrored_in, {
+    ulid :: binary(),
+    newlock :: binary(),
+    source :: node_entry(),
+    destination :: node_entry()
+}).
+
 -record(evt_connection_error, {
     ulid :: binary(), direction :: in | out, reason :: term(), node :: node_entry()
 }).
--record(evt_arc_disconnected, {ulid :: binary(), direction :: in | out}).
+-record(evt_arc_disconnected, {
+    ulid :: binary(), direction :: in | out, origin_node :: node_entry(), reason :: atom()
+}).
 -record(evt_end_exchange, {exchanged_ulids :: [binary()]}).
 -record(evt_node_quitted, {
     reason :: atom(),
@@ -177,6 +190,10 @@
     host :: inet_address() | binary() | local,
     port :: inet:port_number()
 }).
+
+-record(evt_registration_accepted, {ulid :: binary(), source :: node_entry()}).
+
+-type evt_registration_accepted() :: #evt_registration_accepted{}.
 
 %%%%%%%%%%% Network protocol messages %%%%%%%%%%%%%
 
@@ -219,6 +236,11 @@
     type :: atom(),
     %%leader :: binary(), current_index :: integer()}).
     options :: list()
+}).
+-record(header_connection_closed, {
+    namespace :: binary(),
+    ulid :: binary(),
+    reason :: atom()
 }).
 -record(exchange_in, {proposed_sample :: [exchange_entry()]}).
 -record(change_lock, {new_lock :: binary(), current_lock :: binary()}).

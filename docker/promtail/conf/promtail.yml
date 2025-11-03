@@ -1,0 +1,81 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki_collector:3100/loki/api/v1/push
+
+scrape_configs:
+  # Human-readable logs (original format)
+  - job_name: bbsvx_logs_human
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: bbsvx
+          service: bbsvx
+          format: human
+          __path__: /logs/bbsvx_*.log*
+    pipeline_stages:
+      - regex:
+          expression: '/logs/bbsvx_(?P<node_name>.*?)\.log.*'
+          source: filename
+      - regex:
+          expression: '^(?P<timestamp>\S+)\s+(?P<level>\S+)\s+(?P<pid>\S+)\s+(?P<mfa>\S*)\s*:\s*(?P<message>.*)$'
+      - labels:
+          level:
+          pid:
+          mfa:
+          node_name:
+      - timestamp:
+          source: timestamp
+          format: '2006-01-02 15:04:05.000'
+      - output:
+          source: message
+
+  # JSON structured logs with direct label extraction
+  - job_name: bbsvx_logs_json
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: bbsvx
+          service: bbsvx
+          format: json
+          __path__: /logs/bbsvx_json.log
+    pipeline_stages:
+      - json:
+          expressions:
+            timestamp: timestamp
+            level: level
+            message: message
+            metadata: metadata
+            pid: pid
+            mfa: mfa
+            # Direct label extraction from JSON
+            component: metadata.component
+            operation: metadata.operation
+            direction: metadata.direction
+            namespace: metadata.namespace
+            ulid: metadata.ulid
+            peer_node: metadata.peer_node
+            node: metadata.node
+            event_type: metadata.event_type
+      - timestamp:
+          source: timestamp
+          format: RFC3339
+      - labels:
+          level:
+          pid:
+          mfa:
+          component:
+          operation:
+          direction:
+          namespace:
+          ulid:
+          peer_node:
+          node:
+          event_type:

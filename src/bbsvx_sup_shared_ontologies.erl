@@ -1,11 +1,12 @@
 %%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Supervisor built from template.
-%%% @author yan
-%%% @end
+%%% BBSvx Shared Ontologies Supervisor
 %%%-----------------------------------------------------------------------------
 
 -module(bbsvx_sup_shared_ontologies).
+
+-moduledoc "BBSvx Shared Ontologies Supervisor\n\n"
+"One-for-one supervisor for dynamically managing shared ontology supervisors.\n\n"
+"Each child is a bbsvx_sup_shared_ontology supervisor for a specific namespace.".
 
 -author("yan").
 
@@ -39,16 +40,22 @@ start_link() ->
 init([]) ->
     ?'log-info'("Starting shared ontologies supervisor"),
     SupFlags =
-        #{strategy => simple_one_for_one,
-          intensity => 0,
-          period => 1},
+        #{
+            strategy => simple_one_for_one,
+            intensity => 0,
+            period => 1
+        },
     ChildSpecs =
-        [#{id => bbsvx_sup_shared_ontology,
-           start => {bbsvx_sup_shared_ontology, start_link, []},
-           restart => temporary,
-           shutdown => 200,
-           type => supervisor,
-           modules => [bbsvx_sup_shared_ontology]}],
+        [
+            #{
+                id => bbsvx_sup_shared_ontology,
+                start => {bbsvx_sup_shared_ontology, start_link, []},
+                restart => temporary,
+                shutdown => 200,
+                type => supervisor,
+                modules => [bbsvx_sup_shared_ontology]
+            }
+        ],
     {ok, {SupFlags, ChildSpecs}}.
 
 %%%=============================================================================

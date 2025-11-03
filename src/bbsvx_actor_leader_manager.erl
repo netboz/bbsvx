@@ -1,13 +1,13 @@
 %%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Gen State Machine built from template.
-%%% @author yan
-%%% Leader election over overlayed network
-%%% cf : https://pure.tudelft.nl/ws/portalfiles/portal/69222795/main.pdf
-%%% @end
+%%% BBSvx Leader Election Manager
 %%%-----------------------------------------------------------------------------
 
 -module(bbsvx_actor_leader_manager).
+
+-moduledoc "BBSvx Leader Election Manager\n\n"
+"Gen State Machine for leader election over overlay network.\n\n"
+"Implements distributed leader election algorithm for consensus operations.\n"
+"Reference: https://pure.tudelft.nl/ws/portalfiles/portal/69222795/main.pdf".
 
 -behaviour(gen_statem).
 
@@ -28,15 +28,16 @@
 %% State transitions
 -export([running/3]).
 
--record(state,
-        {namespace :: binary(),
-         diameter :: integer(),
-         delta_c :: integer(),
-         delta_e :: integer(),
-         delta_d :: integer(),
-         my_id :: binary(),
-         leader :: binary(),
-         neighbors :: neighbors()}).
+-record(state, {
+    namespace :: binary(),
+    diameter :: integer(),
+    delta_c :: integer(),
+    delta_e :: integer(),
+    delta_d :: integer(),
+    my_id :: binary(),
+    leader :: binary(),
+    neighbors :: neighbors()
+}).
 
 -type state() :: #state{}.
 
@@ -46,10 +47,12 @@
 
 -spec start_link(Namespace :: binary(), Options :: map()) -> gen_statem:start_ret().
 start_link(Namespace, Options) ->
-    gen_statem:start_link({via, gproc, {n, l, {leader_manager, Namespace}}},
-                          ?MODULE,
-                          [Namespace, Options],
-                          []).
+    gen_statem:start_link(
+        {via, gproc, {n, l, {leader_manager, Namespace}}},
+        ?MODULE,
+        [Namespace, Options],
+        []
+    ).
 
 -spec stop() -> ok.
 stop() ->
@@ -76,27 +79,33 @@ init([Namespace, Options]) ->
     Ts = T,
     SignedTs = bbsvx_crypto_service:sign(term_to_binary(Ts)),
     State =
-        #state{namespace = Namespace,
-               diameter = Diameter,
-               delta_c = DeltaC,
-               delta_e = DeltaE,
-               delta_d = DeltaD,
-               my_id = MyId,
-               neighbors = [],
-               leader = Leader},
+        #state{
+            namespace = Namespace,
+            diameter = Diameter,
+            delta_c = DeltaC,
+            delta_e = DeltaE,
+            delta_d = DeltaD,
+            my_id = MyId,
+            neighbors = [],
+            leader = Leader
+        },
 
     Payload =
-        #neighbor{node_id = MyId,
-                  public_key = PublicKey,
-                  signed_ts = SignedTs,
-                  ts = Ts},
+        #neighbor{
+            node_id = MyId,
+            public_key = PublicKey,
+            signed_ts = SignedTs,
+            ts = Ts
+        },
 
     %% Resgister to receive leader election info
     gproc:reg({p, l, {leader_election, Namespace}}),
 
     %% Send election info to neighborhood
-    bbsvx_actor_spray:broadcast_unique(Namespace,
-                                            #leader_election_info{payload = Payload}),
+    bbsvx_actor_spray:broadcast_unique(
+        Namespace,
+        #leader_election_info{payload = Payload}
+    ),
 
     DeltaR = DeltaE + DeltaD,
     Passed = T div DeltaR,
@@ -118,18 +127,23 @@ callback_mode() ->
 %%% State transitions
 %%%=============================================================================
 -spec running(gen_statem:event_type(), term(), state()) ->
-                 gen_statem:state_function_result().
-running(info,
-        next_round,
-        #state{namespace = Namespace,
-               my_id = MyId,
-               neighbors = Neighbors,
-               delta_c = DeltaC,
-               delta_d = DeltaD,
-               diameter = D,
-               delta_e = DeltaE} =
-            State) ->
-    M = 2 * D, % M = 2D + k − 1 with k = 1
+    gen_statem:state_function_result().
+running(
+    info,
+    next_round,
+    #state{
+        namespace = Namespace,
+        my_id = MyId,
+        neighbors = Neighbors,
+        delta_c = DeltaC,
+        delta_d = DeltaD,
+        diameter = D,
+        delta_e = DeltaE
+    } =
+        State
+) ->
+    % M = 2D + k − 1 with k = 1
+    M = 2 * D,
     DeltaR = DeltaE + DeltaD,
     T = erlang:system_time(millisecond),
     ValidNeighbors = get_valid_entries(Neighbors, T, DeltaC, DeltaR, M),
@@ -145,16 +159,21 @@ running(info,
                 %% chosen Leader is the most referenced leader among the 3 random neighbors
                 FollowedNeigbor = get_most_referenced_leader(RandomNeighbors),
                 %% Get neighbour entry with the highest Ts
-                Tsf = lists:foldl(fun (#neighbor{ts = Tsi}, Acc) when Tsi > Acc ->
-                                          Tsi;
-                                      (#neighbor{ts = _Tsi}, Acc) ->
-                                          Acc
-                                  end,
-                                  0,
-                                  ValidNeighbors),
-                {FollowedNeigbor#neighbor.chosen_leader,
-                 Tsf,
-                 bbsvx_crypto_service:sign(term_to_binary(Tsf))}
+                Tsf = lists:foldl(
+                    fun
+                        (#neighbor{ts = Tsi}, Acc) when Tsi > Acc ->
+                            Tsi;
+                        (#neighbor{ts = _Tsi}, Acc) ->
+                            Acc
+                    end,
+                    0,
+                    ValidNeighbors
+                ),
+                {
+                    FollowedNeigbor#neighbor.chosen_leader,
+                    Tsf,
+                    bbsvx_crypto_service:sign(term_to_binary(Tsf))
+                }
         end,
     {FinalVote, FinalTs, SignedFinalTs} =
         case Vote of
@@ -168,93 +187,108 @@ running(info,
         end,
     PublicKey = bbsvx_crypto_service:get_public_key(),
     Payload =
-        #neighbor{node_id = MyId,
-                  public_key = PublicKey,
-                  signed_ts = SignedFinalTs,
-                  ts = FinalTs,
-                  chosen_leader = FinalVote},
+        #neighbor{
+            node_id = MyId,
+            public_key = PublicKey,
+            signed_ts = SignedFinalTs,
+            ts = FinalTs,
+            chosen_leader = FinalVote
+        },
     %% Publish payload to Outview
-    bbsvx_actor_spray:broadcast_unique(Namespace,
-                                            #leader_election_info{payload = Payload}),
+    bbsvx_actor_spray:broadcast_unique(
+        Namespace,
+        #leader_election_info{payload = Payload}
+    ),
     Me = self(),
     %% Set timer to DeltaR for next round
     erlang:send_after(DeltaR, Me, next_round),
     {next_state, running, State#state{leader = FinalVote}};
-running(info,
-        {incoming_event, #leader_election_info{payload = #neighbor{} = Payload}},
-        #state{neighbors = Neighbors} = State) ->
-    {keep_state,
-     State#state{neighbors =
-                     lists:keystore(Payload#neighbor.node_id,
-                                    #neighbor.node_id,
-                                    Neighbors,
-                                    Payload)}};
+running(
+    info,
+    {incoming_event, #leader_election_info{payload = #neighbor{} = Payload}},
+    #state{neighbors = Neighbors} = State
+) ->
+    {keep_state, State#state{
+        neighbors =
+            lists:keystore(
+                Payload#neighbor.node_id,
+                #neighbor.node_id,
+                Neighbors,
+                Payload
+            )
+    }};
 running({call, From}, get_leader, #state{leader = Leader}) ->
     {keep_state_and_data, [{reply, From, {ok, Leader}}]};
 running(EventType, EventContent, Data) ->
-    ?'log-warning'("Leader manager received an unmanaged event ~p ~p ~p",
-                   [EventType, EventContent, Data]),
+    ?'log-warning'(
+        "Leader manager received an unmanaged event ~p ~p ~p",
+        [EventType, EventContent, Data]
+    ),
     keep_state_and_data.
 
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
 
-%%-----------------------------------------------------------------------------
-%% @doc
-%% Get the valid entries from the neighbors list.
-%% meaning only entries for witch the Ts does not differ by more than
-%% DeltaC + M*DeltaR time units from T.
-%% @end
+%% Get valid entries from neighbors list where Ts doesn't differ by more than
+%% DeltaC + M*DeltaR time units from T
 
 -spec get_valid_entries(neighbors(), integer(), integer(), integer(), integer()) ->
-                           neighbors().
+    neighbors().
 get_valid_entries(Neigh, T, DeltaC, DeltaR, M) ->
     lists:filter(fun(#neighbor{ts = Ts}) -> abs(T - Ts) < DeltaC + M * DeltaR end, Neigh).
 
-%%-----------------------------------------------------------------------------
-%% @doc
-%% Pick 3 random entries from the given list, duplicate some entries if the list
-%% is too short.
-%% @end
+%% Pick 3 random entries from the list, duplicating entries if list is too short
 
 -spec pick_three_random(neighbors()) -> neighbors().
 pick_three_random([]) ->
     [];
 pick_three_random(Neighbors) when length(Neighbors) < 3 ->
-    pick_three_random(Neighbors
-                      ++ [lists:nth(
-                              rand:uniform(length(Neighbors)), Neighbors)]);
+    pick_three_random(
+        Neighbors ++
+            [
+                lists:nth(
+                    rand:uniform(length(Neighbors)), Neighbors
+                )
+            ]
+    );
 pick_three_random(Neigh) ->
     %% Randomize list of neigbours
     Randomized = [X || {_, X} <- lists:sort([{rand:uniform(), N} || N <- Neigh])],
     lists:sublist(Randomized, 3).
 
-%%-----------------------------------------------------------------------------
-%% @doc
-%% Get the most referenced leader from the given list.
-%% @end
+%% Get the most referenced leader from the given list
 
 -spec get_most_referenced_leader(neighbors()) -> neighbor().
-get_most_referenced_leader([#neighbor{chosen_leader = A} = NA,
-                            #neighbor{chosen_leader = B},
-                            #neighbor{chosen_leader = _C}])
-    when A == B ->
+get_most_referenced_leader([
+    #neighbor{chosen_leader = A} = NA,
+    #neighbor{chosen_leader = B},
+    #neighbor{chosen_leader = _C}
+]) when
+    A == B
+->
     NA;
-get_most_referenced_leader([#neighbor{chosen_leader = A} = NA,
-                            #neighbor{chosen_leader = _B},
-                            #neighbor{chosen_leader = C}])
-    when A == C ->
+get_most_referenced_leader([
+    #neighbor{chosen_leader = A} = NA,
+    #neighbor{chosen_leader = _B},
+    #neighbor{chosen_leader = C}
+]) when
+    A == C
+->
     NA;
-get_most_referenced_leader([#neighbor{chosen_leader = _A},
-                            #neighbor{chosen_leader = B} = NB,
-                            #neighbor{chosen_leader = C}])
-    when B == C ->
+get_most_referenced_leader([
+    #neighbor{chosen_leader = _A},
+    #neighbor{chosen_leader = B} = NB,
+    #neighbor{chosen_leader = C}
+]) when
+    B == C
+->
     NB;
 get_most_referenced_leader([#neighbor{} = A, #neighbor{} = B, #neighbor{} = C]) ->
     %% Then we choose a random leader among those three
     lists:nth(
-        rand:uniform(3), [A, B, C]).
+        rand:uniform(3), [A, B, C]
+    ).
 
 %%%=============================================================================
 %%% Eunit Tests

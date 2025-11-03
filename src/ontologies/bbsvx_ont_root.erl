@@ -1,11 +1,12 @@
 %%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Header built from template
-%%% @author yan
-%%% @end
+%%% BBSvx Root Ontology
 %%%-----------------------------------------------------------------------------
 
 -module(bbsvx_ont_root).
+
+-moduledoc "BBSvx Root Ontology\n\n"
+"Root ontology module providing external predicates for BBSvx system operations.\n\n"
+"Defines Prolog predicates for ontology creation and system management functions.".
 
 -author("yan").
 
@@ -16,40 +17,37 @@
 -include("bbsvx.hrl").
 
 -export([external_predicates/0]).
--export([pred_new_ontology/3]).
+-export([pred_new_shared_ontology/3]).
 
 %% Prolog API
 -define(ERLANG_PREDS,
-        [{{register_bubble, 1}, ?MODULE, register_bubble_predicate},
-         {{spawn_child, 2}, ?MODULE, spawn_child_predicate},
-         {{stop_child, 1}, ?MODULE, stop_child_predicate},
-         {{terminate_child, 1}, ?MODULE, terminate_child_predicate}]).
+    [
+         {{new_shared_ontology_predicate, 2}, ?MODULE, pred_new_shared_ontology},
+         {{new_local_ontology_predicate, 2}, ?MODULE, pred_new_local_ontology}
+    ]).
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% @private
 %% Return the list of built in predicates contained in this module
-%%
-%% @end
+%% @private
 %%------------------------------------------------------------------------------
 
+-doc false.
 external_predicates() ->
     ?ERLANG_PREDS.
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% @private
 %% This function is called by the prolog engine when new_ontology prolog clause
 %% is called. It is responsible for registering a new bubble in the system.
-%% @end
+%% @private
 %% ------------------------------------------------------------------------------
 
-pred_new_ontology({_Atom, Namespace}, Next0, #est{bs = Bs} = St) ->
-    erlog_int:prove_body(Next0, St).
-    % case bbs_agents_backend:register_bubble(get(agent_name), DNodeName) of
-    %     ok ->
-    %         erlog_int:unify_prove_body(DNodeName, NodeName, Next0, St);
-    %     {error, Reason} ->
-    %         ?ERROR_MSG("Failled to register bubble :~p", [Reason]),
-    %         erlog_int:fail(St)
-    % end.
+-doc false.
+pred_new_shared_ontology({_Atom, #ontology{namespace = Namespace} = NewOntology}, Next0, #est{bs = Bs} = St) ->
+    case erlog_int:deref(Namespace, Bs) of
+        {_} ->
+            %% Namespace is not binded, fail.
+            erlog_int:fail(St);
+        _ ->
+            bbsvx_ont_service:new_ontology(NewOntology),
+            erlog_int:prove_body(Next0, St)
+    end.

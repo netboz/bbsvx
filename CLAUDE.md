@@ -38,7 +38,7 @@ Initialize user config: `./bin/bbsvx config init`
 
 ### Enhanced Command Line Interface
 
-BBSvx now provides **native clique integration** following the Riak pattern, eliminating the need for custom startup scripts. Configuration is managed through **cuttlefish** schemas and **clique** commands directly integrated with the release system.
+BBSvx provides enhanced command line interface following the Riak pattern, eliminating the need for custom startup scripts. Configuration is managed through **cuttlefish** schemas with commands directly integrated with the release system.
 
 #### Simple Command Interface
 BBSvx uses standard OTP release commands with environment variable configuration:
@@ -138,7 +138,7 @@ _build/default/rel/bbsvx/bin/bbsvx rpc bbsvx_cli set network.contact_nodes node1
 #### Key Features
 - **Unified Command Interface**: Single `bbsvx` command for all operations via RPC
 - **Smart Boot Detection**: Prevents data conflicts with intelligent boot modes
-- **Runtime Configuration**: Live configuration changes without restart using clique
+- **Runtime Configuration**: Live configuration changes without restart using RPC calls
 - **Type-Safe Configuration**: Cuttlefish schema validation with helpful error messages
 - **Standard OTP Release**: Follows Erlang/OTP best practices like Riak
 - **Production Ready**: Environment variable support for containerized deployments

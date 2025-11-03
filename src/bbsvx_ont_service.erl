@@ -1,11 +1,12 @@
 %%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Gen Server built from template.
-%%% @author yan
-%%% @end
+%%% BBSvx Ontology Service
 %%%-----------------------------------------------------------------------------
 
 -module(bbsvx_ont_service).
+
+-moduledoc "BBSvx Ontology Service\n\n"
+"Gen Server for managing ontology instances and Prolog knowledge base operations.\n\n"
+"Provides API for ontology creation, querying, goal storage, and distributed connections.".
 
 -author("yan").
 
@@ -20,12 +21,30 @@
 %%%=============================================================================
 
 %% External API
--export([start_link/0, new_ontology/1, get_ontology/1, delete_ontology/1, prove/2,
-         store_goal/1, get_goal/1, connect_ontology/1, disconnect_ontology/1, string_to_eterm/1,
-         binary_to_table_name/1, table_exists/1, is_contact_node/2]).
+-export([
+    start_link/0,
+    new_ontology/2,
+    get_ontology/1,
+    delete_ontology/1,
+    prove/2,
+    store_goal/1,
+    get_goal/1,
+    connect_ontology/2,
+    reconnect_ontology/1,
+    disconnect_ontology/1,
+    binary_to_table_name/1,
+    table_exists/1,
+    is_contact_node/2
+]).
 %% Callbacks
--export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
-         code_change/3]).
+-export([
+    init/1,
+    handle_call/3,
+    handle_cast/2,
+    handle_info/2,
+    terminate/2,
+    code_change/3
+]).
 
 -define(SERVER, ?MODULE).
 -define(INDEX_LOAD_TIMEOUT, 30000).
@@ -40,66 +59,41 @@
 %%%=============================================================================
 
 -spec start_link() -> gen_statem:start_ret().
-%%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Start the ontology service
-%%% @returns {ok, Pid} if the service was started successfully, {error, Reason} otherwise
-%%% @end
+%% Start the ontology service
 
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
-%%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Create a new ontology
-%%% @param Ontology the ontology to create
-%%% @returns ok if the ontology was created successfully, {error, Reason} otherwise
-%%% @end
 
--spec new_ontology(ontology()) -> ok | {error, atom()}.
-new_ontology(Namespace) ->
-    gen_server:call(?SERVER, {new_ontology, Namespace, []}).
+-spec new_ontology(ontology(), map()) -> ok | {error, atom()}.
+new_ontology(#ontology{namespace = Namespace}, Options) ->
+    gen_server:call(?SERVER, {new_ontology, Namespace, Options}).
 
-%%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Get an ontology
-%%% @param Namespace the namespace of the ontology to get
-%%% @returns {ok, Ontology} if the ontology was found, {error, Reason} otherwise
-%%% @end
+
+-spec connect_ontology(Namespace :: binary(), map()) -> ok | {error, atom()}.
+connect_ontology(Namespace, Options) ->
+    gen_server:call(?SERVER, {connect_ontology, Namespace, Options}).
+
+
+-spec reconnect_ontology(Namespace :: binary()) -> ok | {error, atom()}.
+reconnect_ontology(Namespace) ->
+    gen_server:call(?SERVER, {reconnect_ontology, Namespace}).
+
+
+%% Get an ontology by namespace
 
 -spec get_ontology(binary()) -> {ok, ontology()} | {error, atom()}.
 get_ontology(Namespace) ->
     gen_server:call(?SERVER, {get_ontology, Namespace}).
 
-%%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Delete an ontology
-%%% @param Namespace the namespace of the ontology to delete
-%%% @returns ok if the ontology was deleted successfully, {error, Reason} otherwise
-%%% @end
-%%%
+%% Delete an ontology by namespace
 -spec delete_ontology(Namespace :: binary()) -> ok | {error, atom()}.
 delete_ontology(Namespace) ->
     gen_server:call(?SERVER, {delete_ontology, Namespace}).
 
-%%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Connect an ontology to the network
-%%% @param Namespace the namespace of the ontology to connect
-%%% @returns ok if the ontology was connected successfully, {error, Reason} otherwise
-%%% @end
-
--spec connect_ontology(Namespace :: binary()) -> ok | {error, atom()}.
-connect_ontology(Namespace) ->
-    gen_server:call(?SERVER, {connect_ontology, Namespace}).
-
 -spec disconnect_ontology(Namespace :: binary()) -> ok | {error, atom()}.
 %%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Disconnect an ontology from the network
-%%% @param Namespace the namespace of the ontology to disconnect
-%%% @returns ok if the ontology was disconnected successfully, {error, Reason} otherwise
-%%% @end
+%% Disconnect an ontology from the network
 disconnect_ontology(Namespace) ->
     gen_server:call(?SERVER, {disconnect_ontology, Namespace}).
 
@@ -118,347 +112,299 @@ prove(Namespace, Predicate) ->
 %%%=============================================================================
 
 init([]) ->
-    case mnesia:create_table(?INDEX_TABLE,
-                             [{attributes, record_info(fields, ontology)}, {disc_copies, [node()]}])
-    of
+    MyId = bbsvx_crypto_service:my_id(),
+    case create_index_table() of
         {aborted, {already_exists, ?INDEX_TABLE}} ->
-            %% Index table already exists, so this is not the first time we start
-            ?'log-info'("Onto service : waiting for index table ~p", [?INDEX_TABLE]),
+            %% Index Table alreay exists, this is not a first start.
+            ?'log-info'("Onto service reading index table ~p", [?INDEX_TABLE]),
             case mnesia:wait_for_tables([?INDEX_TABLE], ?INDEX_LOAD_TIMEOUT) of
                 {timeout, _} ->
                     logger:error("Onto service : index table ~p load timeout", [?INDEX_TABLE]),
                     {error, index_table_timeout};
                 _ ->
-                    ?'log-info'("Onto service : index table ~p loaded", [?INDEX_TABLE]),
-                    MyId = bbsvx_crypto_service:my_id(),
+                    ?'log-info'("Booting indexed ontologies", []),
                     boot_indexed_ontologies(),
                     {ok, #state{my_id = MyId}}
             end;
         {atomic, ok} ->
-            MyId = bbsvx_crypto_service:my_id(),
-            bbsvx_transaction:new_root_ontology(),
-            BootMode = application:get_env(bbsvx, boot, root),
-            case BootMode of
+            %% This is the first time we start, so we need to either create root ontology, either
+            %% join an existing network.
+            %% Atm default behavior is to create root ontology but later on default will be to join an existing network,
+            %% once the root mesh is stable enough.
+
+            case application:get_env(bbsvx, boot, root) of
                 root ->
-                    ?'log-info'("Onto service : boot type : root"),
-
-                    GenesisTransaction =
-                        #transaction{type = creation,
-                                     index = 0,
-                                     current_address = <<"0">>,
-                                     prev_address = <<"-1">>,
-                                     prev_hash = <<"0">>,
-                                     signature =
-                                         <<"">>, %% @TODO: Should be signature of ont owner
-                                     ts_created = erlang:system_time(),
-                                     ts_processed = erlang:system_time(),
-                                     source_ontology_id = <<"">>,
-                                     leader = bbsvx_crypto_service:my_id(),
-                                     status = processed,
-                                     diff = [],
-                                     namespace = <<"bbsvx:root">>,
-                                     payload = []},
-                    bbsvx_transaction:record_transaction(GenesisTransaction),
-
-                    {ok, {MyHost, MyPort}} = bbsvx_network_service:my_host_port(),
-
-                    %% Format contact nodes
-                    ContactNodes = [#node_entry{host = MyHost, port = MyPort}],
-                    logger:info("Onto service : contact nodes ~p", [ContactNodes]),
-                    OntEntry =
-                        #ontology{namespace = <<"bbsvx:root">>,
-                                  version = <<"0.0.1">>,
-                                  type = shared,
-                                  contact_nodes = ContactNodes},
-                    mnesia:activity(transaction, fun() -> mnesia:write(OntEntry) end),
-                    supervisor:start_child(bbsvx_sup_shared_ontologies,
-                                           [<<"bbsvx:root">>,
-                                            #{contact_nodes => ContactNodes, boot => root}]),
-
-                    {ok, #state{my_id = MyId}};
-                {join, Host, Port} ->
-                    ?'log-info'("Onto service : boot type : joining node ~p ~p", [Host, Port]),
-                    ListOfContactNodes = [#node_entry{host = list_to_binary(Host), port = Port}],
-
-                    logger:info("Onto service : contact nodes ~p", [ListOfContactNodes]),
-                    OntEntry =
-                        #ontology{namespace = <<"bbsvx:root">>,
-                                  version = <<"0.0.1">>,
-                                  type = shared,
-                                  contact_nodes = ListOfContactNodes},
-                    mnesia:activity(transaction, fun() -> mnesia:write(OntEntry) end),
-                    supervisor:start_child(bbsvx_sup_shared_ontologies,
-                                           [<<"bbsvx:root">>,
-                                            #{contact_nodes => ListOfContactNodes, boot => join}]),
-
-                    {ok, #state{my_id = MyId}};
-                join ->
-                    %% Join mode without specific contact node (restart case)
-                    ?'log-info'("Onto service : boot type : join (restart)"),
-                    ContactNodes = application:get_env(bbsvx, contact_nodes, "none"),
-                    ListOfContactNodes = 
-                        case ContactNodes of
-                            "none" ->
-                                [#node_entry{host = <<"localhost">>, port = 2304}];
-                            _ ->
-                                %% Parse contact nodes string
-                                parse_contact_nodes(ContactNodes)
-                        end,
-
-                    logger:info("Onto service : contact nodes ~p", [ListOfContactNodes]),
-                    OntEntry =
-                        #ontology{namespace = <<"bbsvx:root">>,
-                                  version = <<"0.0.1">>,
-                                  type = shared,
-                                  contact_nodes = ListOfContactNodes},
-                    mnesia:activity(transaction, fun() -> mnesia:write(OntEntry) end),
-                    supervisor:start_child(bbsvx_sup_shared_ontologies,
-                                           [<<"bbsvx:root">>,
-                                            #{contact_nodes => ListOfContactNodes, boot => join}]),
-
-                    {ok, #state{my_id = MyId}};
-                Else ->
-                    ?'log-warning'("Onto service : unmanaged boot type ~p", [Else]),
-                    {stop, {error, invalid_boot_type}}
-            end;
-        {aborted, {error, Reason}} ->
-            logger:error("Onto service : failed to create index table ~p", [Reason]),
-            {stop, Reason}
+                    ?'log-info'("Onto service : boot type : root", []),
+                    Namespace = <<"bbsvx:root">>,
+                    case create_transaction_table(Namespace) of
+                        ok ->
+                            Ont = #ontology{
+                                namespace = Namespace,
+                                contact_nodes = [],
+                                version = <<"0.0.1">>,
+                                last_update = erlang:system_time(microsecond)
+                            },
+                            case index_new_ontology(Ont) of
+                                ok ->
+                                    case activate_ontology(Namespace, #{boot => create}) of
+                                        {ok, _} ->
+                                            ?'log-info'("Onto service : created root ontology network", []),
+                                            {ok, #state{my_id = MyId}};
+                                        {error, Reason} ->
+                                            ?'log-error'(
+                                                "Onto service : failed to create root ontology network with reason ~p",
+                                                [Reason]
+                                            ),
+                                            {stop, Reason}
+                                    end;
+                                {error, Reason} ->
+                                    ?'log-error'(
+                                        "Failed to index new ontology ~p at boot with reason : ~p", [Ont, Reason]),
+                                    {stop, Reason}
+                             end;
+                        {error, Reason} ->
+                            ?'log-error'("Failed to create transaction table ~p", [Reason]),
+                            {stop, Reason}
+                    end;
+                {join, ContactNodes} when is_list(ContactNodes) ->
+                    case validate_contact_nodes(ContactNodes) of
+                        {[], InvalidNodes} ->
+                            ?'log-error'(
+                                "Onto service : no valid contact nodes provided, cannot join network, invalid format ~p",
+                                [InvalidNodes]
+                            ),
+                            {stop, no_valid_contact_nodes};
+                        {ContactNodesEntries, InvalidNodes} ->
+                            case InvalidNodes of
+                                [] ->
+                                    ok;
+                                _ ->
+                                    ?'log-warning'(
+                                        "Onto service : some contact nodes have invalid format ~p, ignoring them",
+                                        [InvalidNodes]
+                                    )
+                            end,
+                            OntEntry = #ontology{
+                                namespace = <<"bbsvx:root">>,
+                                version = <<"0.0.1">>,
+                                contact_nodes = ContactNodesEntries
+                            },
+                            case index_new_ontology(OntEntry) of
+                                ok ->
+                                    case activate_ontology(<<"bbsvx:root">>, #{
+                                        contact_nodes => ContactNodesEntries,
+                                        boot => connect
+                                    }) of
+                                        {ok, _} ->
+                                            ?'log-info'("Onto service : joined existing ontology network", []),
+                                            {ok, #state{my_id = MyId}};
+                                        {error, Reason} ->
+                                            ?'log-error'(
+                                                "Onto service : failed to join existing ontology network with reason ~p",
+                                                [Reason]
+                                            ),
+                                            {stop, Reason}
+                                    end;
+                                {error, Reason} ->
+                                    ?'log-error'(
+                                        "Failed to index new ontology ~p at boot with reason : ~p", [OntEntry, Reason]),
+                                    {stop, Reason}
+                            end;
+                        {error, Reason} ->
+                            ?'log-error'("Invalid contact nodes format ~p", [Reason]),
+                            {stop, Reason}
+                    end
+            end
     end.
 
-% init([]) ->
-%     ?'log-info'("Onto service : starting ontology service"),
-%     case have_index_table() of
-%         true ->
-%             ?'log-info'("Onto service : waiting for index table ~p", [?INDEX_TABLE]),
-%             case mnesia:wait_for_tables([?INDEX_TABLE], ?INDEX_LOAD_TIMEOUT) of
-%                 {timeout, _} ->
-%                     logger:error("Onto service : index table ~p load timeout", [?INDEX_TABLE]),
-%                     {error, index_table_timeout};
-%                 _ ->
-%                     ?'log-info'("Onto service : index table ~p loaded", [?INDEX_TABLE]),
-%                     MyId = bbsvx_crypto_service:my_id(),
-%                     boot_indexed_ontologies(),
-%                     {ok, #state{my_id = MyId}}
-%             end;
-%         false ->
-%             %% First time we start
-%             case mnesia:create_table(?INDEX_TABLE,
-%                                      [{attributes, record_info(fields, ontology)},
-%                                       {disc_copies, [node()]}])
-%             of
-%                 {atomic, ok} ->
-%                     MyId = bbsvx_crypto_service:my_id(),
+handle_call(
+    {create_ontology, 
+        Namespace,
+        _Options},
+    _From,
+    State
+) ->
+    %% Start by checking if we have this ontology registered into index
+    case get_ontology_from_index(Namespace) of
+        {error, not_found} ->
+            %% No, we can continue into ontology creation
 
-%                     bbsvx_transaction:new_root_ontology(),
-%                     BootType =
-%                         case init:get_argument(init_root) of
-%                             {ok, [["root"]]} ->
-%                                 ?'log-info'("Onto service : boot type : root"),
-%                                 root;
-%                             {ok, [["join", Host, Port]]} ->
-%                                 ?'log-info'("Onto service : boot type : joining node ~p ~p",
-%                                             [Host, Port]),
-%                                 {join, [#node_entry{host = Host, port = list_to_integer(Port)}]};
-%                             Else ->
-%                                 ?'log-warning'("Onto service : unmanaged boot type ~p", [Else]),
-%                                 application:get_env(bbsvx, boot, root)
-%                         end,
-
-%                     ListOfContactNodes =
-%                         case BootType of
-%                             root ->
-%                                 [];
-%                             {join, LContNods} ->
-%                                 LContNods
-%                         end,
-
-%                     %% Format contact nodes
-%                     ContactNodes =
-%                         [#node_entry{host = Host, port = Port}
-%                          || #node_entry{host = Host, port = Port} <- ListOfContactNodes],
-%                     logger:info("Onto service : contact nodes ~p", [ContactNodes]),
-%                     OntEntry =
-%                         #ontology{namespace = <<"bbsvx:root">>,
-%                                   version = <<"0.0.1">>,
-%                                   type = shared,
-%                                   contact_nodes = ContactNodes},
-%                     mnesia:activity(transaction, fun() -> mnesia:write(OntEntry) end),
-%                     supervisor:start_child(bbsvx_sup_shared_ontologies,
-%                                            [<<"bbsvx:root">>,
-%                                             #{contact_nodes => ContactNodes, boot => BootType}]),
-
-%                     {ok, #state{my_id = MyId}};
-%                 {aborted, {error, Reason}} ->
-%                     logger:error("Onto service : failed to create index table ~p", [Reason]),
-%                     {error, Reason}
-%             end
-%     end.
-
--spec handle_call(any(), gen_server:from(), state()) -> {reply, any(), state()}.
-handle_call({new_ontology,
-             #ontology{namespace = Namespace,
-                       type = Type,
-                       contact_nodes = ContactNodes},
-             _Options},
-            _From,
-            State) ->
-    case mnesia:dirty_read(?INDEX_TABLE, Namespace) of
-        [] ->
-            CN = case ContactNodes of
-                     [] ->
-                         [#node_entry{host = <<"bbsvx_bbsvx_root_1">>, port = 1883}];
-                     _ ->
-                         ContactNodes
-                 end,
-            Ont = #ontology{namespace = Namespace,
-                            contact_nodes = CN,
-                            version = <<"0.0.1">>,
-                            type = Type,
-                            last_update = erlang:system_time(microsecond)},
-            case mnesia:create_table(binary_to_table_name(Namespace),
-                                     [{attributes, record_info(fields, goal)}])
-            of
-                {atomic, ok} ->
-                    FinalOnt =
-                        case Type of
-                            shared ->
-                                %% Ask ontologies supervisor to start an ontology supervisor
-                                %% which will start the needed agents
-                                supervisor:start_child(bbsvx_sup_shared_ontologies,
-                                                       [Namespace, #{contact_nodes => CN}]),
-
-                                Ont#ontology{type = shared};
-                            local ->
-                                Ont#ontology{type = local}
-                        end,
-                    ok = mnesia:activity(transaction, fun() -> mnesia:write(FinalOnt) end),
-
-                    {reply, ok, State};
-                {aborted, {already_exists, _}} ->
-                    ?'log-info'("Onto service : table ~p already exists",
-                                [binary_to_atom(Namespace)]),
-                    FinalOnt =
-                        case Type of
-                            shared ->
-                                %% Start shared ontology agents
-                                {ok, _} =
-                                    supervisor:start_child(bbsvx_sup_shared_ontologies,
-                                                           [Namespace, #{contact_nodes => CN}]),
-
-                                Ont#ontology{type = shared};
-                            local ->
-                                Ont#ontology{type = local}
-                        end,
-                    ?'log-info'("Final Ont ~p", [FinalOnt]),
-                    ok = mnesia:activity(transaction, fun() -> mnesia:write(FinalOnt) end),
-
-                    {reply, ok, State};
-                {aborted, {error, Reason}} ->
-                    logger:error("Onto service : failed to create table ~p with reason : ~p",
-                                 [binary_to_atom(Namespace), Reason]),
-                    {reply, {error, Reason}, State};
-                Else ->
-                    logger:error("Onto service : unanaged create table ~p result with reason "
-                                 ": ~p",
-                                 [binary_to_atom(Namespace), Else]),
-                    {reply, {error, Else}, State}
+            Ont = #ontology{
+                namespace = Namespace,
+                contact_nodes = [],
+                version = <<"0.0.1">>,
+                type = shared,
+                last_update = erlang:system_time(microsecond)
+            },
+            case create_transaction_table(Namespace) of
+                ok ->
+                    case index_new_ontology(Ont) of
+                        ok ->
+                          
+                                    ActivationResult = activate_ontology(Namespace, #{
+                                        boot => create
+                                    }),
+                                    {reply, ActivationResult, State};
+                              
+                        {error, Reason} ->
+                            ?'log-error'(
+                                "Failed to index new ontology ~p at boot with reason : ~p", [
+                                    Ont, Reason
+                                ]
+                            ),
+                            {reply, {error, Reason}, State}
+                    end;
+                {error, Reason} ->
+                    ?'log-error'("Failed to create transaction table ~p", [Reason]),
+                    {reply, {error, Reason}, State}
             end;
         _ ->
             {reply, {error, already_exists}, State}
     end;
-handle_call({prove, Namespace, Predicate}, _From, State)
-    when is_binary(Predicate) andalso is_binary(Namespace) ->
-    ?'log-info'("Onto service : proving goal ~p", [Predicate]),
-    case string_to_eterm(Predicate) of
-        {error, Reason} ->
-            logger:error("Onto service : failed to parse goal ~p with reason ~p",
-                         [Predicate, Reason]),
-            {reply, {error, Reason}, State};
-        Eterm ->
-            Timestamp = erlang:system_time(microsecond),
-            Goal =
-                #goal{id = uuid:to_string(uuid:uuid4()),
-                      namespace = Namespace,
-                      source_id = State#state.my_id,
-                      timestamp = Timestamp,
-                      payload = Eterm},
-            %% TODO: It is a goal that should be broadcasted not a transaction
-            Transaction =
-                #transaction{namespace = Namespace,
-                             payload = Goal,
-                             current_address = <<"-1">>,
-                             signature = <<"TODO">>,
-                             source_ontology_id = <<"TODO">>,
-                             ts_processed = 0,
-                             prev_address = <<"-1">>,
-                             prev_hash = <<"-1">>,
-                             leader = undefined,
-                             type = goal,
-                             ts_created = Timestamp},
-            bbsvx_epto_service:broadcast(Namespace, Transaction),
-            {reply, {ok, Goal#goal.id}, State}
+
+%% Connect to an existing ontology network for the first time.
+handle_call({connect_ontology, Namespace, #{contact_nodes := ContactNodes} = Options}, _From, State) ->
+     %% Start by checking if we have this ontology registered into index
+    case get_ontology_from_index(Namespace) of
+        {error, not_found} ->
+            %% No, we can continue into ontology creation
+            case validate_contact_nodes(ContactNodes) of
+                {[], InvalidNodes} ->
+                    ?'log-error'(
+                        "Onto service : no valid contact nodes provided, cannot join network, invalid format ~p",
+                        [InvalidNodes]
+                    ),
+                    {reply, {error, no_valid_contact_nodes}, State};
+                {ContactNodesEntries, InvalidNodes} ->
+                    case InvalidNodes of
+                        [] ->
+                            ok;
+                        _ ->
+                            ?'log-warning'(
+                                "Onto service : some contact nodes have invalid format ~p, ignoring them",
+                                [InvalidNodes]
+                            )
+                    end,
+                    Ont = #ontology{
+                        namespace = Namespace,
+                        contact_nodes = ContactNodesEntries,
+                        version = <<"0.0.1">>,
+                        type = shared,
+                        last_update = erlang:system_time(microsecond)
+                    },
+                    case create_transaction_table(Namespace) of
+                        ok ->
+                            case index_new_ontology(Ont) of
+                                ok ->
+                                    ActivationResult = activate_ontology(Namespace, #{
+                                        contact_nodes => ContactNodesEntries,
+                                        boot => connect
+                                    }),
+                                    {reply, ActivationResult, State};
+                                {error, Reason} ->
+                                    ?'log-error'(
+                                        "Failed to index new ontology ~p at boot with reason : ~p", [
+                                            Ont, Reason
+                                        ]
+                                    ),
+                                    {reply, {error, Reason}, State}
+                            end;
+                        {error, Reason} ->
+                            ?'log-error'("Failed to create transaction table ~p", [Reason]),
+                            {reply, {error, Reason}, State}
+                    end        
+            end;
+        _ ->
+            {reply, {error, already_exists}, State}
     end;
-handle_call({get_ontology, Namespace}, _From, State) ->
-    Ont = mnesia:dirty_read(?INDEX_TABLE, Namespace),
-    case Ont of
-        [] ->
-            {reply, {error, not_found}, State};
-        [Ontology] ->
-            {reply, {ok, Ontology}, State}
-    end;
-%% Connect the ontology to the network
-handle_call({connect_ontology, Namespace}, _From, State) ->
-    %% Start the shared ontology agents
-    FUpdateOnt =
-        fun() ->
-           case mnesia:wread({?INDEX_TABLE, Namespace}) of
-               [] ->
-                   ?'log-error'("Onto service : ontology ~p not found", [Namespace]),
-                   {error, not_found};
-               [#ontology{type = shared}] ->
-                   ?'log-notice'("Onto service : ontology ~p already connected", [Namespace]),
-                   {error, already_connected};
-               [Ont] ->
-                   %% Start shared ontology agents
-                   %% @TODO: check contact nodes below if it have unexpected value
-                   supervisor:start_child(bbsvx_sup_shared_ontologies,
-                                          [Namespace,
-                                           #{contact_nodes => Ont#ontology.contact_nodes}]),
-                   mnesia:write(Ont#ontology{type = shared})
-           end
-        end,
-    mnesia:activity(transaction, FUpdateOnt),
-    {reply, ok, State};
+            
+
+%% Reconnect an already connected ontology
+handle_call({reconnect_ontology, Namespace}, _From, State) ->
+            case get_ontology_from_index(Namespace) of
+                {error, Reason} ->
+                    ?'log-error'("Onto service : ontology ~p not found", [Namespace]),
+                    {reply, {error, Reason}, State};
+                {ok, #ontology{contact_nodes = ContactNodes} = Ont} ->
+                    %% Start shared ontology agents
+                    %% TODO: check contact nodes below if it have unexpected value
+                    ActivationResult = activate_ontology(Namespace, #{
+                            contact_nodes => ContactNodes,
+                            boot => reconnect
+                        }),
+                    {reply, ActivationResult, State}
+            end;
+
 %% Disconnect the ontology from the network
 handle_call({disconnect_ontology, Namespace}, _From, State) ->
     %% Stop the shared ontology agents
     FDisconnectOnt =
         fun() ->
-           case mnesia:wread({?INDEX_TABLE, Namespace}) of
-               [] ->
-                   ?'log-error'("Onto service : ontology ~p not found", [Namespace]),
-                   {error, not_found};
-               [#ontology{type = local}] ->
-                   ?'log-warning'("Onto service : ontology ~p already disconnected", [Namespace]),
-                   {error, already_disconnected};
-               _ ->
-                   case gproc:where({n, l, {bbsvx_sup_shared_ontology, Namespace}}) of
-                       undefined ->
-                           logger:error("Onto service : shared ontology sup not found", []);
-                       Pid -> supervisor:terminate_child(bbsvx_sup_shared_ontologies, Pid)
-                   end,
-                   jobs:delete_queue({Namespace}),
-                   [Ont] = mnesia:wread({?INDEX_TABLE, Namespace}),
-                   mnesia:write(Ont#ontology{type = local})
-           end
+            case get_ontology_from_index(Namespace) of
+                {error, not_found} ->
+                    ?'log-error'("Onto service : ontology ~p not found", [Namespace]),
+                    {error, not_found};
+                {ok, #ontology{type = local}} ->
+                    ?'log-warning'("Onto service : ontology ~p already disconnected", [Namespace]),
+                    {error, already_disconnected};
+                {ok, #ontology{} = Ont} ->
+                    case deactivate_ontology(Namespace) of
+                        ok ->
+                            mnesia:write(Ont#ontology{type = local});
+                        {error, Reason} ->
+                            ?'log-error'("Onto service : failed to deactivate ontology ~p", [Reason])
+                    end
+            end
         end,
-    mnesia:activity(transaction, FDisconnectOnt),
-    {reply, ok, State};
+    DisconnectResult = mnesia:activity(transaction, FDisconnectOnt),
+    {reply, DisconnectResult, State};
+
+
+handle_call({prove, Namespace, Predicate}, _From, State) when
+    is_binary(Predicate) andalso is_binary(Namespace) ->
+    ?'log-info'("Onto service : proving goal ~p", [Predicate]),
+    case bbsvx_transaction:string_to_eterm(Predicate) of
+        {error, Reason} ->
+            logger:error(
+                "Onto service : failed to parse goal ~p with reason ~p",
+                [Predicate, Reason]
+            ),
+            {reply, {error, Reason}, State};
+        Eterm ->
+            Timestamp = erlang:system_time(microsecond),
+            Goal =
+                #goal{
+                    id = ulid:generate(),
+                    namespace = Namespace,
+                    source_id = State#state.my_id,
+                    timestamp = Timestamp,
+                    payload = Eterm
+                },
+            %% TODO: It is a goal that should be broadcasted not a transaction
+            Transaction =
+                #transaction{
+                    namespace = Namespace,
+                    payload = Goal,
+                    current_address = <<"-1">>,
+                    signature = <<"TODO">>,
+                    source_ontology_id = <<"TODO">>,
+                    ts_processed = 0,
+                    prev_address = <<"-1">>,
+                    prev_hash = <<"-1">>,
+                    leader = undefined,
+                    type = goal,
+                    ts_created = Timestamp
+                },
+            bbsvx_epto_service:broadcast(Namespace, Transaction),
+            {reply, {ok, Goal#goal.id}, State}
+    end;
+handle_call({get_ontology, Namespace}, _From, State) ->
+    {reply, get_ontology_from_index(Namespace), State};
+
 handle_call({delete_ontology, Namespace}, _From, State) when is_binary(Namespace) ->
     TabDeleteResult =
-        case mnesia:dirty_read({?INDEX_TABLE, Namespace}) of
-            [#ontology{type = shared}] ->
+        case get_ontology_from_index(Namespace) of
+            {ok, #ontology{type = shared}} ->
                 supervisor:terminate_child(bbsvx_sup_spray_view_agents, Namespace),
                 case mnesia:delete_table(binary_to_atom(Namespace)) of
                     {atomic, ok} ->
@@ -467,7 +413,7 @@ handle_call({delete_ontology, Namespace}, _From, State) when is_binary(Namespace
                     Else ->
                         {error, Else}
                 end;
-            [#ontology{type = _}] ->
+            {ok, #ontology{type = _}} ->
                 case mnesia:delete_table(binary_to_atom(Namespace)) of
                     {atomic, ok} ->
                         FunDel = fun() -> mnesia:delete({?INDEX_TABLE, Namespace}) end,
@@ -486,15 +432,16 @@ handle_call({store_goal, #goal{} = Goal}, _From, State) ->
     F = fun() -> mnesia:write(Goal) end,
     mnesia:activity(transaction, F),
     {reply, ok, State};
-%% REtrieve goal from the database
-handle_call({get_goal, Namespace, GoalId}, _From, #state{} = State)
-    when is_binary(GoalId) andalso is_binary(Namespace) ->
+%% RRetrieve goal from the database
+handle_call({get_goal, Namespace, GoalId}, _From, #state{} = State) when
+    is_binary(GoalId) andalso is_binary(Namespace)
+->
     Res = mnesia:dirty_read({binary_to_atom(Namespace), GoalId}),
     {reply, {ok, Res}, State};
 handle_call(Request, _From, LoopState) ->
     ?'log-warning'("Onto service : received unknown call request ~p", [Request]),
-    Reply = ok,
-    {reply, Reply, LoopState}.
+    
+    {reply, ok, LoopState}.
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -512,6 +459,88 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%=============================================================================
 
+-spec validate_contact_nodes(ContactNodes :: list()) -> {list(#node_entry{}), list(term())}.
+validate_contact_nodes(ContactNodes) when is_list(ContactNodes) ->
+    {ValidNodes, InvalidNodes} = 
+                                lists:splitwith(
+                                    fun
+                                        ({Host, Port}) when is_list(Host), is_integer(Port) -> true;
+                                        ({Host, Port}) when is_binary(Host), is_integer(Port) -> true;
+                                        (_) -> false
+                                    end, ContactNodes),
+    FormattedValidNodes = lists:map(
+        fun
+            ({Host, Port}) when is_list(Host) -> 
+                #node_entry{host = list_to_binary(Host), port = Port};
+            ({Host, Port}) when is_binary(Host) -> 
+                #node_entry{host = Host, port = Port}
+        end, ValidNodes),
+    {FormattedValidNodes, InvalidNodes}.
+
+                                   
+
+
+-spec get_ontology_from_index(Namespace :: binary()) -> {ok, ontology()} | {error, not_found}.
+get_ontology_from_index(Namespace) ->
+    case mnesia:dirty_read({?INDEX_TABLE, Namespace}) of
+        [Ontology] ->
+            {ok, Ontology};
+        [] ->
+            {error, not_found}
+    end.
+
+-spec create_root_transaction_table() -> ok | {error, Reason :: atom()}.
+create_root_transaction_table() ->
+    create_transaction_table(<<"bbsvx:root">>).
+
+-spec create_transaction_table(NameSpace :: binary()) -> ok | {error, Reason :: atom()}.
+create_transaction_table(NameSpace) ->
+    case bbsvx_transaction:create_transaction_table(NameSpace) of
+        ok ->
+            ?'log-info'("Onto service : created transaction table ~p", [NameSpace]),
+            ok;
+        {error, Reason} ->
+            ?'log-error'("Onto service : failed to create transaction table ~p", [Reason]),
+            {error, Reason}
+    end.
+
+-spec index_new_ontology(ontology()) -> ok | {error, Reason :: term()}.
+index_new_ontology(#ontology{} = Ontology) ->
+    try
+        mnesia:activity(transaction, fun() -> mnesia:write(Ontology) end),
+        ok
+    catch
+        exit:{aborted, Reason} ->
+            {error, Reason};
+        Error:Reason ->
+            {error, {Error, Reason}}
+    end.
+
+-spec create_index_table() -> {atomic, ok} | {aborted, term()}.
+create_index_table() ->
+    mnesia:create_table(
+        ?INDEX_TABLE,
+        [{attributes, record_info(fields, ontology)}, {disc_copies, [node()]}]
+    ).
+
+-spec activate_ontology(Namespace :: binary(), Options :: map()) ->
+    supervisor:startchild_ret().
+activate_ontology(Namespace, Options) ->
+    supervisor:start_child(bbsvx_sup_shared_ontologies, [Namespace, Options]).
+
+-spec deactivate_ontology(Namespace :: binary()) -> ok | {error, Reason :: atom()}.
+deactivate_ontology(Namespace) ->
+    supervisor:terminate_child(bbsvx_sup_shared_ontologies, [Namespace]).
+
+-spec update_ontology(NewOntology :: ontology()) -> ok | {error, Reason :: term()}.
+update_ontology(NewOntology) ->
+    case mnesia:activity(transaction, fun() -> mnesia:write(NewOntology) end) of
+        {atomic, _} ->
+            ok;
+        {aborted, Reason} ->
+            {error, Reason}
+    end.
+
 boot_indexed_ontologies() ->
     FirstKey = mnesia:dirty_first(?INDEX_TABLE),
     do_boot_ontologies(FirstKey).
@@ -525,9 +554,13 @@ do_boot_ontologies(Key) ->
 
     case Ont#ontology.type of
         shared ->
-            supervisor:start_child(bbsvx_sup_shared_ontologies,
-                                   [Ont#ontology.namespace,
-                                    #{contact_nodes => Ont#ontology.contact_nodes, boot => join}]);
+            supervisor:start_child(
+                bbsvx_sup_shared_ontologies,
+                [
+                    Ont#ontology.namespace,
+                    #{contact_nodes => Ont#ontology.contact_nodes, boot => join}
+                ]
+            );
         local ->
             ok
     end,
@@ -552,42 +585,20 @@ parse_contact_nodes(ContactNodesStr) ->
 parse_single_node(NodeStr) ->
     CleanNode = string:strip(NodeStr),
     case string:tokens(CleanNode, ":") of
-        [Host, Port] -> 
+        [Host, Port] ->
             #node_entry{host = list_to_binary(Host), port = list_to_integer(Port)};
-        [Host] -> 
+        [Host] ->
             #node_entry{host = list_to_binary(Host), port = 2304};
-        _ -> 
+        _ ->
             #node_entry{host = <<"localhost">>, port = 2304}
     end.
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Convert a binary namespace to a table name
+-spec binary_to_table_name(binary()) -> atom().
 binary_to_table_name(Namespace) ->
     Replaced = binary:replace(Namespace, <<":">>, <<"_">>),
     binary_to_atom(Replaced).
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% @doc
-%%% Convert a string to an prolog eterm
-%%%
-%%% @param String the string to convert
-%%% @returns {ok, Eterm} if the string was successfully converted, {error, Reason} otherwise
-%%% @end
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-string_to_eterm(String) when is_binary(String) ->
-    string_to_eterm(binary_to_list(String));
-string_to_eterm(String) ->
-    %% We add a space at the end of the string to parse because of a probable error in prolog parser
-    %% A list is returned in case of error to avoid eterm confusion if we return {error, Error}
-    case erlog_scan:tokens([], String ++ " ", 1) of
-        {done, {ok, Tokk, _}, _} ->
-            case erlog_parse:term(Tokk) of
-                {ok, Eterms} ->
-                    Eterms;
-                Other1 ->
-                    [error, Other1]
-            end;
-        Other ->
-            [error, Other]
-    end.
 
 %%%=============================================================================
 %%% Eunit Tests

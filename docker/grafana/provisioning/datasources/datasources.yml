@@ -1,11 +1,15 @@
+# config file version
 apiVersion: 1
 
+# list of datasources to insert/update depending
+# whats available in the database
 datasources:
+  # Prometheus-compatible datasource for VictoriaMetrics
 - name: VictoriaMetrics
-  type: victoriametrics-datasource
+  type: prometheus
   access: proxy
-  uid: adqng4jfwlslcd
   orgId: 1
+  uid: victoriametrics
   url: http://victoria_metrics:8428
   isDefault: true
   jsonData:
@@ -22,21 +26,16 @@ datasources:
 #     serviceMap:
 #       datasourceUid: 'prometheus'
 #   version: 1
-# - name: Loki
-#   type: loki
-#   editable: true
-#   uid: loki
-#   url: http://loki_collector:3100
-#   jsonData:
-#     httpMethod: GET
-#   version: 1
-#   access: proxy
-#   isDefault: false
-#   orgId: 1
-#   basicAuth: false
-#   withCredentials: false
-#   password:
-#   user:
-#   database:
-#   basicAuthUser:
-#   basicAuthPassword:
+- name: Loki
+  type: loki
+  editable: true
+  uid: loki
+  url: http://loki_collector:3100
+  jsonData:
+    httpMethod: GET
+  version: 1
+  access: proxy
+  isDefault: false
+  orgId: 1
+  basicAuth: false
+  withCredentials: false

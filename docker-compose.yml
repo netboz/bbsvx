@@ -21,13 +21,6 @@ services:
         - BBSVX_HTTP_PORT=8085
       networks:
         - bbsvx-net
-      # logging:
-      #   driver: loki
-      #   options:
-      #     loki-url: "http://127.0.0.1:3100/loki/api/v1/push"
-      #     mode: non-blocking
-      #     max-buffer-size: 4m
-      #     loki-retries: "3"
       volumes:
         - ./docker/logs:/logs
       labels:
@@ -53,13 +46,6 @@ services:
       - BBSVX_HTTP_PORT=8085
     networks:
       - bbsvx-net
-    # logging:
-    #     driver: loki
-    #     options:
-    #       loki-url: "http://127.0.0.1:3100/loki/api/v1/push"
-    #       mode: non-blocking
-    #       max-buffer-size: 4m
-    #       loki-retries: "3"
     volumes:
       - ./docker/logs:/logs
     depends_on:
@@ -121,8 +107,6 @@ services:
     environment:
       - GF_LOG_LEVEL=info
       - TZ="Europe/Paris"
-      - GF_INSTALL_PLUGINS=https://github.com/VictoriaMetrics/victoriametrics-datasource/releases/download/v0.10.1/victoriametrics-datasource-v0.10.1.zip;victoriametrics-datasource
-      - GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=victoriametrics-datasource
     ports:
       - 3000:3000
     volumes:
@@ -137,6 +121,7 @@ services:
     build: 
       context: ./priv/graph-visualizer
       dockerfile: Dockerfile
+    image: graph-visualizer:latest
     hostname: graph-visualizer
     ports:
       - "3400:3400"
@@ -206,6 +191,21 @@ services:
       - ./docker/loki/conf:/etc/loki
     networks:
       - bbsvx-net
+    environment:
+      - TZ="Europe/Paris"
+
+  promtail:
+    image: grafana/promtail:latest
+    hostname: promtail
+    volumes:
+      - ./docker/logs:/logs:ro
+      - ./docker/promtail/conf:/etc/promtail
+    networks:
+      - bbsvx-net
+    command:
+      - '-config.file=/etc/promtail/promtail.yml'
+    depends_on:
+      - loki
     environment:
       - TZ="Europe/Paris"
   

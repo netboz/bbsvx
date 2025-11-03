@@ -6,24 +6,30 @@
   {kernel, [
     {logger_level, info},
     {logger, [
-        {handler, default, logger_std_h,
-        #{level => debug,
-          formatter => {logjam,
-            #{colored => true,
-              time_designator => $\s,
-              time_offset => "",
-              time_unit => second,
-              strip_tz => true,
-              level_capitalize => true
+        %% Human-readable console output (logjam) for development
+        {handler, console, logger_std_h,
+          #{level => debug,
+            config => #{type => standard_io},
+            formatter => {logjam,
+              #{colored => true,
+                time_designator => $\s,
+                time_offset => "",
+                time_unit => second,
+                strip_tz => true,
+                level_capitalize => true
+              }
             }
           }
-         }
-        }
+        },
+        %% JSON logger is now configured programmatically in bbsvx_app.erl
     ]}
 ]},
 
       {bbsvx, [
-        {boot, {join, [{"bbsvx-bbsvx_root-1", 2304}]}}]} %% or {join, ListOfContactNode}
+        %% Boot configuration is now handled by cuttlefish schema
+        %% Use bbsvx.conf or environment variables instead
+        %% Example: boot = join node1:2304 node2:2305
+      ]}
         
 ].
 
