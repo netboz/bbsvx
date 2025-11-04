@@ -152,14 +152,31 @@ init([]) ->
                                 namespace = Namespace,
                                 contact_nodes = [],
                                 version = <<"0.0.1">>,
+                                type = shared,
                                 last_update = erlang:system_time(microsecond)
                             },
                             case index_new_ontology(Ont) of
                                 ok ->
                                     case activate_ontology(Namespace, #{boot => create}) of
-                                        {ok, _} ->
-                                            ?'log-info'("Onto service : created root ontology network", []),
-                                            {ok, #state{my_id = MyId}};
+                                        {ok, _Pid} ->
+                                            ?'log-info'("Onto service : activated root ontology, building genesis transaction", []),
+                                            %% Build and submit genesis transaction with root ontology predicates
+                                            case bbsvx_transaction:build_root_genesis_transaction([
+                                                {extenal_predicates, [bbsvx_ont_root]},
+                                                {static_ontology, []}
+                                            ]) of
+                                                {ok, GenesisTx} ->
+                                                    ?'log-info'("Submitting genesis transaction to root ontology for validation", []),
+                                                    %% Send to validate stage (not accept, as genesis shouldn't be broadcast)
+                                                    bbsvx_actor_ontology:receive_transaction(GenesisTx),
+                                                    {ok, #state{my_id = MyId}};
+                                                {error, GenesisReason} ->
+                                                    ?'log-error'(
+                                                        "Failed to build genesis transaction: ~p",
+                                                        [GenesisReason]
+                                                    ),
+                                                    {stop, GenesisReason}
+                                            end;
                                         {error, Reason} ->
                                             ?'log-error'(
                                                 "Onto service : failed to create root ontology network with reason ~p",
@@ -197,6 +214,7 @@ init([]) ->
                             OntEntry = #ontology{
                                 namespace = <<"bbsvx:root">>,
                                 version = <<"0.0.1">>,
+                                type = shared,
                                 contact_nodes = ContactNodesEntries
                             },
                             case index_new_ontology(OntEntry) of

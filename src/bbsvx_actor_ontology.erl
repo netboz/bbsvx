@@ -267,6 +267,14 @@ init([Namespace, Options]) ->
                         validation_state = #validation_state{}
                     },
 
+                    %% Create jobs queues for pipeline stages
+                    %% These need to be created early so genesis transaction can go through pipeline
+                    ok = jobs:add_queue({stage_transaction_accept, Namespace}, [passive]),
+                    ok = jobs:add_queue({stage_transaction_validate, Namespace}, [passive]),
+                    ok = jobs:add_queue({stage_transaction_process, Namespace}, [passive]),
+                    ok = jobs:add_queue({stage_transaction_postprocess, Namespace}, [passive]),
+                    ok = jobs:add_queue({stage_transaction_results, Namespace}, [passive]),
+
                     %% Start in appropriate state based on boot mode
                     %% Only 3 valid boot modes: create, connect, reconnect
                     case maps:get(boot, Options, create) of
@@ -313,37 +321,61 @@ code_change(_Vsn, State, Data, _Extra) ->
 
 wait_for_genesis_transaction(enter, _, #state{namespace = Namespace} = State) ->
     ?'log-info'("Ontology Actor ~p waiting for genesis transaction", [Namespace]),
-    {keep_state, State};
+
+    %% Register for broadcast messages
+    gproc:reg({p, l, {?MODULE, Namespace}}),
+
+    %% Spawn worker processes for pipeline (needed to process genesis transaction)
+    Parent = self(),
+    AcceptWorker = spawn_link(fun() -> transaction_accept_worker(Namespace, Parent) end),
+    ValidateWorker = spawn_link(fun() -> transaction_validate_worker(Namespace, Parent) end),
+    ProcessWorker = spawn_link(fun() -> transaction_process_worker(Namespace, Parent) end),
+    PostprocessWorker = spawn_link(fun() -> transaction_postprocess_worker(Namespace, Parent) end),
+
+    ?'log-info'("Pipeline workers spawned for ~p (waiting for genesis)", [Namespace]),
+
+    {keep_state, State#state{
+        worker_accept = AcceptWorker,
+        worker_validate = ValidateWorker,
+        worker_process = ProcessWorker,
+        worker_postprocess = PostprocessWorker
+    }};
 
 wait_for_genesis_transaction(
     info,
-    #transaction{type = creation, namespace = Namespace} = GenesisTx,
-    #state{namespace = Namespace, ont_state = OntState} = State
+    {transaction_validated, #transaction{type = creation, index = 0} = ValidatedTx, NewCurrentAddress, NewValidationState},
+    #state{ont_state = OntState} = State
 ) ->
-    ?'log-info'("Ontology Actor ~p received genesis transaction", [Namespace]),
+    ?'log-info'("Genesis transaction validated and processed", []),
 
-    %% Update ontology state for genesis (ont_state already created in init)
+    %% Update ontology state with genesis transaction results
     UpdatedOntState = OntState#ont_state{
         local_index = 0,
         current_index = 0,
-        current_address = <<"0">>,
+        current_address = NewCurrentAddress,
         next_address = <<"1">>
     },
 
-    %% Record genesis transaction with proper indices and addresses
-    ProcessedGenesisTx = GenesisTx#transaction{
-        index = 0,
-        status = processed,
-        prev_address = <<"-1">>,
-        current_address = <<"0">>
-    },
-    bbsvx_transaction:record_transaction(ProcessedGenesisTx),
+    %% Transition to syncing state - workers are already running
+    {next_state, syncing, State#state{
+        ont_state = UpdatedOntState,
+        validation_state = NewValidationState
+    }};
 
-    ?'log-info'("Genesis transaction stored for ontology ~p", [Namespace]),
+wait_for_genesis_transaction(
+    {call, From},
+    get_validation_context,
+    #state{ont_state = #ont_state{current_index = Index, current_address = CurrentAddress},
+           validation_state = ValidationState}
+) ->
+    {keep_state_and_data, [{reply, From, {ok, Index, ValidationState, CurrentAddress}}]};
 
-    %% For boot=create, skip initialize_ontology (no history to load)
-    %% Go directly to syncing state
-    {next_state, syncing, State#state{ont_state = UpdatedOntState}};
+wait_for_genesis_transaction(
+    {call, From},
+    get_current_index,
+    #state{ont_state = #ont_state{current_index = Index}}
+) ->
+    {keep_state_and_data, [{reply, From, {ok, Index}}]};
 
 wait_for_genesis_transaction(state_timeout, genesis_timeout, State) ->
     ?'log-error'("Timeout waiting for genesis transaction"),
@@ -419,43 +451,41 @@ wait_for_registration(_EventType, _Event, _State) ->
 %% syncing State (Main Operational State)
 %%-----------------------------------------------------------------------------
 
-syncing(enter, _, #state{namespace = Namespace, ont_state = OntState} = State) ->
+syncing(enter, _, #state{namespace = Namespace, worker_accept = AcceptWorker} = State) ->
     ?'log-info'("Ontology Actor ~p entering syncing state", [Namespace]),
 
-    %% Register for broadcast messages
+    %% Register for broadcast messages (only if not already registered)
     %% This is critical for receiving history requests and network events
-    gproc:reg({p, l, {?MODULE, Namespace}}),
+    try
+        gproc:reg({p, l, {?MODULE, Namespace}})
+    catch
+        error:badarg -> ok  % Already registered
+    end,
 
-    %% Create jobs queues for pipeline stages
-    ok = jobs:add_queue({stage_transaction_accept, Namespace}, [passive]),
-    ok = jobs:add_queue({stage_transaction_validate, Namespace}, [passive]),
-    ok = jobs:add_queue({stage_transaction_process, Namespace}, [passive]),
-    ok = jobs:add_queue({stage_transaction_postprocess, Namespace}, [passive]),
-    ok = jobs:add_queue({stage_transaction_results, Namespace}, [passive]),
+    %% Check if workers are already spawned (from wait_for_genesis_transaction)
+    case AcceptWorker of
+        undefined ->
+            %% Workers not spawned yet - spawn them now
+            %% (This happens when coming from initialize_ontology or wait_for_registration)
+            Parent = self(),
+            NewAcceptWorker = spawn_link(fun() -> transaction_accept_worker(Namespace, Parent) end),
+            NewValidateWorker = spawn_link(fun() -> transaction_validate_worker(Namespace, Parent) end),
+            NewProcessWorker = spawn_link(fun() -> transaction_process_worker(Namespace, Parent) end),
+            NewPostprocessWorker = spawn_link(fun() -> transaction_postprocess_worker(Namespace, Parent) end),
 
-    %% Spawn linked worker processes
-    Parent = self(),
-    AcceptWorker = spawn_link(fun() ->
-        transaction_accept_worker(Namespace, Parent)
-    end),
-    ValidateWorker = spawn_link(fun() ->
-        transaction_validate_worker(Namespace, Parent)
-    end),
-    ProcessWorker = spawn_link(fun() ->
-        transaction_process_worker(Namespace, Parent)
-    end),
-    PostprocessWorker = spawn_link(fun() ->
-        transaction_postprocess_worker(Namespace, Parent)
-    end),
+            ?'log-info'("Pipeline workers spawned for ~p", [Namespace]),
 
-    ?'log-info'("Pipeline workers spawned for ~p", [Namespace]),
-
-    {keep_state, State#state{
-        worker_accept = AcceptWorker,
-        worker_validate = ValidateWorker,
-        worker_process = ProcessWorker,
-        worker_postprocess = PostprocessWorker
-    }};
+            {keep_state, State#state{
+                worker_accept = NewAcceptWorker,
+                worker_validate = NewValidateWorker,
+                worker_process = NewProcessWorker,
+                worker_postprocess = NewPostprocessWorker
+            }};
+        _ ->
+            %% Workers already running (from wait_for_genesis_transaction)
+            ?'log-info'("Pipeline workers already running for ~p", [Namespace]),
+            {keep_state, State}
+    end;
 
 %% Get current index query
 syncing(
@@ -1005,12 +1035,52 @@ Processes a validated transaction by executing its payload.
 Pure function for most operations, coordinates with leader for goals.
 """.
 process_transaction(
-    #transaction{type = creation} = Transaction,
-    PrologState,
-    _Namespace
+    #transaction{type = creation, external_predicates = ExternalPreds} = Transaction,
+    #ont_state{prolog_state = #est{db = PrologDb} = PrologState} = OntState,
+    Namespace
 ) ->
-    %% Creation transaction - no Prolog execution needed
-    {ok, Transaction, PrologState};
+    %% Genesis transaction - load external predicates into Prolog database
+    ?'log-info'("Processing genesis transaction for ~p with ~p external predicate modules",
+                [Namespace, length(ExternalPreds)]),
+
+    %% Load external predicates from Erlang modules
+    UpdatedDb = lists:foldl(
+        fun(Mod, DbAcc) ->
+            case erlang:function_exported(Mod, external_predicates, 0) of
+                true ->
+                    Preds = Mod:external_predicates(),
+                    ?'log-info'("Loading ~p external predicates from ~p", [length(Preds), Mod]),
+                    lists:foldl(
+                        fun({{Functor, Arity}, PredMod, PredFunc}, Db) ->
+                            case bbsvx_erlog_db_differ:add_compiled_proc(Db, {Functor, Arity}, PredMod, PredFunc) of
+                                {ok, NewDb} ->
+                                    ?'log-debug'("Added predicate ~p/~p", [Functor, Arity]),
+                                    NewDb;
+                                error ->
+                                    ?'log-warning'("Failed to add predicate ~p/~p", [Functor, Arity]),
+                                    Db
+                            end
+                        end,
+                        DbAcc,
+                        Preds
+                    );
+                false ->
+                    ?'log-warning'("Module ~p does not export external_predicates/0", [Mod]),
+                    DbAcc
+            end
+        end,
+        PrologDb,
+        ExternalPreds
+    ),
+
+    %% TODO: Execute payload (asserta static predicates if present)
+    %% The payload contains [{asserta, StaticPredicates}] but for now we'll skip this
+
+    UpdatedPrologState = PrologState#est{db = UpdatedDb},
+    UpdatedOntState = OntState#ont_state{prolog_state = UpdatedPrologState},
+
+    ?'log-info'("Genesis transaction processing complete for ~p", [Namespace]),
+    {ok, Transaction, UpdatedOntState};
 
 process_transaction(
     #transaction{type = goal, payload = #goal{} = Goal, namespace = Namespace} = Transaction,

@@ -1,6 +1,6 @@
 %%%-----------------------------------------------------------------------------
 %%% @doc
-%%% Common Tests for refactored bbsvx_ontology_actor.
+%%% Common Tests for refactored bbsvx_actor_ontology.
 %%% Tests critical fixes: gproc registration, pending logic, segment requests.
 %%% @end
 %%%-----------------------------------------------------------------------------
@@ -72,6 +72,16 @@ end_per_suite(_Config) ->
 init_per_testcase(TestCase, Config) ->
     ct:pal("Starting test: ~p", [TestCase]),
 
+    %% Ensure bbsvx application is running with clean state
+    case application:ensure_all_started(bbsvx) of
+        {ok, _Started} ->
+            timer:sleep(500);  % Give services time to initialize
+        {error, {already_started, bbsvx}} ->
+            ok;
+        {error, Reason} ->
+            ct:fail("Failed to start bbsvx application: ~p", [Reason])
+    end,
+
     %% Generate unique namespace for this test
     Namespace = list_to_binary("test_" ++ atom_to_list(TestCase) ++ "_" ++
                                integer_to_list(erlang:system_time())),
@@ -93,7 +103,7 @@ end_per_testcase(TestCase, Config) ->
         undefined -> ok;
         Pid ->
             try
-                bbsvx_ontology_actor:stop(Namespace)
+                bbsvx_actor_ontology:stop(Namespace)
             catch
                 _:_ -> ok
             end,
@@ -101,7 +111,25 @@ end_per_testcase(TestCase, Config) ->
             wait_for_death(Pid, 1000)
     end,
 
-    %% Mnesia table cleanup will happen when actor stops
+    %% Stop ranch listeners first (they can prevent clean shutdown)
+    try
+        ranch:stop_listener(bbsvx_spray_service)
+    catch
+        _:_ -> ok
+    end,
+
+    %% Stop bbsvx application to ensure clean state for next test
+    application:stop(bbsvx),
+
+    %% Clean up any test data from mnesia
+    try
+        mnesia:clear_table(ontology)
+    catch
+        _:_ -> ok
+    end,
+
+    %% Small delay to ensure everything is stopped
+    timer:sleep(200),
 
     ok.
 
@@ -116,7 +144,7 @@ test_gproc_registration_on_create(Config) ->
     ct:pal("Namespace: ~p", [Namespace]),
 
     %% Start ontology actor with boot=create
-    {ok, Pid} = bbsvx_ontology_actor:start_link(Namespace, #{boot => create}),
+    {ok, Pid} = bbsvx_actor_ontology:start_link(Namespace, #{boot => create}),
 
     ct:pal("Ontology actor started: ~p", [Pid]),
 
@@ -124,7 +152,7 @@ test_gproc_registration_on_create(Config) ->
     %% NOT registered yet
 
     %% Check gproc registration (should be empty initially)
-    InitialLookup = gproc:lookup_pids({p, l, {bbsvx_ontology_actor, Namespace}}),
+    InitialLookup = gproc:lookup_pids({p, l, {bbsvx_actor_ontology, Namespace}}),
     ct:pal("Initial gproc lookup (before genesis): ~p", [InitialLookup]),
 
     %% Create and send genesis transaction
@@ -138,7 +166,7 @@ test_gproc_registration_on_create(Config) ->
     timer:sleep(200),
 
     %% Verify gproc registration exists
-    RegisteredPids = gproc:lookup_pids({p, l, {bbsvx_ontology_actor, Namespace}}),
+    RegisteredPids = gproc:lookup_pids({p, l, {bbsvx_actor_ontology, Namespace}}),
     ct:pal("Registered pids after genesis: ~p", [RegisteredPids]),
 
     %% Should find exactly one process registered
@@ -174,7 +202,7 @@ test_gproc_registration_on_reconnect(Config) ->
 
     %% Now start ontology actor with boot=reconnect
     %% This simulates node restart
-    {ok, Pid} = bbsvx_ontology_actor:start_link(Namespace, #{boot => reconnect}),
+    {ok, Pid} = bbsvx_actor_ontology:start_link(Namespace, #{boot => reconnect}),
 
     ct:pal("Ontology actor started with boot=reconnect: ~p", [Pid]),
 
@@ -188,7 +216,7 @@ test_gproc_registration_on_reconnect(Config) ->
     timer:sleep(200),
 
     %% Verify gproc registration exists
-    RegisteredPids = gproc:lookup_pids({p, l, {bbsvx_ontology_actor, Namespace}}),
+    RegisteredPids = gproc:lookup_pids({p, l, {bbsvx_actor_ontology, Namespace}}),
     ct:pal("Registered pids after registration event: ~p", [RegisteredPids]),
 
     %% Should find exactly one process registered
@@ -213,7 +241,7 @@ test_pending_transaction_storage(Config) ->
     ct:pal("Namespace: ~p", [Namespace]),
 
     %% Start ontology actor
-    {ok, Pid} = bbsvx_ontology_actor:start_link(Namespace, #{boot => create}),
+    {ok, Pid} = bbsvx_actor_ontology:start_link(Namespace, #{boot => create}),
     ct:pal("Ontology actor started: ~p", [Pid]),
 
     %% Send genesis transaction (index 0)
@@ -240,18 +268,18 @@ test_pending_transaction_storage(Config) ->
     },
 
     %% Send via the validation pipeline
-    bbsvx_ontology_actor:receive_transaction(OutOfOrderTx),
+    bbsvx_actor_ontology:receive_transaction(OutOfOrderTx),
 
     %% Wait for validation to process
     timer:sleep(300),
 
     %% Verify the transaction is in pending map
-    {ok, IsPending} = bbsvx_ontology_actor:is_transaction_pending(Namespace, 3),
+    {ok, IsPending} = bbsvx_actor_ontology:is_transaction_pending(Namespace, 3),
     ct:pal("Is transaction 3 pending: ~p", [IsPending]),
     ?assertEqual(true, IsPending, "Out-of-order transaction should be in pending map"),
 
     %% Verify pending count is 1
-    {ok, PendingCount} = bbsvx_ontology_actor:get_pending_count(Namespace),
+    {ok, PendingCount} = bbsvx_actor_ontology:get_pending_count(Namespace),
     ct:pal("Pending transaction count: ~p", [PendingCount]),
     ?assertEqual(1, PendingCount, "Should have exactly 1 pending transaction"),
 
@@ -266,7 +294,7 @@ test_pending_transaction_requeue(Config) ->
     ct:pal("Namespace: ~p", [Namespace]),
 
     %% Start ontology actor
-    {ok, Pid} = bbsvx_ontology_actor:start_link(Namespace, #{boot => create}),
+    {ok, Pid} = bbsvx_actor_ontology:start_link(Namespace, #{boot => create}),
     ct:pal("Ontology actor started: ~p", [Pid]),
 
     %% Send genesis transaction (index 0)
@@ -288,15 +316,15 @@ test_pending_transaction_requeue(Config) ->
         prev_address = <<"1">>,
         current_address = <<"2">>
     },
-    bbsvx_ontology_actor:receive_transaction(Tx2),
+    bbsvx_actor_ontology:receive_transaction(Tx2),
     timer:sleep(300),
 
     %% Verify tx2 is in pending
-    {ok, Index1} = bbsvx_ontology_actor:get_current_index(Namespace),
+    {ok, Index1} = bbsvx_actor_ontology:get_current_index(Namespace),
     ct:pal("Current index after tx2: ~p", [Index1]),
     ?assertEqual(0, Index1, "Should still be at index 0 (only genesis processed)"),
 
-    {ok, IsTx2Pending} = bbsvx_ontology_actor:is_transaction_pending(Namespace, 2),
+    {ok, IsTx2Pending} = bbsvx_actor_ontology:is_transaction_pending(Namespace, 2),
     ?assertEqual(true, IsTx2Pending, "Tx2 should be in pending"),
 
     %% Now send the missing transaction at index 1
@@ -313,18 +341,18 @@ test_pending_transaction_requeue(Config) ->
         prev_address = <<"0">>,
         current_address = <<"1">>
     },
-    bbsvx_ontology_actor:receive_transaction(Tx1),
+    bbsvx_actor_ontology:receive_transaction(Tx1),
 
     %% Wait for both transactions to be processed
     timer:sleep(500),
 
     %% Verify both transactions were processed in order
-    {ok, FinalIndex} = bbsvx_ontology_actor:get_current_index(Namespace),
+    {ok, FinalIndex} = bbsvx_actor_ontology:get_current_index(Namespace),
     ct:pal("Final index: ~p", [FinalIndex]),
     ?assertEqual(2, FinalIndex, "Should have processed both tx1 and tx2"),
 
     %% Pending map should be empty (tx2 was requeued and processed)
-    {ok, FinalPendingCount} = bbsvx_ontology_actor:get_pending_count(Namespace),
+    {ok, FinalPendingCount} = bbsvx_actor_ontology:get_pending_count(Namespace),
     ct:pal("Final pending count: ~p", [FinalPendingCount]),
     ?assertEqual(0, FinalPendingCount, "Pending map should be empty after requeue"),
 
@@ -349,7 +377,7 @@ create_genesis_transaction(Namespace) ->
 
 whereis_ontology_actor(Namespace) ->
     try
-        gproc:lookup_pid({n, l, {bbsvx_ontology_actor, Namespace}})
+        gproc:lookup_pid({n, l, {bbsvx_actor_ontology, Namespace}})
     catch
         error:badarg -> undefined
     end.

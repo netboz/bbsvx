@@ -3,7 +3,10 @@
   "permissions": {
     "allow": [
       "Bash(sed -i 's/^-doc \"\"\"\"\"\"/%%% @doc/g; s/^\"\"\"\"\"\"\\.$//g' src/bbsvx_transaction_pipeline.erl)",
-      "Bash(curl -s \"https://api.github.com/repos/netboz/bbsvx/actions/runs?per_page=1\")"
+      "Bash(curl -s \"https://api.github.com/repos/netboz/bbsvx/actions/runs?per_page=1\")",
+      "Bash(rebar3 ct)",
+      "Bash(rebar3 ct --suite ct/bbsvx/bbsvx_ont_service_SUITE)",
+      "Bash(timeout 180 rebar3 ct)"
     ],
     "deny": [],
     "ask": []

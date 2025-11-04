@@ -59,10 +59,44 @@ end_per_suite(Config) ->
     [application:stop(App) || App <- lists:reverse(Started)],
     ok.
 
-init_per_testcase(_TestCase, Config) ->
-    Config.
+init_per_testcase(TestCase, Config) ->
+    ct:pal("Starting test case: ~p", [TestCase]),
 
-end_per_testcase(_TestCase, Config) ->
+    %% Ensure bbsvx application is running
+    case application:ensure_all_started(bbsvx) of
+        {ok, _Started} ->
+            timer:sleep(500),  % Give services time to initialize
+            Config;
+        {error, {already_started, bbsvx}} ->
+            %% Application already running, continue
+            Config;
+        {error, Reason} ->
+            ct:fail("Failed to start bbsvx application: ~p", [Reason])
+    end.
+
+end_per_testcase(TestCase, Config) ->
+    ct:pal("Ending test case: ~p", [TestCase]),
+
+    %% Stop ranch listeners first (they can prevent clean shutdown)
+    try
+        ranch:stop_listener(bbsvx_spray_service)
+    catch
+        _:_ -> ok
+    end,
+
+    %% Stop bbsvx application to ensure clean state for next test
+    application:stop(bbsvx),
+
+    %% Clean up any test ontologies from mnesia
+    try
+        mnesia:clear_table(ontology)
+    catch
+        _:_ -> ok
+    end,
+
+    %% Small delay to ensure everything is stopped
+    timer:sleep(200),
+
     Config.
 
 %%%=============================================================================
