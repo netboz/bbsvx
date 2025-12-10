@@ -106,11 +106,35 @@ In the **Grafana Dashboard** (http://localhost:3000):
 The HTTP API is available at http://localhost:8085:
 
 ```bash
-# Check node status
-curl http://localhost:8085/status
+# View SPRAY network topology
+curl -X GET http://localhost:8085/spray/nodes \
+  -H "Content-Type: application/json" \
+  -d '{"namespace": "bbsvx:root"}'
 
-# Query ontology (if configured)
-curl http://localhost:8085/ontology/list
+# View incoming connections (inview)
+curl -X GET http://localhost:8085/spray/inview \
+  -H "Content-Type: application/json" \
+  -d '{"namespace": "bbsvx:root"}'
+
+# View outgoing connections (outview)
+curl -X GET http://localhost:8085/spray/outview \
+  -H "Content-Type: application/json" \
+  -d '{"namespace": "bbsvx:root"}'
+
+# Create a new ontology
+curl -X PUT http://localhost:8085/ontologies/my_test \
+  -H "Content-Type: application/json" \
+  -d '{"namespace": "my_test", "type": "local"}'
+
+# Retrieve ontology facts and rules
+curl -X GET http://localhost:8085/ontologies/bbsvx:root \
+  -H "Content-Type: application/json" \
+  -d '{"namespace": "bbsvx:root"}'
+
+# Execute a Prolog goal/query
+curl -X PUT http://localhost:8085/ontologies/prove \
+  -H "Content-Type: application/json" \
+  -d '{"namespace": "my_test", "goal": "your_prolog_query_here"}'
 ```
 
 ### Step 6: Cleanup
@@ -242,6 +266,117 @@ docker compose up --scale bbsvx_client=N -d # Scale to N clients
 - **Graph Visualizer**: Port 3400 (Docker only) - http://localhost:3400
 - **Grafana Dashboards**: Port 3000 - http://localhost:3000
 
+## HTTP API Reference
+
+BBSvx provides the following REST API endpoints (default port: 8085):
+
+### Ontology Management
+
+#### Create or Update Ontology
+```bash
+PUT /ontologies/:namespace
+Content-Type: application/json
+
+{
+  "namespace": "my_ont",
+  "type": "local",           # or "shared" for distributed
+  "version": "0.0.1",
+  "contact_nodes": []
+}
+
+# Response: 201 (created) or 200 (already exists)
+```
+
+#### Retrieve Ontology
+```bash
+GET /ontologies/:namespace
+Content-Type: application/json
+
+{"namespace": "my_ont"}
+
+# Response: List of Prolog clauses and facts in JSON format
+```
+
+#### Delete Ontology
+```bash
+DELETE /ontologies/:namespace
+Content-Type: application/json
+
+{"namespace": "my_ont"}
+
+# Response: 204 (deleted)
+```
+
+#### Execute Prolog Goal/Query
+```bash
+PUT /ontologies/prove
+Content-Type: application/json
+
+{
+  "namespace": "my_ont",
+  "goal": "your_prolog_query_here"
+}
+
+# Response: {"status": "accepted", "id": "ulid"}
+```
+
+### SPRAY Protocol Debugging
+
+#### View Incoming Connections (Inview)
+```bash
+GET /spray/inview
+Content-Type: application/json
+
+{"namespace": "my_ont"}
+
+# Response: Array of incoming arcs with source/target node details
+```
+
+#### View Outgoing Connections (Outview)
+```bash
+GET /spray/outview
+Content-Type: application/json
+
+{"namespace": "my_ont"}
+
+# Response: Array of outgoing arcs with source/target node details
+```
+
+#### Get SPRAY Nodes Information
+```bash
+GET /spray/nodes
+Content-Type: application/json
+
+{"namespace": "my_ont"}
+
+# Response: Node metadata
+```
+
+#### Stop SPRAY Agent
+```bash
+DELETE /spray/nodes
+Content-Type: application/json
+
+{"namespace": "my_ont"}
+
+# Response: {"result": "ok"}
+```
+
+### Real-time Updates
+
+#### WebSocket Connection
+```
+WebSocket: ws://localhost:8085/websocket
+
+- Sends initial ontology state on connection
+- Pushes transaction diffs as they occur
+- Auto-subscribes to bbsvx:root namespace
+```
+
+### Static Files
+
+Web console available at: `http://localhost:8085/console/`
+
 ## Code Quality
 
 ```bash
@@ -260,7 +395,13 @@ BBSvx is built on a distributed architecture with the following key components:
 - **Application Flow**: `bbsvx_app` → `bbsvx_sup` → service processes
 - **Ontology Operations**: `bbsvx_ont_service` ↔ `bbsvx_actor_ontology` ↔ `bbsvx_erlog_db_*`
 - **Network Layer**: `bbsvx_network_service` ↔ `bbsvx_actor_spray` ↔ connection handlers
-- **Transaction Flow**: HTTP API → `bbsvx_transaction_pipeline` → `bbsvx_actor_ontology`
+- **Transaction Flow**: HTTP API → `bbsvx_ont_service:prove/2` → creates transaction → `bbsvx_epto_service:broadcast/2` → `bbsvx_actor_ontology`
+
+### HTTP Handlers
+- **bbsvx_cowboy_handler_ontology** - Ontology CRUD and Prolog query execution
+- **bbsvx_cowboy_handler_spray** - SPRAY protocol debugging (inview/outview inspection)
+- **bbsvx_cowboy_websocket_handler** - Real-time ontology updates via WebSocket
+- **cowboy_static** - Static file serving for web console
 
 ## Testing
 

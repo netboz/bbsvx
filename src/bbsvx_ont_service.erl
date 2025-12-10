@@ -34,6 +34,8 @@
     connect_ontology/2,
     reconnect_ontology/1,
     disconnect_ontology/1,
+    get_connection_status/1,
+    retry_connection/1,
     binary_to_table_name/1,
     table_exists/1,
     is_contact_node/2
@@ -106,6 +108,25 @@ delete_ontology(Namespace) ->
 %% Disconnect an ontology from the network
 disconnect_ontology(Namespace) ->
     gen_server:call(?SERVER, {disconnect_ontology, Namespace}).
+
+-spec get_connection_status(Namespace :: binary()) -> {ok, connection_status()} | {error, term()}.
+get_connection_status(Namespace) ->
+    case gproc:where({n, l, {bbsvx_actor_ontology, Namespace}}) of
+        undefined ->
+            {error, ontology_not_found};
+        Pid ->
+            gen_statem:call(Pid, get_connection_status)
+    end.
+
+-spec retry_connection(Namespace :: binary()) -> ok | {error, term()}.
+retry_connection(Namespace) ->
+    case gproc:where({n, l, {bbsvx_actor_ontology, Namespace}}) of
+        undefined ->
+            {error, ontology_not_found};
+        Pid ->
+            Pid ! retry_connection,
+            ok
+    end.
 
 -spec store_goal(goal()) -> ok | {error, atom()}.
 store_goal(Goal) ->
@@ -211,31 +232,38 @@ init([]) ->
                                         [InvalidNodes]
                                     )
                             end,
-                            OntEntry = #ontology{
-                                namespace = <<"bbsvx:root">>,
-                                version = <<"0.0.1">>,
-                                type = shared,
-                                contact_nodes = ContactNodesEntries
-                            },
-                            case index_new_ontology(OntEntry) of
+                            Namespace = <<"bbsvx:root">>,
+                            case create_transaction_table(Namespace) of
                                 ok ->
-                                    case activate_ontology(<<"bbsvx:root">>, #{
-                                        contact_nodes => ContactNodesEntries,
-                                        boot => connect
-                                    }) of
-                                        {ok, _} ->
-                                            ?'log-info'("Onto service : joined existing ontology network", []),
-                                            {ok, #state{my_id = MyId}};
+                                    OntEntry = #ontology{
+                                        namespace = Namespace,
+                                        version = <<"0.0.1">>,
+                                        type = shared,
+                                        contact_nodes = ContactNodesEntries
+                                    },
+                                    case index_new_ontology(OntEntry) of
+                                        ok ->
+                                            case activate_ontology(Namespace, #{
+                                                contact_nodes => ContactNodesEntries,
+                                                boot => connect
+                                            }) of
+                                                {ok, _} ->
+                                                    ?'log-info'("Onto service : joined existing ontology network", []),
+                                                    {ok, #state{my_id = MyId}};
+                                                {error, Reason} ->
+                                                    ?'log-error'(
+                                                        "Onto service : failed to join existing ontology network with reason ~p",
+                                                        [Reason]
+                                                    ),
+                                                    {stop, Reason}
+                                            end;
                                         {error, Reason} ->
                                             ?'log-error'(
-                                                "Onto service : failed to join existing ontology network with reason ~p",
-                                                [Reason]
-                                            ),
+                                                "Failed to index new ontology ~p at boot with reason : ~p", [OntEntry, Reason]),
                                             {stop, Reason}
                                     end;
                                 {error, Reason} ->
-                                    ?'log-error'(
-                                        "Failed to index new ontology ~p at boot with reason : ~p", [OntEntry, Reason]),
+                                    ?'log-error'("Failed to create transaction table for ~p: ~p", [Namespace, Reason]),
                                     {stop, Reason}
                             end;
                         {error, Reason} ->
@@ -554,11 +582,11 @@ create_index_table() ->
 -spec activate_ontology(Namespace :: binary(), Options :: map()) ->
     supervisor:startchild_ret().
 activate_ontology(Namespace, Options) ->
-    supervisor:start_child(bbsvx_sup_shared_ontologies, [Namespace, Options]).
+    supervisor:start_child(bbsvx_sup_actors_ontologies, [Namespace, Options]).
 
 -spec deactivate_ontology(Namespace :: binary()) -> ok | {error, Reason :: atom()}.
 deactivate_ontology(Namespace) ->
-    supervisor:terminate_child(bbsvx_sup_shared_ontologies, [Namespace]).
+    supervisor:terminate_child(bbsvx_sup_actors_ontologies, [Namespace]).
 
 -spec update_ontology(NewOntology :: ontology()) -> ok | {error, Reason :: term()}.
 update_ontology(NewOntology) ->
@@ -583,10 +611,10 @@ do_boot_ontologies(Key) ->
     case Ont#ontology.type of
         shared ->
             supervisor:start_child(
-                bbsvx_sup_shared_ontologies,
+                bbsvx_sup_actors_ontologies,
                 [
                     Ont#ontology.namespace,
-                    #{contact_nodes => Ont#ontology.contact_nodes, boot => join}
+                    #{contact_nodes => Ont#ontology.contact_nodes, boot => reconnect}
                 ]
             );
         local ->

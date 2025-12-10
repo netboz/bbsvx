@@ -181,11 +181,65 @@ BBSvx is a blockchain-powered BBS (Bulletin Board System) built on Erlang/OTP wi
 - **Transaction Processing**: Blockchain-style transactions with validation pipeline (`bbsvx_transaction_pipeline.erl`)
 - **HTTP API**: Cowboy-based REST API for external interactions (port 8085)
 
+### HTTP API Endpoints
+
+BBSvx provides the following REST API endpoints (default port: 8085):
+
+#### Ontology Management
+- **PUT /ontologies/:namespace** - Create or update an ontology
+  - Body: `{"namespace": "my_ont", "type": "local|shared", "version": "0.0.1", "contact_nodes": [...]}`
+  - Creates `local` (non-distributed) or `shared` (distributed with SPRAY/EPTO) ontologies
+  - Returns: 201 (created) or 200 (already exists)
+
+- **GET /ontologies/:namespace** - Retrieve ontology facts and rules as JSON
+  - Returns: List of Prolog clauses and facts in JSON format
+
+- **DELETE /ontologies/:namespace** - Delete an ontology
+  - Returns: 204 (deleted) or 404 (not found)
+
+- **PUT /ontologies/prove** - Execute a Prolog goal/query
+  - Body: `{"namespace": "my_ont", "goal": "query_here"}`
+  - Creates a transaction with the goal, broadcasts to network
+  - Returns: `{"status": "accepted", "id": "ulid"}`
+
+#### SPRAY Protocol Debugging
+- **GET /spray/inview** - View incoming SPRAY connections
+  - Body: `{"namespace": "my_ont"}`
+  - Returns: Array of incoming arcs with source/target node details
+
+- **GET /spray/outview** - View outgoing SPRAY connections
+  - Body: `{"namespace": "my_ont"}`
+  - Returns: Array of outgoing arcs with source/target node details
+
+- **GET /spray/nodes** - SPRAY node information
+  - Body: `{"namespace": "my_ont"}`
+  - Returns: Node metadata
+
+- **DELETE /spray/nodes** - Stop SPRAY agent for namespace
+  - Body: `{"namespace": "my_ont"}`
+  - Returns: `{"result": "ok"}`
+
+#### Real-time Updates
+- **WebSocket /websocket** - Real-time ontology change notifications
+  - Sends initial ontology state on connection
+  - Pushes transaction diffs as they occur
+  - Auto-subscribes to `bbsvx:root` namespace
+
+#### Static Files
+- **/console/*** - Web console static files
+  - Serves files from `priv/web_console/theme`
+
 ### Key Module Relationships
 - **Application Flow**: `bbsvx_app` → `bbsvx_sup` → service processes
 - **Ontology Operations**: `bbsvx_ont_service` ↔ `bbsvx_actor_ontology` ↔ `bbsvx_erlog_db_*`
 - **Network Layer**: `bbsvx_network_service` ↔ `bbsvx_actor_spray` ↔ connection handlers
-- **Transaction Flow**: HTTP API → `bbsvx_transaction_pipeline` → `bbsvx_actor_ontology`
+- **Transaction Flow**: HTTP API → `bbsvx_ont_service:prove/2` → creates transaction → `bbsvx_epto_service:broadcast/2` → `bbsvx_actor_ontology`
+
+### Cowboy HTTP Handlers
+- **bbsvx_cowboy_handler_ontology** - Ontology CRUD and Prolog query execution
+- **bbsvx_cowboy_handler_spray** - SPRAY protocol debugging (inview/outview inspection)
+- **bbsvx_cowboy_websocket_handler** - Real-time ontology updates via WebSocket
+- **cowboy_static** - Static file serving for web console
 
 ### Database Layer
 - **ETS-based storage**: `bbsvx_erlog_db_ets.erl` for Erlog facts and rules

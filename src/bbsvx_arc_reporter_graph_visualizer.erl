@@ -162,7 +162,7 @@ running(
             action => <<"remove">>,
             from => OriginNode#node_entry.node_id,
             ulid => Ulid,
-            reason => Reason
+            reason => normalize_reason(Reason)
         },
     Json = jiffy:encode(Data),
     ?'log-info'("Removing incoming arc: ~p -> ~p (ulid: ~p, reason: ~p)", [
@@ -190,7 +190,7 @@ running(
             action => <<"remove">>,
             from => State#state.my_id,
             ulid => Ulid,
-            reason => Reason
+            reason => normalize_reason(Reason)
         },
     Json = jiffy:encode(Data),
     ?'log-info'("Removing outgoing arc: ~p -> ~p (ulid: ~p, reason: ~p)", [
@@ -355,7 +355,7 @@ running(
         #{
             action => <<"remove">>,
             node_id => NodeId,
-            reason => Reason
+            reason => normalize_reason(Reason)
         },
     Json = jiffy:encode(Data),
     httpc:request(
@@ -421,6 +421,15 @@ cors_headers() ->
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
+
+%% Convert any Erlang term to a JSON-safe binary string
+normalize_reason(Reason) when is_atom(Reason) ->
+    atom_to_binary(Reason, utf8);
+normalize_reason(Reason) when is_binary(Reason) ->
+    Reason;
+normalize_reason(Reason) ->
+    %% Convert complex terms (tuples, lists, etc.) to binary
+    list_to_binary(io_lib:format("~p", [Reason])).
 
 %% Create a node in the graph if it doesn't exist
 create_node_if_needed(NodeId) when NodeId =/= undefined ->

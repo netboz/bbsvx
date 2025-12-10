@@ -174,12 +174,56 @@ init([register, NameSpace, MyNode, TargetNode, Options]) ->
         options = Options,
         target_node = TargetNode
     }}.
+
+%%%=============================================================================
+%%% Terminate Helpers
+%%%=============================================================================
+
+%% @doc
+%% Unregister arc from gproc immediately to prevent race conditions
+%% where dying arcs are included in exchange proposals.
+%% This function logs when unregistration fails to aid in debugging.
+%% @end
+unregister_arc(Ulid, NameSpace, Direction) ->
+    %% Unregister named registration {n, l, {arc, Direction, Ulid}}
+    %% This may already be unregistered by arc swap (gproc:unreg_other)
+    NamedKey = {n, l, {arc, Direction, Ulid}},
+    try
+        gproc:unreg(NamedKey),
+        ?'log-info'("~p Successfully unregistered named arc ~p ~p",
+                    [?MODULE, Direction, Ulid])
+    catch
+        error:badarg ->
+            ?'log-info'("~p Named arc ~p ~p already unregistered (likely swapped)",
+                        [?MODULE, Direction, Ulid])
+    end,
+
+    %% Unregister property registration {p, l, {outview, NameSpace}}
+    %% This may not exist if connection never reached connected state
+    ViewKey = {p, l, {outview, NameSpace}},
+    try
+        gproc:unreg(ViewKey),
+        ?'log-info'("~p Successfully unregistered from outview namespace=~p ulid=~p",
+                    [?MODULE, NameSpace, Ulid])
+    catch
+        error:badarg ->
+            ?'log-info'("~p Outview not registered for namespace=~p ulid=~p (not in connected state)",
+                        [?MODULE, NameSpace, Ulid])
+    end.
+
+%%%=============================================================================
+%%% Terminate Callbacks
+%%%=============================================================================
+
 %% Called from server connection when this outgoing arc is mirrored
 terminate(
     {shutdown, mirror},
     connected,
     #state{ulid = MyUlid, namespace = NameSpace, my_node = MyNode} = State
 ) ->
+    %% Unregister immediately to prevent race conditions
+    unregister_arc(MyUlid, NameSpace, out),
+
     ?'log-info'(
         "~p Terminating connection from ~p, to ~p while in state ~p "
         "with reason ~p",
@@ -206,6 +250,9 @@ terminate(
     connected,
     #state{ulid = MyUlid, namespace = NameSpace, my_node = MyNode} = State
 ) ->
+    %% Unregister immediately to prevent race conditions
+    unregister_arc(MyUlid, NameSpace, out),
+
     ?'log-info'(
         "~p Terminating connection from ~p, to ~p while in state ~p "
         "with reason ~p",
@@ -219,6 +266,9 @@ terminate(
 terminate(
     Reason, connected, #state{ulid = MyUlid, namespace = NameSpace, my_node = MyNode} = State
 ) ->
+    %% Unregister immediately to prevent race conditions
+    unregister_arc(MyUlid, NameSpace, out),
+
     ?'log-info'(
         "~p Terminating connection from ~p, to ~p while in state ~p "
         "with reason ~p",
@@ -232,6 +282,10 @@ terminate(
 terminate(
     Reason, PreviousState, #state{ulid = MyUlid, namespace = NameSpace, my_node = MyNode} = State
 ) ->
+    %% Unregister immediately to prevent race conditions
+    %% Property registration may not exist if not in connected state
+    unregister_arc(MyUlid, NameSpace, out),
+
     ?'log-warning'(
         "~p Terminating connection from ~p, to ~p while in state ~p "
         "with reason ~p",
@@ -853,13 +907,16 @@ connected(
     {keep_state, State};
 connected(info, {tcp, _Socket, BinData}, #state{buffer = Buffer} = State) ->
     parse_packet(<<Buffer/binary, BinData/binary>>, State);
-connected(info, reset_age, #state{namespace = NameSpace} = State) ->
-    #arc{} = Arc = gproc:get_value({p, l, {outview, NameSpace}}),
+connected(info, reset_age, #state{namespace = NameSpace, ulid = Ulid} = State) ->
+    #arc{age = OldAge} = Arc = gproc:get_value({p, l, {outview, NameSpace}}),
     gproc:set_value({p, l, {outview, NameSpace}}, Arc#arc{age = 0}),
+    ?'log-info'("~p Arc ~p age reset: ~p -> 0", [?MODULE, Ulid, OldAge]),
     {keep_state, State};
-connected(info, inc_age, #state{namespace = NameSpace} = State) ->
+connected(info, inc_age, #state{namespace = NameSpace, ulid = Ulid} = State) ->
     #arc{age = CurrentAge} = Arc = gproc:get_value({p, l, {outview, NameSpace}}),
-    gproc:set_value({p, l, {outview, NameSpace}}, Arc#arc{age = CurrentAge + 1}),
+    NewAge = CurrentAge + 1,
+    gproc:set_value({p, l, {outview, NameSpace}}, Arc#arc{age = NewAge}),
+    ?'log-info'("~p Arc ~p age inc: ~p -> ~p", [?MODULE, Ulid, CurrentAge, NewAge]),
     {keep_state, State};
 connected(
     info,
@@ -986,6 +1043,13 @@ parse_packet(
         {complete, #exchange_accept{} = Event, Index} ->
             <<_:Index/binary, BinLeft/binary>> = Buffer,
             arc_event(NameSpace, MyUlid, Event),
+            parse_packet(BinLeft, State);
+        {complete, #registered{current_index = CurrentIndex}, Index} ->
+            <<_:Index/binary, BinLeft/binary>> = Buffer,
+            ?'log-info'("Client Connection received registration info (current_index=~p)",
+                        [CurrentIndex]),
+            %% Forward registration to ontology actor
+            gproc:send({n, l, {bbsvx_actor_ontology, NameSpace}}, {registered, CurrentIndex}),
             parse_packet(BinLeft, State);
         {complete, #header_connection_closed{reason = Reason}, Index} ->
             %% Other side notify us about the connection being closed

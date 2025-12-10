@@ -528,7 +528,7 @@ deliver(Index, #epto_event{payload = #transaction{} = Transaction}) ->
         [Transaction#transaction.namespace],
         Timestamp - Transaction#transaction.ts_created
     ),
-    bbsvx_transaction_pipeline:receive_transaction(Transaction#transaction{
+    bbsvx_actor_ontology:receive_transaction(Transaction#transaction{
         index = Index,
         ts_delivered =
             Timestamp
@@ -536,7 +536,7 @@ deliver(Index, #epto_event{payload = #transaction{} = Transaction}) ->
     Index + 1;
 deliver(Index, #epto_event{payload = #goal_result{} = GoalResult}) ->
     ?'log-info'("Received goal result ~p", [GoalResult]),
-    bbsvx_transaction_pipeline:accept_transaction_result(GoalResult),
+    bbsvx_actor_ontology:accept_transaction_result(GoalResult),
     Index;
 deliver(Index, #epto_event{payload = <<"leader">>}) ->
     %% Get leader from leader manager

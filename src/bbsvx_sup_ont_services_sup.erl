@@ -1,12 +1,19 @@
 %%%-----------------------------------------------------------------------------
-%%% BBSvx Shared Ontologies Supervisor
+%%% BBSvx Ontology Services Director Supervisor
 %%%-----------------------------------------------------------------------------
 
--module(bbsvx_sup_shared_ontologies).
+-module(bbsvx_sup_ont_services_sup).
 
--moduledoc "BBSvx Shared Ontologies Supervisor\n\n"
-"One-for-one supervisor for dynamically managing shared ontology supervisors.\n\n"
-"Each child is a bbsvx_sup_shared_ontology supervisor for a specific namespace.".
+-moduledoc """
+BBSvx Ontology Services Director Supervisor
+
+Top-level simple-one-for-one supervisor that manages bbsvx_sup_ont_services supervisors.
+Each child is a bbsvx_sup_ont_services supervisor for a specific namespace,
+which in turn manages the SPRAY, EPTO, and leader manager services.
+
+This provides a factory pattern for dynamically creating and destroying
+service supervisor trees for ontologies.
+""".
 
 -author("yan").
 
@@ -38,7 +45,7 @@ start_link() ->
 %%%=============================================================================
 
 init([]) ->
-    ?'log-info'("Starting shared ontologies supervisor"),
+    ?'log-info'("Starting ontology services director supervisor"),
     SupFlags =
         #{
             strategy => simple_one_for_one,
@@ -48,12 +55,12 @@ init([]) ->
     ChildSpecs =
         [
             #{
-                id => bbsvx_sup_shared_ontology,
-                start => {bbsvx_sup_shared_ontology, start_link, []},
+                id => bbsvx_sup_ont_services,
+                start => {bbsvx_sup_ont_services, start_link, []},
                 restart => temporary,
-                shutdown => 200,
+                shutdown => 5000,  % Give services time to stop cleanly
                 type => supervisor,
-                modules => [bbsvx_sup_shared_ontology]
+                modules => [bbsvx_sup_ont_services]
             }
         ],
     {ok, {SupFlags, ChildSpecs}}.

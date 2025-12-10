@@ -285,7 +285,7 @@ accept_goal(Req0, #{namespace := Namespace, goal := Payload} = State) ->
     try bbsvx_ont_service:prove(Namespace, Payload) of
         {ok, Id} ->
             ?'log-info'("Cowboy Handler : Goal accepted ~p", [Id]),
-            Encoded = jiffy:encode([#{status => <<"accepted">>, <<"id">> => list_to_binary(Id)}]),
+            Encoded = jiffy:encode([#{status => <<"accepted">>, <<"id">> => Id}]),
             ?'log-info'("Cowboy Handler : Encoded ~p", [Encoded]),
             Req1 = cowboy_req:set_resp_body(Encoded, Req0),
             {true, Req1, State};

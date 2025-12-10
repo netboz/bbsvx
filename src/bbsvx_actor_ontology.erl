@@ -1,23 +1,19 @@
 %%%-----------------------------------------------------------------------------
-%%% BBSvx Unified Ontology Actor (Refactored)
+%%% BBSvx Ontology Actor
 %%%-----------------------------------------------------------------------------
 %%% @doc
-%%% Merged implementation combining bbsvx_actor_ontology and bbsvx_transaction_pipeline.
-%%% This eliminates state duplication by maintaining a single source of truth for
-%%% ontology state (ont_state) within the gen_statem process.
+%%% Gen_statem managing blockchain-based knowledge ontology lifecycle.
 %%%
-%%% Architecture:
-%%% - Single gen_statem manages ontology lifecycle AND transaction processing
-%%% - Spawned worker processes handle async pipeline stages via jobs queues
-%%% - Workers send results back to gen_statem as events
-%%% - gen_statem updates ont_state atomically
+%%% Combines Prolog knowledge base (erlog) with blockchain transaction processing
+%%% in a single stateful actor. Rate-limited transaction submission (50 tx/s)
+%%% via jobs library provides automatic backpressure.
 %%%
-%%% Key Improvements:
-%%% - No state duplication between actor and pipeline
-%%% - Single source of truth for prolog_state, indices, and addresses
-%%% - Cleaner ownership model (one process owns the ontology)
-%%% - Eliminates synchronization issues
-%%% - Maintains pipeline stages for separation of concerns
+%%% Key Features:
+%%% - Single source of truth for ontology state (ont_state)
+%%% - Rate-limited transaction processing (50 tx/s per ontology)
+%%% - Leader/follower architecture for distributed goal execution
+%%% - Out-of-order transaction handling via pending map
+%%% - Atomic state updates via gen_statem events
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
@@ -25,46 +21,52 @@
 -module(bbsvx_actor_ontology).
 
 -moduledoc """
-# BBSvx Unified Ontology Actor
+# BBSvx Ontology Actor
 
-Combines ontology lifecycle management and transaction processing into a single
-gen_statem component with integrated pipeline stages.
+Manages the lifecycle of a blockchain-based knowledge ontology using gen_statem.
+Integrates Prolog knowledge base management with blockchain transaction processing.
 
 ## Architecture
 
 ### Single State Owner
-The gen_statem owns the complete `ont_state` including:
-- Prolog knowledge base state
+The gen_statem process owns the complete `ont_state` including:
+- Prolog knowledge base state (erlog)
 - Transaction indices (local_index, current_index)
-- Blockchain addresses
-- Contact nodes
+- Blockchain addresses (current_address, next_address)
+- Validation state for out-of-order transactions
 
-### Pipeline Integration
-Transaction processing stages are implemented as:
-- Linked worker processes that dequeue from jobs queues
-- Pure functions that operate on state
-- Event-based communication back to gen_statem
-- Atomic state updates via gen_statem event handlers
+### Transaction Processing
+Transaction submission is rate-limited via the `jobs` library:
+- Rate limit: 50 transactions/second per ontology
+- Transactions submitted via `receive_transaction/1`
+- Processing via `jobs:run/2` with automatic backpressure
+- Synchronous validation → process → postprocess pipeline
+
+Leader nodes execute Prolog goals and broadcast results.
+Follower nodes wait for goal results from leaders to apply diffs.
 
 ### State Machine Flow
 ```
-wait_for_genesis_transaction
+wait_for_genesis_transaction → Genesis transaction creates ontology
     ↓
-initialize_ontology
+wait_for_registration → Network registration for non-root nodes
     ↓
-syncing (operational state)
-    - Spawns pipeline workers
-    - Handles transaction events
-    - Updates ont_state atomically
+initialize_ontology → Load history and initialize state
+    ↓
+syncing (operational) → Process incoming transactions
+    ↓
+waiting_for_goal_result → Followers wait for leader's goal execution
+    ↓
+syncing → Continue processing
 ```
 
 ## Benefits
 
-1. **No State Duplication**: Single ont_state in gen_statem
-2. **Atomic Updates**: All state changes via gen_statem events
-3. **Clear Ownership**: One process owns ontology resources
-4. **Maintainable**: All ontology logic in one module
-5. **Testable**: State machine + pure pipeline functions
+1. **Rate Limiting**: Automatic backpressure via jobs queue (50 tx/s)
+2. **Single State Owner**: All ontology state in one gen_statem process
+3. **Atomic Updates**: State changes via gen_statem events only
+4. **Out-of-Order Handling**: Pending map for transactions arriving early
+5. **Leader/Follower**: Distributed execution with result broadcasting
 """.
 
 -behaviour(gen_statem).
@@ -107,7 +109,9 @@ syncing (operational state)
     wait_for_genesis_transaction/3,
     initialize_ontology/3,
     wait_for_registration/3,
-    syncing/3
+    syncing/3,
+    waiting_for_goal_result/3,
+    disconnected/3
 ]).
 
 %%%=============================================================================
@@ -120,13 +124,21 @@ syncing (operational state)
     boot :: term(),
     % The single source of truth for ontology state
     ont_state :: ont_state() | undefined,
-    % Pipeline worker PIDs (linked processes)
-    worker_accept :: pid() | undefined,
-    worker_validate :: pid() | undefined,
-    worker_process :: pid() | undefined,
-    worker_postprocess :: pid() | undefined,
     % Validation stage state
-    validation_state :: validation_state() | undefined
+    validation_state :: validation_state() | undefined,
+    % Transaction being processed while waiting for goal result from leader
+    pending_goal_transaction :: transaction() | undefined,
+    % Cache of goal results that arrived before their transaction
+    % #{TransactionIndex => GoalResult}
+    cached_goal_results = #{} :: map(),
+    % Connection management
+    connection_state = connected :: connection_state(),
+    connection_attempts = 0 :: non_neg_integer(),
+    last_connection_attempt = undefined :: integer() | undefined,
+    last_connection_error = undefined :: term() | undefined,
+    contact_nodes = [] :: [node_entry()],
+    retry_timer_ref = undefined :: reference() | undefined,
+    services_sup_pid = undefined :: pid() | undefined
 }).
 
 -record(validation_state, {
@@ -172,27 +184,53 @@ stop(Namespace) ->
 
 -doc """
 Entry point for locally created transactions.
-Queues transaction for acceptance and broadcasting.
+Submits transaction to rate-limited queue for acceptance and broadcasting.
+This is just an alias for receive_transaction/1 for API compatibility.
 """.
 -spec accept_transaction(transaction()) -> ok.
-accept_transaction(#transaction{namespace = Namespace} = Transaction) ->
-    jobs:enqueue({stage_transaction_accept, Namespace}, Transaction).
+accept_transaction(Transaction) ->
+    receive_transaction(Transaction).
 
 -doc """
-Entry point for transactions received from network via EPTO.
-Queues transaction for validation and processing.
+Entry point for transactions (locally created or received from network via EPTO).
+Submits transaction to rate-limited queue (50 tx/s) for processing.
+
+The jobs queue provides:
+- Rate limiting to prevent overload
+- Fair scheduling across concurrent transactions
+- Backpressure when system is under load
+
+Returns immediately after queuing (non-blocking).
 """.
 -spec receive_transaction(transaction()) -> ok.
 receive_transaction(#transaction{namespace = Namespace} = Transaction) ->
-    jobs:enqueue({stage_transaction_validate, Namespace}, Transaction).
+    jobs:run({stage_transaction_accept, Namespace}, fun() ->
+        %% Send transaction to the ontology actor for processing
+        case gproc:where({n, l, {?MODULE, Namespace}}) of
+            undefined ->
+                ?'log-warning'("Cannot process transaction - ontology actor not found for ~p", [Namespace]),
+                ok;
+            Pid ->
+                gen_statem:cast(Pid, {process_transaction, Transaction}),
+                ok
+        end
+    end).
 
 -doc """
 Entry point for goal execution results from leader nodes.
-Queues result for follower nodes to apply state diffs.
+Sends result event directly to the ontology actor.
 """.
 -spec accept_transaction_result(goal_result()) -> ok.
 accept_transaction_result(#goal_result{namespace = Namespace} = GoalResult) ->
-    jobs:enqueue({stage_transaction_results, Namespace}, GoalResult).
+    %% Send goal result event directly to the ontology actor
+    case gproc:where({n, l, {?MODULE, Namespace}}) of
+        undefined ->
+            ?'log-warning'("Cannot deliver goal result - ontology actor not found for ~p", [Namespace]),
+            ok;
+        Pid ->
+            Pid ! GoalResult,
+            ok
+    end.
 
 -doc """
 Retrieves the current transaction index for the namespace.
@@ -237,10 +275,33 @@ request_segment(Namespace, OldestIndex, YoungerIndex) ->
 %%%=============================================================================
 
 init([Namespace, Options]) ->
-    %% Verify table exists
-    case bbsvx_ont_service:table_exists(Namespace) of
+    process_flag(trap_exit, true),  % Trap exits to handle services supervisor crashes
+
+    %% Extract and log boot mode early
+    BootMode = maps:get(boot, Options, create),
+    ?'log-info'("========================================"),
+    ?'log-info'("Ontology Actor: ~p", [Namespace]),
+    ?'log-info'("Boot Mode: ~p", [BootMode]),
+    ?'log-info'("========================================"),
+
+    %% Verify table exists (only for reconnect mode - others will create it)
+    TableCheck = case BootMode of
+        reconnect ->
+            %% Reconnect mode - table must exist from previous run
+            case bbsvx_ont_service:table_exists(Namespace) of
+                false ->
+                    ?'log-error'("Transaction table missing for namespace ~p (boot mode: reconnect)", [Namespace]),
+                    false;
+                true ->
+                    true
+            end;
+        _ ->
+            %% Create/connect modes - table will be created
+            true
+    end,
+
+    case TableCheck of
         false ->
-            ?'log-error'("Transaction table missing for namespace ~p", [Namespace]),
             {stop, {error, {missing_transaction_table, Namespace}}};
         true ->
             %% Build initial Prolog state for all boot modes
@@ -262,33 +323,72 @@ init([Namespace, Options]) ->
                     State = #state{
                         namespace = Namespace,
                         repos_table = bbsvx_ont_service:binary_to_table_name(Namespace),
-                        boot = maps:get(boot, Options, create),
+                        boot = BootMode,
                         ont_state = OntState,
                         validation_state = #validation_state{}
                     },
 
-                    %% Create jobs queues for pipeline stages
-                    %% These need to be created early so genesis transaction can go through pipeline
-                    ok = jobs:add_queue({stage_transaction_accept, Namespace}, [passive]),
-                    ok = jobs:add_queue({stage_transaction_validate, Namespace}, [passive]),
-                    ok = jobs:add_queue({stage_transaction_process, Namespace}, [passive]),
-                    ok = jobs:add_queue({stage_transaction_postprocess, Namespace}, [passive]),
-                    ok = jobs:add_queue({stage_transaction_results, Namespace}, [passive]),
+                    %% Create jobs queue for transaction acceptance
+                    %% Rate limited to 50 tx/s (1 transaction per 20ms)
+                    %% Use standard_rate which is designed for ask_queue pattern
+                    QueueName = {stage_transaction_accept, Namespace},
+                    ?'log-info'("Creating jobs queue: ~p", [QueueName]),
 
-                    %% Start in appropriate state based on boot mode
-                    %% Only 3 valid boot modes: create, connect, reconnect
-                    case maps:get(boot, Options, create) of
-                        create ->
-                            %% Creating new ontology - wait for genesis transaction
-                            {ok, wait_for_genesis_transaction, State,
-                             [{state_timeout, 5000, genesis_timeout}]};
-                        connect ->
-                            %% Connecting to existing ontology - wait for network registration
-                            {ok, wait_for_registration, State,
-                             [{state_timeout, 30000, registration_timeout}]};
-                        reconnect ->
-                            %% Reconnecting to ontology after restart - load history first
-                            {ok, initialize_ontology, State}
+                    try jobs:add_queue(QueueName, [{standard_rate, 50}]) of
+                        ok ->
+                            ?'log-info'("Successfully created jobs queue: ~p", [QueueName]),
+
+                            %% Start in appropriate state based on boot mode
+                            case BootMode of
+                                create ->
+                                    %% Creating new ontology - start services first, then wait for genesis
+                                    ?'log-info'(">> CREATE MODE: Starting services for new root ontology", []),
+                                    case start_ontology_services(Namespace, #{}) of
+                                        {ok, ServicesPid} ->
+                                            NewState = State#state{
+                                                connection_state = connecting,
+                                                services_sup_pid = ServicesPid
+                                            },
+                                            ?'log-info'(">> CREATE MODE: Services started, waiting for genesis transaction", []),
+                                            {ok, wait_for_genesis_transaction, NewState,
+                                             [{state_timeout, 5000, genesis_timeout}]};
+                                        {error, Reason} ->
+                                            ?'log-error'(">> CREATE MODE FAILED: Could not start services: ~p", [Reason]),
+                                            {stop, Reason}
+                                    end;
+
+                                connect ->
+                                    %% Join network - start services and wait for registration
+                                    ContactNodes = maps:get(contact_nodes, Options, []),
+                                    ?'log-info'(">> CONNECT MODE: Starting services and joining network", []),
+                                    case start_ontology_services(Namespace, Options) of
+                                        {ok, ServicesPid} ->
+                                            NewState = State#state{
+                                                connection_state = connecting,
+                                                connection_attempts = 1,
+                                                last_connection_attempt = erlang:system_time(millisecond),
+                                                contact_nodes = ContactNodes,
+                                                services_sup_pid = ServicesPid
+                                            },
+                                            ?'log-info'(">> Services started, waiting for network registration (timeout: 10s)", []),
+                                            {ok, wait_for_registration, NewState,
+                                             [{state_timeout, 10000, registration_timeout}]};
+                                        {error, Reason} ->
+                                            ?'log-error'(">> CONNECT MODE FAILED: Could not start services: ~p", [Reason]),
+                                            {stop, Reason}
+                                    end;
+
+                                reconnect ->
+                                    %% Rejoin network - load history first, then start services
+                                    ?'log-info'(">> RECONNECT MODE: Loading history then rejoining network", []),
+                                    {ok, initialize_ontology,
+                                     State#state{connection_state = connecting}}
+                            end
+                    catch
+                        Error:Reason:Stacktrace ->
+                            ?'log-error'("Failed to create jobs queue ~p: ~p:~p~nStacktrace: ~p",
+                                        [QueueName, Error, Reason, Stacktrace]),
+                            {stop, {error, {queue_creation_failed, {Error, Reason}}}}
                     end;
                 {error, Reason} ->
                     ?'log-error'("Failed to build initial Prolog state: ~p", [Reason]),
@@ -299,13 +399,18 @@ init([Namespace, Options]) ->
 callback_mode() ->
     [state_functions, state_enter].
 
-terminate(_Reason, _State, #state{namespace = Namespace}) ->
-    %% Clean up jobs queues
+terminate(_Reason, _State, #state{namespace = Namespace, services_sup_pid = ServicesPid, retry_timer_ref = TimerRef}) ->
+    %% Cancel retry timer if active
+    case TimerRef of
+        undefined -> ok;
+        _ -> erlang:cancel_timer(TimerRef)
+    end,
+
+    %% Stop services if running
+    stop_ontology_services(Namespace, ServicesPid),
+
+    %% Clean up jobs queue
     jobs:delete_queue({stage_transaction_accept, Namespace}),
-    jobs:delete_queue({stage_transaction_validate, Namespace}),
-    jobs:delete_queue({stage_transaction_process, Namespace}),
-    jobs:delete_queue({stage_transaction_postprocess, Namespace}),
-    jobs:delete_queue({stage_transaction_results, Namespace}),
     ok.
 
 code_change(_Vsn, State, Data, _Extra) ->
@@ -325,42 +430,83 @@ wait_for_genesis_transaction(enter, _, #state{namespace = Namespace} = State) ->
     %% Register for broadcast messages
     gproc:reg({p, l, {?MODULE, Namespace}}),
 
-    %% Spawn worker processes for pipeline (needed to process genesis transaction)
-    Parent = self(),
-    AcceptWorker = spawn_link(fun() -> transaction_accept_worker(Namespace, Parent) end),
-    ValidateWorker = spawn_link(fun() -> transaction_validate_worker(Namespace, Parent) end),
-    ProcessWorker = spawn_link(fun() -> transaction_process_worker(Namespace, Parent) end),
-    PostprocessWorker = spawn_link(fun() -> transaction_postprocess_worker(Namespace, Parent) end),
+    {keep_state, State};
 
-    ?'log-info'("Pipeline workers spawned for ~p (waiting for genesis)", [Namespace]),
-
-    {keep_state, State#state{
-        worker_accept = AcceptWorker,
-        worker_validate = ValidateWorker,
-        worker_process = ProcessWorker,
-        worker_postprocess = PostprocessWorker
-    }};
-
+%% Handle genesis transaction (type = creation, index = 0)
+%% This MUST come before the generic process_transaction handler to match first
 wait_for_genesis_transaction(
-    info,
-    {transaction_validated, #transaction{type = creation, index = 0} = ValidatedTx, NewCurrentAddress, NewValidationState},
-    #state{ont_state = OntState} = State
+    cast,
+    {process_transaction, #transaction{type = creation, index = 0} = Transaction},
+    #state{namespace = Namespace, ont_state = OntState, validation_state = ValidationState} = State
 ) ->
-    ?'log-info'("Genesis transaction validated and processed", []),
+    ?'log-info'("Processing genesis transaction", []),
 
-    %% Update ontology state with genesis transaction results
-    UpdatedOntState = OntState#ont_state{
-        local_index = 0,
-        current_index = 0,
-        current_address = NewCurrentAddress,
-        next_address = <<"1">>
-    },
+    %% Step 1: Validate genesis (index must be 0)
+    CurrentIndex = OntState#ont_state.current_index,
+    CurrentAddress = OntState#ont_state.current_address,
 
-    %% Transition to syncing state - workers are already running
-    {next_state, syncing, State#state{
-        ont_state = UpdatedOntState,
-        validation_state = NewValidationState
-    }};
+    case validate_transaction(Transaction, CurrentIndex, CurrentAddress, Namespace, ValidationState) of
+        {ok, ValidatedTx, NewCurrentAddress, NewValidationState} ->
+            %% Step 2: Accept and broadcast (only after successful validation)
+            AcceptedTx = ValidatedTx#transaction{
+                status = accepted,
+                ts_created = erlang:system_time()
+            },
+            bbsvx_epto_service:broadcast(Namespace, AcceptedTx),
+
+            %% Step 3: Process genesis
+            case process_transaction(AcceptedTx, OntState, Namespace) of
+                {ok, ProcessedTx, NewOntState} ->
+                    %% Step 4: Postprocess
+                    case postprocess_transaction(ProcessedTx, Namespace) of
+                        ok ->
+                            %% Update state with genesis results
+                            UpdatedOntState = NewOntState#ont_state{
+                                local_index = 0,
+                                current_index = 0,
+                                current_address = NewCurrentAddress,
+                                next_address = <<"1">>
+                            },
+
+                            %% Genesis complete - services already started, transition to syncing
+                            ?'log-info'(">> CREATE MODE SUCCESS: Genesis complete, now CONNECTED and syncing", []),
+                            {next_state, syncing, State#state{
+                                ont_state = UpdatedOntState,
+                                validation_state = NewValidationState,
+                                connection_state = connected
+                            }};
+
+                        {error, PostprocessReason} ->
+                            ?'log-error'("Genesis postprocessing failed: ~p", [PostprocessReason]),
+                            {stop, {genesis_postprocess_failed, PostprocessReason}, State}
+                    end;
+
+                {error, Reason, _OntState} ->
+                    ?'log-error'("Genesis processing failed: ~p", [Reason]),
+                    {stop, {genesis_process_failed, Reason}, State}
+            end;
+
+        {error, Reason} ->
+            ?'log-error'("Genesis validation failed: ~p", [Reason]),
+            {stop, {genesis_validation_failed, Reason}, State}
+    end;
+
+%% Handle non-genesis transactions - store in pending for processing after genesis
+%% This handler must come AFTER the genesis handler above
+wait_for_genesis_transaction(
+    cast,
+    {process_transaction, #transaction{index = TxIndex} = Transaction},
+    #state{validation_state = ValidationState} = State
+) ->
+    ?'log-info'("Received non-genesis transaction ~p while waiting for genesis, storing in pending",
+                [TxIndex]),
+
+    %% Store in pending - will be processed after genesis
+    #validation_state{pending = Pending} = ValidationState,
+    NewPending = Pending#{TxIndex => Transaction},
+    NewValidationState = ValidationState#validation_state{pending = NewPending},
+
+    {keep_state, State#state{validation_state = NewValidationState}};
 
 wait_for_genesis_transaction(
     {call, From},
@@ -394,17 +540,32 @@ initialize_ontology(enter, _, #state{namespace = Namespace} = State) ->
     {keep_state, State, [{state_timeout, 0, load_history}]};
 
 initialize_ontology(state_timeout, load_history, #state{namespace = Namespace, ont_state = OntState, repos_table = ReposTable} = State) ->
-    ?'log-info'("Ontology Actor ~p loading history", [Namespace]),
+    ?'log-info'(">> RECONNECT MODE: Loading transaction history", []),
 
     %% Load history (this can be slow, but we're not blocking init)
     case load_history(OntState, ReposTable) of
         #ont_state{local_index = LocalIndex, current_index = CurrentIndex} = NewOntState ->
-            ?'log-info'("Loaded history: local_index=~p, current_index=~p", [LocalIndex, CurrentIndex]),
+            ?'log-info'(">> RECONNECT MODE: History loaded (local_index=~p, current_index=~p)", [LocalIndex, CurrentIndex]),
 
-            %% Transition to wait_for_registration with loaded state
-            {next_state, wait_for_registration, State#state{ont_state = NewOntState}};
+            %% Start services after loading history
+            ?'log-info'(">> RECONNECT MODE: Starting services", []),
+            case start_ontology_services(Namespace, #{}) of
+                {ok, ServicesPid} ->
+                    %% Transition to wait_for_registration with loaded state
+                    ?'log-info'(">> RECONNECT MODE: Services started, waiting for network registration (timeout: 10s)", []),
+                    {next_state, wait_for_registration, State#state{
+                        ont_state = NewOntState,
+                        services_sup_pid = ServicesPid,
+                        connection_state = connecting,
+                        connection_attempts = 1,
+                        last_connection_attempt = erlang:system_time(millisecond)
+                    }, [{state_timeout, 10000, registration_timeout}]};
+                {error, ServiceReason} ->
+                    ?'log-error'(">> RECONNECT MODE FAILED: Could not start services: ~p", [ServiceReason]),
+                    {stop, {services_start_failed, ServiceReason}, State}
+            end;
         {error, Reason} ->
-            ?'log-error'("Failed to load history: ~p", [Reason]),
+            ?'log-error'(">> RECONNECT MODE FAILED: Could not load history: ~p", [Reason]),
             {stop, {error, {load_history_failed, Reason}}, State}
     end;
 
@@ -417,15 +578,15 @@ initialize_ontology(_EventType, _Event, _State) ->
 
 wait_for_registration(enter, _, #state{namespace = Namespace} = State) ->
     ?'log-info'("Ontology Actor ~p waiting for network registration", [Namespace]),
-    {keep_state, State, [{state_timeout, 60000, registration_timeout}]};
+    {keep_state, State};
 
 wait_for_registration(
     info,
     {registered, CurrentIndex},
-    #state{namespace = Namespace, ont_state = OntState} = State
+    #state{namespace = Namespace, ont_state = OntState, boot = BootMode} = State
 ) ->
-    ?'log-info'("Ontology Actor ~p registered with network, current_index=~p",
-                [Namespace, CurrentIndex]),
+    ?'log-info'(">> ~p MODE SUCCESS: Registered with network (current_index=~p)",
+                [string:uppercase(atom_to_list(BootMode)), CurrentIndex]),
 
     LocalIndex = OntState#ont_state.local_index,
     NewOntState = OntState#ont_state{current_index = CurrentIndex},
@@ -433,16 +594,40 @@ wait_for_registration(
     %% Request missing transactions if needed
     case CurrentIndex > LocalIndex of
         true ->
+            ?'log-info'(">> Requesting missing transactions (~p to ~p)", [LocalIndex + 1, CurrentIndex]),
             request_segment(Namespace, LocalIndex + 1, CurrentIndex);
         false ->
             ok
     end,
 
-    {next_state, syncing, State#state{ont_state = NewOntState}};
+    %% Update connection state to connected
+    ?'log-info'(">> Now CONNECTED and syncing", []),
+    {next_state, syncing, State#state{
+        ont_state = NewOntState,
+        connection_state = connected
+    }};
 
-wait_for_registration(state_timeout, registration_timeout, State) ->
-    ?'log-error'("Timeout waiting for network registration"),
-    {stop, registration_timeout, State};
+wait_for_registration(state_timeout, registration_timeout, #state{boot = BootMode} = State) ->
+    AttemptNum = State#state.connection_attempts + 1,
+    ?'log-warn'(">> ~p MODE: Registration timeout (attempt ~p) - will retry while keeping services alive",
+                [string:uppercase(atom_to_list(BootMode)), AttemptNum]),
+
+    %% Don't stop services - just retry registration
+    %% The SPRAY and EPTO services will continue attempting to connect
+    RetryInterval = calculate_retry_interval(AttemptNum),
+
+    ?'log-info'(">> Will check registration again in ~p ms", [RetryInterval]),
+
+    %% Stay in wait_for_registration state and retry after interval
+    {keep_state, State#state{
+        connection_attempts = AttemptNum,
+        last_connection_attempt = erlang:system_time(millisecond),
+        last_connection_error = registration_timeout
+    }, [{state_timeout, RetryInterval, registration_timeout}]};
+
+wait_for_registration(cast, {process_transaction, _Tx}, _State) ->
+    %% Reject transactions when not connected
+    {keep_state_and_data, [{reply, {error, ontology_disconnected}}]};
 
 wait_for_registration(_EventType, _Event, _State) ->
     keep_state_and_data.
@@ -451,7 +636,7 @@ wait_for_registration(_EventType, _Event, _State) ->
 %% syncing State (Main Operational State)
 %%-----------------------------------------------------------------------------
 
-syncing(enter, _, #state{namespace = Namespace, worker_accept = AcceptWorker} = State) ->
+syncing(enter, _, #state{namespace = Namespace} = State) ->
     ?'log-info'("Ontology Actor ~p entering syncing state", [Namespace]),
 
     %% Register for broadcast messages (only if not already registered)
@@ -462,30 +647,7 @@ syncing(enter, _, #state{namespace = Namespace, worker_accept = AcceptWorker} = 
         error:badarg -> ok  % Already registered
     end,
 
-    %% Check if workers are already spawned (from wait_for_genesis_transaction)
-    case AcceptWorker of
-        undefined ->
-            %% Workers not spawned yet - spawn them now
-            %% (This happens when coming from initialize_ontology or wait_for_registration)
-            Parent = self(),
-            NewAcceptWorker = spawn_link(fun() -> transaction_accept_worker(Namespace, Parent) end),
-            NewValidateWorker = spawn_link(fun() -> transaction_validate_worker(Namespace, Parent) end),
-            NewProcessWorker = spawn_link(fun() -> transaction_process_worker(Namespace, Parent) end),
-            NewPostprocessWorker = spawn_link(fun() -> transaction_postprocess_worker(Namespace, Parent) end),
-
-            ?'log-info'("Pipeline workers spawned for ~p", [Namespace]),
-
-            {keep_state, State#state{
-                worker_accept = NewAcceptWorker,
-                worker_validate = NewValidateWorker,
-                worker_process = NewProcessWorker,
-                worker_postprocess = NewPostprocessWorker
-            }};
-        _ ->
-            %% Workers already running (from wait_for_genesis_transaction)
-            ?'log-info'("Pipeline workers already running for ~p", [Namespace]),
-            {keep_state, State}
-    end;
+    {keep_state, State};
 
 %% Get current index query
 syncing(
@@ -503,114 +665,6 @@ syncing(
            validation_state = ValidationState}
 ) ->
     {keep_state_and_data, [{reply, From, {ok, Index, ValidationState, CurrentAddress}}]};
-
-%% Transaction validated - update current_index, validation_state, and check pending
-syncing(
-    info,
-    {transaction_validated, ValidatedTx, NewCurrentAddress, UpdatedValidationState},
-    #state{namespace = Namespace, ont_state = OntState} = State
-) ->
-    #transaction{index = Index, ts_created = TsCreated} = ValidatedTx,
-
-    NewOntState = OntState#ont_state{
-        current_index = Index,
-        local_index = Index,
-        current_address = NewCurrentAddress,
-        current_ts = TsCreated
-    },
-
-    ?'log-info'("Transaction ~p validated, index updated to ~p", [ValidatedTx#transaction.index, Index]),
-
-    %% Check if next transaction is pending and re-queue it
-    NextIndex = Index + 1,
-    FinalValidationState = case check_pending(UpdatedValidationState, NextIndex) of
-        {found, PendingTx, NewValidationState} ->
-            ?'log-info'("Re-queueing pending transaction ~p", [NextIndex]),
-            jobs:enqueue({stage_transaction_validate, Namespace}, PendingTx),
-            %% Update metrics
-            #validation_state{pending = NewPending} = NewValidationState,
-            prometheus_gauge:set(
-                <<"bbsvx_pending_transactions">>,
-                [Namespace],
-                maps:size(NewPending)
-            ),
-            NewValidationState;
-        {not_found, _} ->
-            UpdatedValidationState
-    end,
-
-    {keep_state, State#state{
-        ont_state = NewOntState,
-        validation_state = FinalValidationState
-    }};
-
-%% Transaction processed - update Prolog state
-syncing(
-    info,
-    {transaction_processed, ProcessedTx, NewPrologState},
-    #state{ont_state = OntState} = State
-) ->
-    NewOntState = OntState#ont_state{prolog_state = NewPrologState},
-
-    ?'log-info'("Transaction ~p processed, Prolog state updated",
-                [ProcessedTx#transaction.index]),
-
-    {keep_state, State#state{ont_state = NewOntState}};
-
-%% History transaction accepted - update local_index, validation_state, and check pending
-syncing(
-    info,
-    {history_transaction_accepted, Index, CurrentAddress, UpdatedValidationState},
-    #state{namespace = Namespace, ont_state = OntState} = State
-) ->
-    NewOntState = OntState#ont_state{
-        current_index = Index,
-        local_index = Index,
-        current_address = CurrentAddress
-    },
-
-    ?'log-info'("History transaction ~p accepted, current_index and local_index updated to ~p", [Index, Index]),
-
-    %% Check if next transaction is pending and re-queue it
-    NextIndex = Index + 1,
-    FinalValidationState = case check_pending(UpdatedValidationState, NextIndex) of
-        {found, PendingTx, NewValidationState} ->
-            ?'log-info'("Re-queueing pending transaction ~p after history", [NextIndex]),
-            jobs:enqueue({stage_transaction_validate, Namespace}, PendingTx),
-            %% Update metrics
-            #validation_state{pending = NewPending} = NewValidationState,
-            prometheus_gauge:set(
-                <<"bbsvx_pending_transactions">>,
-                [Namespace],
-                maps:size(NewPending)
-            ),
-            NewValidationState;
-        {not_found, _} ->
-            UpdatedValidationState
-    end,
-
-    {keep_state, State#state{
-        ont_state = NewOntState,
-        validation_state = FinalValidationState
-    }};
-
-%% Validation state updated (when transaction goes to pending map)
-syncing(
-    info,
-    {validation_state_updated, UpdatedValidationState},
-    #state{namespace = Namespace} = State
-) ->
-    %% Update metrics for pending transaction count
-    #validation_state{pending = Pending} = UpdatedValidationState,
-    prometheus_gauge:set(
-        <<"bbsvx_pending_transactions">>,
-        [Namespace],
-        maps:size(Pending)
-    ),
-
-    ?'log-debug'("Validation state updated, pending count: ~p", [maps:size(Pending)]),
-
-    {keep_state, State#state{validation_state = UpdatedValidationState}};
 
 %% Segment request
 syncing(
@@ -708,157 +762,263 @@ syncing({call, From}, get_current_address, #state{ont_state = OntState}) ->
 syncing({call, From}, get_validation_state, #state{validation_state = ValidationState}) ->
     {keep_state_and_data, [{reply, From, {ok, ValidationState}}]};
 
+%% Transaction processing handler
+syncing(
+    cast,
+    {process_transaction, #transaction{type = creation, index = 0}},
+    _State
+) ->
+    %% Genesis transaction should only be processed in wait_for_genesis state
+    ?'log-warning'("Received genesis transaction in syncing state, ignoring", []),
+    keep_state_and_data;
+
+syncing(
+    cast,
+    {process_transaction, Transaction},
+    #state{
+        namespace = Namespace,
+        ont_state = OntState,
+        validation_state = ValidationState
+    } = State
+) ->
+    ?'log-info'("Processing transaction in actor", []),
+
+    %% Step 1: Validate (transaction already broadcasted via EPTO)
+    CurrentIndex = OntState#ont_state.current_index,
+    CurrentAddress = OntState#ont_state.current_address,
+
+    case validate_transaction(Transaction, CurrentIndex, CurrentAddress, Namespace, ValidationState) of
+        {ok, ValidatedTx, NewCurrentAddress, NewValidationState} ->
+            %% Step 3: Process
+            case process_transaction(ValidatedTx, OntState, Namespace) of
+                {ok, ProcessedTx, NewOntState} ->
+                    %% Step 4: Postprocess
+                    case postprocess_transaction(ProcessedTx, Namespace) of
+                        ok ->
+                            %% Update state
+                            UpdatedOntState = NewOntState#ont_state{
+                                current_index = ValidatedTx#transaction.index,
+                                local_index = ValidatedTx#transaction.index,
+                                current_address = NewCurrentAddress,
+                                current_ts = ValidatedTx#transaction.ts_created
+                            },
+
+                            %% Check if next transaction is pending
+                            NextIndex = ValidatedTx#transaction.index + 1,
+                            FinalValidationState = case check_pending(NewValidationState, NextIndex) of
+                                {found, PendingTx, UpdatedPendingState} ->
+                                    ?'log-info'("Re-queueing pending transaction ~p", [NextIndex]),
+                                    receive_transaction(PendingTx),
+                                    UpdatedPendingState;
+                                {not_found, _} ->
+                                    NewValidationState
+                            end,
+
+                            {keep_state, State#state{
+                                ont_state = UpdatedOntState,
+                                validation_state = FinalValidationState
+                            }};
+
+                        {error, PostprocessReason} ->
+                            ?'log-error'("Transaction postprocessing failed: ~p", [PostprocessReason]),
+                            %% Transaction was processed but recording failed - this is serious
+                            %% State is already updated in NewOntState, so we keep it but log the error
+                            {keep_state, State#state{ont_state = NewOntState}}
+                    end;
+
+                {wait_for_result, Transaction, _OntState} ->
+                    %% Follower node needs to wait for goal result from leader
+                    ?'log-info'("Transitioning to waiting_for_goal_result state for transaction ~p",
+                                [Transaction#transaction.index]),
+
+                    %% Check if we already have the result cached (using index as key)
+                    TxIndex = ValidatedTx#transaction.index,
+                    case maps:get(TxIndex, State#state.cached_goal_results, undefined) of
+                        undefined ->
+                            %% No cached result - transition to waiting state with 1 sec timeout
+                            {next_state, waiting_for_goal_result,
+                             State#state{
+                                 pending_goal_transaction = ValidatedTx,
+                                 ont_state = OntState,
+                                 validation_state = NewValidationState
+                             },
+                             [{state_timeout, 1000, goal_result_timeout}]};
+
+                        CachedResult ->
+                            %% We already have the result - process it immediately
+                            ?'log-info'("Found cached goal result for transaction index ~p", [TxIndex]),
+                            NewCachedResults = maps:remove(TxIndex, State#state.cached_goal_results),
+                            %% Apply the result and continue (handled in helper function below)
+                            apply_goal_result_and_continue(CachedResult, ValidatedTx, NewCurrentAddress,
+                                                          NewValidationState, OntState, Namespace,
+                                                          State#state{cached_goal_results = NewCachedResults})
+                    end;
+
+                {error, Reason, _OntState} ->
+                    ?'log-error'("Transaction processing failed: ~p", [Reason]),
+                    %% Mark transaction as invalid and record
+                    InvalidTx = ValidatedTx#transaction{status = invalid},
+                    bbsvx_transaction:record_transaction(InvalidTx),
+                    %% Still need to increment index to maintain chain integrity
+                    UpdatedOntState = OntState#ont_state{
+                        current_index = ValidatedTx#transaction.index,
+                        local_index = ValidatedTx#transaction.index,
+                        current_address = NewCurrentAddress,
+                        current_ts = ValidatedTx#transaction.ts_created
+                    },
+                    {keep_state, State#state{ont_state = UpdatedOntState}}
+            end;
+
+        {pending, TxIndex, NewValidationState} ->
+            ?'log-info'("Transaction ~p is pending", [TxIndex]),
+            {keep_state, State#state{validation_state = NewValidationState}};
+
+        {history_accepted, Index, NewAddr, NewValidationState} ->
+            ?'log-info'("History transaction ~p accepted", [Index]),
+            NewOntState = OntState#ont_state{
+                current_index = Index,
+                local_index = Index,
+                current_address = NewAddr
+            },
+            {keep_state, State#state{
+                ont_state = NewOntState,
+                validation_state = NewValidationState
+            }}
+    end;
+
 %% Catch-all
+%% Handle connection status queries
+syncing({call, From}, get_connection_status, State) ->
+    Status = build_connection_status(State),
+    {keep_state_and_data, [{reply, From, {ok, Status}}]};
+
 syncing(Type, Event, _State) ->
     ?'log-warning'("Unhandled event in syncing state: ~p ~p", [Type, Event]),
     keep_state_and_data.
 
 %%%=============================================================================
-%%% Pipeline Worker Processes
+%%% State: waiting_for_goal_result
 %%%=============================================================================
 
-%%-----------------------------------------------------------------------------
-%% Transaction Accept Worker
-%%-----------------------------------------------------------------------------
-
 -doc """
-Worker process that accepts and broadcasts new transactions.
-Runs in infinite loop, sending events back to parent gen_statem.
+State for follower nodes waiting for goal execution result from leader.
+Transitions back to syncing once result is received and processed.
 """.
-transaction_accept_worker(Namespace, Parent) ->
-    [{_, Transaction}] = jobs:dequeue({stage_transaction_accept, Namespace}, 1),
+waiting_for_goal_result(enter, _, State) ->
+    ?'log-info'("Waiting for goal result from leader"),
+    {keep_state, State};
 
-    ?'log-info'("Accepting transaction ~p", [Transaction#transaction.index]),
+%% Received goal result from leader - matching index
+waiting_for_goal_result(
+    info,
+    #goal_result{index = Index} = GoalResult,
+    #state{
+        namespace = Namespace,
+        pending_goal_transaction = #transaction{index = Index} = PendingTx,
+        ont_state = OntState,
+        validation_state = ValidationState
+    } = State
+) ->
+    ?'log-info'("Received matching goal result for transaction index ~p", [Index]),
 
-    %% Update transaction status and broadcast via EPTO
-    UpdatedTx = Transaction#transaction{
-        status = accepted,
-        ts_created = erlang:system_time()
-    },
+    %% Get the current address that was set during validation
+    NewCurrentAddress = PendingTx#transaction.current_address,
 
-    bbsvx_epto_service:broadcast(Namespace, UpdatedTx),
+    %% Apply the result and continue processing
+    apply_goal_result_and_continue(GoalResult, PendingTx, NewCurrentAddress,
+                                   ValidationState, OntState, Namespace, State);
 
-    %% Continue loop
-    transaction_accept_worker(Namespace, Parent).
+%% Received goal result but index doesn't match - cache it
+waiting_for_goal_result(
+    info,
+    #goal_result{index = ResultIndex} = GoalResult,
+    #state{
+        pending_goal_transaction = #transaction{index = PendingIndex}
+    } = State
+) ->
+    ?'log-info'("Received goal result for index ~p but waiting for ~p - caching",
+                [ResultIndex, PendingIndex]),
+
+    %% Cache this result for later (using index as key)
+    NewCachedResults = maps:put(ResultIndex, GoalResult, State#state.cached_goal_results),
+
+    {keep_state, State#state{cached_goal_results = NewCachedResults}};
+
+%% Timeout waiting for result
+waiting_for_goal_result(state_timeout, goal_result_timeout, State) ->
+    ?'log-error'("Timeout waiting for goal result from leader"),
+    #state{pending_goal_transaction = PendingTx} = State,
+
+    %% Mark transaction as invalid due to timeout
+    InvalidTx = PendingTx#transaction{status = invalid},
+    bbsvx_transaction:record_transaction(InvalidTx),
+
+    %% Transition back to syncing state
+    {next_state, syncing, State#state{pending_goal_transaction = undefined}};
+
+%% Catch-all
+waiting_for_goal_result(Type, Event, _State) ->
+    ?'log-warning'("Unhandled event in waiting_for_goal_result state: ~p ~p", [Type, Event]),
+    keep_state_and_data.
 
 %%-----------------------------------------------------------------------------
-%% Transaction Validate Worker
+%% disconnected State
 %%-----------------------------------------------------------------------------
 
--doc """
-Worker process that validates transaction ordering and readiness.
-Sends validation results back to parent gen_statem for state updates.
-Parent is responsible for checking pending transactions and re-queuing.
-""".
-transaction_validate_worker(Namespace, Parent) ->
-    [{_, Transaction}] = jobs:dequeue({stage_transaction_validate, Namespace}, 1),
+disconnected(enter, _, #state{namespace = Namespace} = State) ->
+    ?'log-info'("Ontology Actor ~p entering disconnected state", [Namespace]),
+    {keep_state, State};
 
-    ?'log-info'("Validating transaction index=~p status=~p",
-                [Transaction#transaction.index, Transaction#transaction.status]),
+%% Handle retry connection event
+disconnected(info, retry_connection, #state{namespace = Namespace, contact_nodes = ContactNodes} = State) ->
+    AttemptNum = State#state.connection_attempts + 1,
+    ?'log-info'(">> DISCONNECTED: Retry attempt #~p - Starting services", [AttemptNum]),
 
-    %% Get validation context from parent with timeout and error handling
-    case gen_statem:call(Parent, get_validation_context, 10000) of
-        {ok, CurrentIndex, ValidationState, CurrentAddress} ->
-            %% Validate transaction
-            case validate_transaction(Transaction, CurrentIndex, CurrentAddress, Namespace, ValidationState) of
-                {ok, ValidatedTx, NewCurrentAddress, NewValidationState} ->
-                    %% Send validation event to parent with updated validation state
-                    %% Parent will check pending and re-queue if needed
-                    Parent ! {transaction_validated, ValidatedTx, NewCurrentAddress, NewValidationState},
-
-                    %% Forward to processing stage
-                    jobs:enqueue({stage_transaction_process, Namespace}, ValidatedTx);
-
-                {pending, Index, NewValidationState} ->
-                    ?'log-info'("Transaction ~p is pending (current=~p)", [Index, CurrentIndex]),
-                    %% Send updated validation state to parent
-                    %% Transaction is stored in pending map, parent owns it now
-                    Parent ! {validation_state_updated, NewValidationState};
-
-                {history_accepted, Index, NewAddr, NewValidationState} ->
-                    %% History transaction accepted, send to parent
-                    %% Parent will check pending and re-queue if needed
-                    Parent ! {history_transaction_accepted, Index, NewAddr, NewValidationState}
-            end;
-
+    %% Start services
+    case start_ontology_services(Namespace, #{contact_nodes => ContactNodes}) of
+        {ok, ServicesPid} ->
+            %% Transition to wait_for_registration
+            ?'log-info'(">> DISCONNECTED: Services started, waiting for registration (timeout: 10s)", []),
+            {next_state, wait_for_registration, State#state{
+                connection_state = connecting,
+                connection_attempts = AttemptNum,
+                last_connection_attempt = erlang:system_time(millisecond),
+                services_sup_pid = ServicesPid,
+                retry_timer_ref = undefined
+            }, [{state_timeout, 10000, registration_timeout}]};
         {error, Reason} ->
-            ?'log-error'("Failed to get validation context: ~p, retrying in 1s", [Reason]),
-            timer:sleep(1000);
+            ?'log-error'(">> DISCONNECTED: Retry #~p failed - could not start services: ~p", [AttemptNum, Reason]),
 
-        Other ->
-            ?'log-error'("Unexpected response from parent: ~p, retrying in 1s", [Other]),
-            timer:sleep(1000)
-    end,
+            %% Schedule another retry
+            RetryInterval = calculate_retry_interval(AttemptNum),
+            TimerRef = erlang:send_after(RetryInterval, self(), retry_connection),
 
-    %% Continue loop
-    transaction_validate_worker(Namespace, Parent).
+            ?'log-warn'(">> DISCONNECTED: Next retry in ~p ms (attempt #~p)", [RetryInterval, AttemptNum + 1]),
 
-%%-----------------------------------------------------------------------------
-%% Transaction Process Worker
-%%-----------------------------------------------------------------------------
+            {keep_state, State#state{
+                connection_attempts = AttemptNum,
+                last_connection_attempt = erlang:system_time(millisecond),
+                last_connection_error = Reason,
+                retry_timer_ref = TimerRef
+            }}
+    end;
 
--doc """
-Worker process that executes validated transactions.
-Handles Prolog goal execution and state diff generation.
-""".
-transaction_process_worker(Namespace, Parent) ->
-    [{_, Transaction}] = jobs:dequeue({stage_transaction_process, Namespace}, 1),
+%% Reject all transactions when disconnected
+disconnected(cast, {process_transaction, _Tx}, _State) ->
+    {keep_state_and_data, [{reply, {error, ontology_disconnected}}]};
 
-    ?'log-info'("Processing transaction ~p", [Transaction#transaction.index]),
+%% Handle connection status queries
+disconnected({call, From}, get_connection_status, State) ->
+    Status = build_connection_status(State),
+    {keep_state_and_data, [{reply, From, {ok, Status}}]};
 
-    %% Get current Prolog state from parent (via call)
-    {ok, PrologState} = gen_statem:call(Parent, get_prolog_state),
+%% Catch-all
+disconnected(_EventType, _Event, _State) ->
+    keep_state_and_data.
 
-    %% Process transaction
-    case process_transaction(Transaction, PrologState, Namespace) of
-        {ok, ProcessedTx, NewPrologState} ->
-            %% Send processed event to parent
-            Parent ! {transaction_processed, ProcessedTx, NewPrologState},
-
-            %% Forward to postprocess stage
-            jobs:enqueue({stage_transaction_postprocess, Namespace}, ProcessedTx);
-
-        {error, Reason} ->
-            ?'log-error'("Transaction processing failed: ~p", [Reason]),
-            ok
-    end,
-
-    %% Continue loop
-    transaction_process_worker(Namespace, Parent).
-
-%%-----------------------------------------------------------------------------
-%% Transaction Postprocess Worker
-%%-----------------------------------------------------------------------------
-
--doc """
-Worker process that handles final transaction recording and metrics.
-""".
-transaction_postprocess_worker(Namespace, Parent) ->
-    [{_, Transaction}] = jobs:dequeue({stage_transaction_postprocess, Namespace}, 1),
-
-    ?'log-info'("Postprocessing transaction ~p", [Transaction#transaction.index]),
-
-    %% Record transaction to storage
-    bbsvx_transaction:record_transaction(Transaction#transaction{status = processed}),
-
-    %% Notify subscribers
-    gproc:send({p, l, {diff, Namespace}}, {transaction_processed, Transaction}),
-
-    %% Update metrics
-    Time = erlang:system_time(microsecond),
-    prometheus_gauge:set(
-        <<"bbsvx_transction_processing_time">>,
-        [Namespace],
-        Time - Transaction#transaction.ts_delivered
-    ),
-    prometheus_gauge:set(
-        <<"bbsvx_transction_total_validation_time">>,
-        [Namespace],
-        Time - Transaction#transaction.ts_created
-    ),
-
-    %% Continue loop
-    transaction_postprocess_worker(Namespace, Parent).
+%%%=============================================================================
+%%% Pipeline Worker Processes
+%%%=============================================================================
 
 %%%=============================================================================
 %%% Pipeline Helper Functions (Pure Functions)
@@ -876,7 +1036,7 @@ validate_transaction(
     #transaction{index = TxIndex, status = processed} = Transaction,
     CurrentIndex,
     _CurrentAddress,
-    Namespace,
+    _Namespace,
     ValidationState
 ) when TxIndex == CurrentIndex + 1 ->
     %% History transaction ready to be accepted
@@ -943,7 +1103,7 @@ validate_transaction(
     #transaction{status = created, ts_created = TsCreated} = Transaction,
     CurrentIndex,
     CurrentAddress,
-    Namespace,
+    _Namespace,
     ValidationState
 ) ->
     %% New transaction - assign index
@@ -1044,34 +1204,38 @@ process_transaction(
                 [Namespace, length(ExternalPreds)]),
 
     %% Load external predicates from Erlang modules
-    UpdatedDb = lists:foldl(
-        fun(Mod, DbAcc) ->
+    %% Note: PrologDb is a #db{} wrapper, we need to extract and update the #db_differ{} inside
+    UpdatedDbDiffer = lists:foldl(
+        fun(Mod, DbDifferAcc) ->
             case erlang:function_exported(Mod, external_predicates, 0) of
                 true ->
                     Preds = Mod:external_predicates(),
                     ?'log-info'("Loading ~p external predicates from ~p", [length(Preds), Mod]),
                     lists:foldl(
-                        fun({{Functor, Arity}, PredMod, PredFunc}, Db) ->
-                            case bbsvx_erlog_db_differ:add_compiled_proc(Db, {Functor, Arity}, PredMod, PredFunc) of
-                                {ok, NewDb} ->
+                        fun({{Functor, Arity}, PredMod, PredFunc}, DbDiffer) ->
+                            case bbsvx_erlog_db_differ:add_compiled_proc(DbDiffer, {Functor, Arity}, PredMod, PredFunc) of
+                                {ok, NewDbDiffer} ->
                                     ?'log-debug'("Added predicate ~p/~p", [Functor, Arity]),
-                                    NewDb;
+                                    NewDbDiffer;
                                 error ->
                                     ?'log-warning'("Failed to add predicate ~p/~p", [Functor, Arity]),
-                                    Db
+                                    DbDiffer
                             end
                         end,
-                        DbAcc,
+                        DbDifferAcc,
                         Preds
                     );
                 false ->
                     ?'log-warning'("Module ~p does not export external_predicates/0", [Mod]),
-                    DbAcc
+                    DbDifferAcc
             end
         end,
-        PrologDb,
+        PrologDb#db.ref,  %% Extract #db_differ{} from #db{} wrapper
         ExternalPreds
     ),
+
+    %% Wrap the updated #db_differ{} back into #db{}
+    UpdatedDb = PrologDb#db{ref = UpdatedDbDiffer},
 
     %% TODO: Execute payload (asserta static predicates if present)
     %% The payload contains [{asserta, StaticPredicates}] but for now we'll skip this
@@ -1084,7 +1248,7 @@ process_transaction(
 
 process_transaction(
     #transaction{type = goal, payload = #goal{} = Goal, namespace = Namespace} = Transaction,
-    PrologState,
+    #ont_state{prolog_state = #est{db = PrologDb} = PrologState} = OntState,
     Namespace
 ) ->
     %% Get leader
@@ -1092,18 +1256,26 @@ process_transaction(
     MyId = bbsvx_crypto_service:my_id(),
     IsLeader = (Leader == MyId),
 
-    case do_prove_goal(Goal, PrologState, IsLeader, Namespace) of
-        {_Result, NewPrologState, Diff} ->
-            ProcessedTx = Transaction#transaction{
-                status = processed,
-                ts_processed = erlang:system_time(),
-                diff = Diff
-            },
+    case IsLeader of
+        true ->
+            %% We are the leader - execute the goal
+            case do_prove_goal(Goal, Transaction#transaction.index, PrologState, true, Namespace) of
+                {_Result, NewPrologState, Diff} ->
+                    ProcessedTx = Transaction#transaction{
+                        status = processed,
+                        ts_processed = erlang:system_time(),
+                        diff = Diff
+                    },
+                    {ok, ProcessedTx, OntState#ont_state{prolog_state = NewPrologState}};
 
-            {ok, ProcessedTx, NewPrologState};
+                {error, Reason} ->
+                    {error, Reason, OntState}
+            end;
 
-        {error, Reason} ->
-            {error, Reason}
+        false ->
+            %% We are a follower - need to wait for leader's result
+            ?'log-info'("Follower node - will wait for goal result from leader"),
+            {wait_for_result, Transaction, OntState}
     end.
 
 %%-----------------------------------------------------------------------------
@@ -1111,10 +1283,11 @@ process_transaction(
 %%-----------------------------------------------------------------------------
 
 -doc """
-Executes a Prolog goal with leader/follower coordination.
+Executes a Prolog goal as leader and broadcasts result to followers.
 """.
 do_prove_goal(
     #goal{namespace = Namespace, payload = Predicate} = Goal,
+    TransactionIndex,
     PrologState,
     true, % IsLeader
     Namespace
@@ -1129,6 +1302,7 @@ do_prove_goal(
                 result = succeed,
                 signature = <<>>,
                 address = Goal#goal.id,
+                index = TransactionIndex,
                 diff = OpFifo
             },
             bbsvx_epto_service:broadcast(Namespace, GoalResult),
@@ -1141,6 +1315,7 @@ do_prove_goal(
                 result = fail,
                 signature = <<>>,
                 address = Goal#goal.id,
+                index = TransactionIndex,
                 diff = []
             },
             bbsvx_epto_service:broadcast(Namespace, GoalResult),
@@ -1150,34 +1325,130 @@ do_prove_goal(
         Other ->
             ?'log-error'("Goal execution error: ~p", [Other]),
             {error, Other}
-    end;
+    end.
 
-do_prove_goal(
-    _Goal,
-    PrologState,
-    false, % IsLeader
-    Namespace
-) ->
-    ?'log-info'("Waiting for goal result as follower"),
+%%-----------------------------------------------------------------------------
+%% Transaction Postprocessing
+%%-----------------------------------------------------------------------------
 
-    %% Wait for result from leader
-    [{_, GoalResult}] = jobs:dequeue({stage_transaction_results, Namespace}, 1),
+-doc """
+Handles final transaction recording, notifications, and metrics.
+This replaces the old postprocess worker logic.
+Returns ok on success, {error, Reason} on failure.
+""".
+postprocess_transaction(Transaction, Namespace) ->
+    ?'log-info'("Postprocessing transaction ~p", [Transaction#transaction.index]),
 
-    case GoalResult of
-        #goal_result{diff = Diff, result = Result} ->
-            {ok, NewDb} = bbsvx_erlog_db_differ:apply_diff(
-                Diff,
-                PrologState#est.db
+    %% Record transaction to storage
+    case bbsvx_transaction:record_transaction(Transaction#transaction{status = processed}) of
+        ok ->
+            %% Notify subscribers (may fail if no subscribers, that's ok)
+            try
+                gproc:send({p, l, {diff, Namespace}}, {transaction_processed, Transaction})
+            catch
+                _:_ -> ok
+            end,
+
+            %% Update metrics
+            Time = erlang:system_time(microsecond),
+            prometheus_gauge:set(
+                <<"bbsvx_transction_processing_time">>,
+                [Namespace],
+                Time - Transaction#transaction.ts_delivered
             ),
-            {Result, PrologState#est{db = NewDb}, Diff};
+            prometheus_gauge:set(
+                <<"bbsvx_transction_total_validation_time">>,
+                [Namespace],
+                Time - Transaction#transaction.ts_created
+            ),
 
-        _ ->
-            {error, unknown_result}
+            ok;
+
+        {error, Reason} = Error ->
+            ?'log-error'("Failed to record transaction ~p: ~p",
+                        [Transaction#transaction.index, Reason]),
+            Error
     end.
 
 %%%=============================================================================
 %%% Internal Helper Functions
 %%%=============================================================================
+
+-doc """
+Applies a goal result received from the leader and continues transaction processing.
+Used by both the waiting_for_goal_result state and cached result handling.
+""".
+apply_goal_result_and_continue(
+    #goal_result{diff = Diff, result = _Result, index = Index},
+    PendingTx,
+    NewCurrentAddress,
+    ValidationState,
+    #ont_state{prolog_state = PrologState} = OntState,
+    Namespace,
+    State
+) ->
+    ?'log-info'("Applying goal result for transaction index ~p", [Index]),
+
+    %% Apply the diff to our Prolog state
+    case bbsvx_erlog_db_differ:apply_diff(Diff, PrologState#est.db) of
+        {ok, NewDb} ->
+            %% Update Prolog state with the diff
+            NewPrologState = PrologState#est{db = NewDb},
+            UpdatedOntState = OntState#ont_state{prolog_state = NewPrologState},
+
+            %% Create processed transaction
+            ProcessedTx = PendingTx#transaction{
+                status = processed,
+                ts_processed = erlang:system_time(),
+                diff = Diff
+            },
+
+            %% Postprocess the transaction
+            case postprocess_transaction(ProcessedTx, Namespace) of
+                ok ->
+                    %% Update state with completed transaction
+                    FinalOntState = UpdatedOntState#ont_state{
+                        current_index = Index,
+                        local_index = Index,
+                        current_address = NewCurrentAddress,
+                        current_ts = PendingTx#transaction.ts_created
+                    },
+
+                    %% Check if next transaction is pending
+                    NextIndex = Index + 1,
+                    FinalValidationState = case check_pending(ValidationState, NextIndex) of
+                        {found, NextPendingTx, UpdatedPendingState} ->
+                            ?'log-info'("Re-queueing pending transaction ~p", [NextIndex]),
+                            receive_transaction(NextPendingTx),
+                            UpdatedPendingState;
+                        {not_found, _} ->
+                            ValidationState
+                    end,
+
+                    %% Transition back to syncing state
+                    {next_state, syncing, State#state{
+                        ont_state = FinalOntState,
+                        validation_state = FinalValidationState,
+                        pending_goal_transaction = undefined
+                    }};
+
+                {error, PostprocessReason} ->
+                    ?'log-error'("Goal result postprocessing failed: ~p", [PostprocessReason]),
+                    %% Transition back to syncing anyway
+                    {next_state, syncing, State#state{
+                        ont_state = UpdatedOntState,
+                        pending_goal_transaction = undefined
+                    }}
+            end;
+
+        {error, DiffReason} ->
+            ?'log-error'("Failed to apply goal diff: ~p", [DiffReason]),
+            %% Mark transaction as invalid
+            InvalidTx = PendingTx#transaction{status = invalid},
+            bbsvx_transaction:record_transaction(InvalidTx),
+            %% Transition back to syncing
+            {next_state, syncing, State#state{pending_goal_transaction = undefined}}
+    end.
 
 -doc """
 Checks if a pending transaction exists for the given index.
@@ -1285,6 +1556,96 @@ retrieve_transaction_history(Namespace, OldestIndex, YoungerIndex) ->
         fun(#transaction{index = A}, #transaction{index = B}) -> A =< B end,
         HistResult
     ).
+
+%%%=============================================================================
+%%% Worker Functions
+%%%=============================================================================
+
+%%%=============================================================================
+%%% Service Management Functions
+%%%=============================================================================
+
+%% Start services supervisor for this ontology
+-spec start_ontology_services(binary(), map()) -> {ok, pid()} | {error, term()}.
+start_ontology_services(Namespace, Options) ->
+    ?'log-info'("Starting services for ontology ~p", [Namespace]),
+    supervisor:start_child(bbsvx_sup_ont_services_sup, [Namespace, Options]).
+
+%% Stop services supervisor cleanly
+-spec stop_ontology_services(binary(), pid() | undefined) -> ok.
+stop_ontology_services(_Namespace, undefined) ->
+    ok;
+stop_ontology_services(Namespace, Pid) ->
+    ?'log-info'("Stopping services for ontology ~p", [Namespace]),
+    case is_process_alive(Pid) of
+        true ->
+            %% Terminate the services supervisor child from the director
+            %% For simple_one_for_one, terminate_child also deletes the child
+            supervisor:terminate_child(bbsvx_sup_ont_services_sup, Pid),
+            ok;
+        false ->
+            ok
+    end.
+
+%%%=============================================================================
+%%% Connection Management Helpers
+%%%=============================================================================
+
+%% Calculate retry interval with exponential backoff (indefinite retries)
+-spec calculate_retry_interval(non_neg_integer()) -> pos_integer().
+calculate_retry_interval(Attempts) when Attempts =< 1 -> 30000;   % 30 seconds
+calculate_retry_interval(2) -> 60000;    % 1 minute
+calculate_retry_interval(3) -> 120000;   % 2 minutes
+calculate_retry_interval(4) -> 300000;   % 5 minutes
+calculate_retry_interval(_) -> 600000.   % 10 minutes (cap)
+
+%% Build connection status map
+-spec build_connection_status(#state{}) -> connection_status().
+build_connection_status(State) ->
+    BaseStatus = #{
+        state => State#state.connection_state,
+        attempts => State#state.connection_attempts,
+        contact_nodes => State#state.contact_nodes
+    },
+
+    Status1 = case State#state.last_connection_attempt of
+        undefined -> BaseStatus;
+        Ts -> BaseStatus#{last_attempt => Ts}
+    end,
+
+    Status2 = case State#state.last_connection_error of
+        undefined -> Status1;
+        Error -> Status1#{last_error => Error}
+    end,
+
+    case State#state.connection_state of
+        connected ->
+            PeerCount = get_peer_count(State#state.namespace),
+            Status2#{connected_peers => PeerCount};
+        _ ->
+            Status2
+    end.
+
+%% Get peer count from SPRAY
+-spec get_peer_count(binary()) -> non_neg_integer().
+get_peer_count(Namespace) ->
+    case gproc:where({n, l, {bbsvx_actor_spray, Namespace}}) of
+        undefined ->
+            0;
+        Pid ->
+            try
+                %% Get SPRAY state to count peers
+                %% This is a placeholder - actual implementation depends on SPRAY state structure
+                case sys:get_state(Pid) of
+                    {_StateName, #{inview := InView, outview := OutView}} ->
+                        length(InView) + length(OutView);
+                    _ ->
+                        0
+                end
+            catch
+                _:_ -> 0
+            end
+    end.
 
 %%%=============================================================================
 %%% Tests

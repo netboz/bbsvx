@@ -58,14 +58,23 @@ init([]) ->
                 type => supervisor,
                 modules => [bbsvx_sup_client_connections]
             },
-            %% Start shared ontologies Supervisor
+            %% Start ontology actors supervisor
             #{
-                id => bbsvx_sup_shared_ontologies,
-                start => {bbsvx_sup_shared_ontologies, start_link, []},
+                id => bbsvx_sup_actors_ontologies,
+                start => {bbsvx_sup_actors_ontologies, start_link, []},
                 restart => permanent,
                 shutdown => brutal_kill,
                 type => supervisor,
-                modules => [bbsvx_sup_shared_ontologies]
+                modules => [bbsvx_sup_actors_ontologies]
+            },
+            %% Start ontology services director supervisor
+            #{
+                id => bbsvx_sup_ont_services_sup,
+                start => {bbsvx_sup_ont_services_sup, start_link, []},
+                restart => permanent,
+                shutdown => brutal_kill,
+                type => supervisor,
+                modules => [bbsvx_sup_ont_services_sup]
             },
             %% Start network service
             #{

@@ -40,7 +40,7 @@ services:
       - TZ="Europe/Paris"
       - DOCKER_COMPOSE=true
       - BBSVX_COOKIE=bbsvx
-      - BBSVX_BOOT=join bbsvx_root 2304
+      - BBSVX_BOOT=join bbsvx_root:2304
       - BBSVX_CONTACT_NODES=bbsvx_root:2304
       - BBSVX_P2P_PORT=2304
       - BBSVX_HTTP_PORT=8085
@@ -105,7 +105,7 @@ services:
     depends_on:
       - vmagent
     environment:
-      - GF_LOG_LEVEL=info
+      - GF_LOG_LEVEL=error
       - TZ="Europe/Paris"
     ports:
       - 3000:3000
@@ -117,6 +117,11 @@ services:
     networks:
       - bbsvx-net
     restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
   graph-visualizer:
     build: 
       context: ./priv/graph-visualizer
@@ -185,14 +190,20 @@ services:
     hostname: loki_collector
     ports:
       - "3100:3100"
-    command: 
+    command:
       - '-config.file=/etc/loki/local-config.yaml'
+      - '-log.level=error'
     volumes:
       - ./docker/loki/conf:/etc/loki
     networks:
       - bbsvx-net
     environment:
       - TZ="Europe/Paris"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   promtail:
     image: grafana/promtail:latest
@@ -204,10 +215,16 @@ services:
       - bbsvx-net
     command:
       - '-config.file=/etc/promtail/promtail.yml'
+      - '-log.level=error'
     depends_on:
       - loki
     environment:
       - TZ="Europe/Paris"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
   
 #   tempo:
 #     image: grafana/tempo:latest

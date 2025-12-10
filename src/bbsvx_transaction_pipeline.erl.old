@@ -187,9 +187,9 @@ and processed according to the blockchain's sequential requirements.
 4. Returns immediately without waiting for validation
 """.
 -spec receive_transaction(transaction()) -> ok.
-receive_transaction(#transaction{namespace = Namespace} = Transaction) ->
-    ?'log-info'("Received Transaction entry point, validating ~p", [Transaction]),
-    jobs:enqueue({stage_transaction_validate, Namespace}, Transaction).
+receive_transaction(#transaction{} = Transaction) ->
+    ?'log-info'("Received Transaction entry point, delegating to actor: ~p", [Transaction]),
+    bbsvx_actor_ontology:receive_transaction(Transaction).
 
 -doc """
 Entry point for historical transactions during blockchain synchronization.
@@ -229,8 +229,8 @@ resulting state changes.
 4. Returns immediately without waiting for application
 """.
 -spec accept_transaction_result(goal_result()) -> ok.
-accept_transaction_result(#goal_result{namespace = Namespace} = GoalResult) ->
-    jobs:enqueue({stage_transaction_results, Namespace}, GoalResult).
+accept_transaction_result(#goal_result{} = GoalResult) ->
+    bbsvx_actor_ontology:accept_transaction_result(GoalResult).
 
 %%%=============================================================================
 %%% Gen Server Callbacks

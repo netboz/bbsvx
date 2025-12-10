@@ -37,55 +37,37 @@ all() ->
      connecting_an_ontology_starts_necessary_processes].
 
 init_per_suite(Config) ->
-    %% Start dependencies in order
+    %% Just ensure dependencies are available, but don't start bbsvx yet
     {ok, _} = application:ensure_all_started(gproc),
     {ok, _} = application:ensure_all_started(jobs),
     {ok, _} = application:ensure_all_started(mnesia),
+    Config.
 
-    %% Start bbsvx application
-    case application:ensure_all_started(bbsvx) of
-        {ok, Started} ->
-            ct:pal("Started applications: ~p", [Started]),
-            %% Give services time to initialize
-            timer:sleep(500),
-            [{started_apps, Started} | Config];
-        {error, {AppName, Reason}} ->
-            ct:fail("Failed to start ~p: ~p", [AppName, Reason])
-    end.
-
-end_per_suite(Config) ->
-    %% Stop applications in reverse order
-    Started = proplists:get_value(started_apps, Config, []),
-    [application:stop(App) || App <- lists:reverse(Started)],
+end_per_suite(_Config) ->
     ok.
 
 init_per_testcase(TestCase, Config) ->
     ct:pal("Starting test case: ~p", [TestCase]),
 
-    %% Ensure bbsvx application is running
+    %% Start bbsvx application fresh for each test
     case application:ensure_all_started(bbsvx) of
-        {ok, _Started} ->
+        {ok, Started} ->
+            ct:pal("Started applications: ~p", [Started]),
             timer:sleep(500),  % Give services time to initialize
-            Config;
-        {error, {already_started, bbsvx}} ->
-            %% Application already running, continue
-            Config;
-        {error, Reason} ->
-            ct:fail("Failed to start bbsvx application: ~p", [Reason])
+            [{started_apps, Started} | Config];
+        {error, {AppName, Reason}} ->
+            ct:fail("Failed to start ~p: ~p", [AppName, Reason])
     end.
 
 end_per_testcase(TestCase, Config) ->
     ct:pal("Ending test case: ~p", [TestCase]),
 
-    %% Stop ranch listeners first (they can prevent clean shutdown)
-    try
-        ranch:stop_listener(bbsvx_spray_service)
-    catch
-        _:_ -> ok
-    end,
-
-    %% Stop bbsvx application to ensure clean state for next test
+    %% Stop bbsvx application first
     application:stop(bbsvx),
+
+    %% Also stop jobs application to clean up queues
+    %% (jobs is a dependency that may persist between tests)
+    application:stop(jobs),
 
     %% Clean up any test ontologies from mnesia
     try

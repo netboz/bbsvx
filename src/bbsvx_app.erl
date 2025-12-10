@@ -53,17 +53,16 @@ start(_StartType, _StartArgs) ->
     Dispatch =
         cowboy_router:compile([
             {'_', [
-                {"/transaction", bbsvx_cowboy_handler_transaction, #{}},
+                %% Ontology management endpoints
                 {"/ontologies/prove", bbsvx_cowboy_handler_ontology, #{}},
                 {"/ontologies/:namespace", bbsvx_cowboy_handler_ontology, #{}},
-                %% debugging routes
+                %% SPRAY protocol debugging routes
                 {"/spray/outview", bbsvx_cowboy_handler_spray, #{}},
                 {"/spray/nodes", bbsvx_cowboy_handler_spray, #{}},
                 {"/spray/inview", bbsvx_cowboy_handler_spray, #{}},
-                {"/subs/:namespace", bbsvx_cowboy_handler_node_service, []},
-                {"/subsm/:namespace", bbsvx_cowboy_handler_node_service, []},
-                {"/epto/post/:namespace", bbsvx_cowboy_handler_node_service, []},
+                %% Real-time updates
                 {"/websocket", bbsvx_cowboy_websocket_handler, []},
+                %% Static web console
                 {"/console/[...]", cowboy_static, {priv_dir, bbsvx, "web_console/theme"}}
             ]}
         ]),
@@ -71,7 +70,6 @@ start(_StartType, _StartArgs) ->
         my_http_listener,
         [{port, 8085}],
         #{
-            stream_handlers => [cowboy_telemetry_h, cowboy_stream_h],
             env => #{dispatch => Dispatch}
         }
     ),

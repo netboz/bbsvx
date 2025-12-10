@@ -1,12 +1,15 @@
 %%%-----------------------------------------------------------------------------
-%%% BBSvx Shared Ontology Supervisor
+%%% BBSvx Ontology Services Supervisor
 %%%-----------------------------------------------------------------------------
 
--module(bbsvx_sup_shared_ontology).
+-module(bbsvx_sup_ont_services).
 
--moduledoc "BBSvx Shared Ontology Supervisor\n\n"
-"Supervisor for shared ontology services including ontology actor, EPTO disorder component, \n"
-"SPRAY protocol actor, and leader manager for a specific namespace.".
+-moduledoc """
+Supervisor for ontology support services.
+
+Manages EPTO, SPRAY, and leader manager services for a specific namespace.
+Started and stopped dynamically by bbsvx_actor_ontology.
+""".
 
 -author("yan").
 
@@ -19,7 +22,7 @@
 %%%=============================================================================
 
 %% External API
--export([start_link/1, start_link/2]).
+-export([start_link/2]).
 %% Callbacks
 -export([init/1]).
 
@@ -27,10 +30,7 @@
 %%% API
 %%%=============================================================================
 
--spec start_link(Namespace :: binary()) -> supervisor:startlink_ret().
-start_link(Namespace) ->
-    start_link(Namespace, []).
-
+-spec start_link(binary(), map()) -> supervisor:startlink_ret().
 start_link(Namespace, Options) ->
     supervisor:start_link(
         {via, gproc, {n, l, {?MODULE, Namespace}}},
@@ -43,7 +43,7 @@ start_link(Namespace, Options) ->
 %%%=============================================================================
 
 init([Namespace, Options]) ->
-    ?'log-info'("Ontology supervisor starting on ~p", [Namespace]),
+    ?'log-info'("Starting ontology services supervisor for ~p", [Namespace]),
     SupFlags =
         #{
             strategy => one_for_one,
@@ -52,14 +52,6 @@ init([Namespace, Options]) ->
         },
     ChildSpecs =
         [
-            #{
-                id => {bbsvx_actor_ontology, Namespace},
-                start => {bbsvx_actor_ontology, start_link, [Namespace, Options]},
-                restart => transient,
-                shutdown => 1000,
-                type => worker,
-                modules => [bbsvx_actor_ontology]
-            },
             #{
                 id => {bbsvx_epto_disord_component, Namespace},
                 start => {bbsvx_epto_disord_component, start_link, [Namespace, Options]},
@@ -90,16 +82,3 @@ init([Namespace, Options]) ->
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
-
-%%%=============================================================================
-%%% Eunit Tests
-%%%=============================================================================
-
--ifdef(TEST).
-
--include_lib("eunit/include/eunit.hrl").
-
-example_test() ->
-    ?assertEqual(true, true).
-
--endif.

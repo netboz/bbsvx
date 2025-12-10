@@ -28,6 +28,7 @@
     namespace = <<>> :: binary(),
     result :: atom(),
     diff :: term(),
+    index :: integer(),
     address :: binary(),
     signature :: binary()
 }).
@@ -291,3 +292,20 @@
     namespace :: binary(),
     payload :: term()
 }).
+
+%%%==============================================================================
+%%% Connection State Types
+%%%==============================================================================
+
+%% Connection states for ontology network participation
+-type connection_state() :: connecting | connected | disconnected.
+
+%% Connection status information
+-type connection_status() :: #{
+    state := connection_state(),
+    attempts := non_neg_integer(),
+    last_attempt => integer(),  % erlang:system_time(millisecond)
+    last_error => term(),
+    contact_nodes => [node_entry()],
+    connected_peers => non_neg_integer()
+}.

@@ -118,6 +118,44 @@ stop() ->
 %%% Gen State Machine Callbacks
 %%%=============================================================================
 
+%%%=============================================================================
+%%% Terminate Helpers
+%%%=============================================================================
+
+%% Unregister arc from gproc immediately to prevent race conditions
+%% where dying arcs are included in exchange proposals.
+%% This function logs when unregistration fails to aid in debugging.
+unregister_arc(Ulid, NameSpace, Direction) ->
+    %% Unregister named registration {n, l, {arc, Direction, Ulid}}
+    %% This may already be unregistered by arc swap (gproc:unreg_other)
+    NamedKey = {n, l, {arc, Direction, Ulid}},
+    try
+        gproc:unreg(NamedKey),
+        ?'log-info'("~p Successfully unregistered named arc ~p ~p",
+                    [?MODULE, Direction, Ulid])
+    catch
+        error:badarg ->
+            ?'log-info'("~p Named arc ~p ~p already unregistered (likely swapped)",
+                        [?MODULE, Direction, Ulid])
+    end,
+
+    %% Unregister property registration {p, l, {inview, NameSpace}}
+    %% This may not exist if connection never reached connected state
+    ViewKey = {p, l, {inview, NameSpace}},
+    try
+        gproc:unreg(ViewKey),
+        ?'log-info'("~p Successfully unregistered from inview namespace=~p ulid=~p",
+                    [?MODULE, NameSpace, Ulid])
+    catch
+        error:badarg ->
+            ?'log-info'("~p Inview not registered for namespace=~p ulid=~p (not in connected state)",
+                        [?MODULE, NameSpace, Ulid])
+    end.
+
+%%%=============================================================================
+%%% Terminate Callbacks
+%%%=============================================================================
+
 terminate(
     normal,
     connected,
@@ -128,6 +166,9 @@ terminate(
     } =
         State
 ) ->
+    %% Unregister immediately to prevent race conditions
+    unregister_arc(MyUlid, NameSpace, in),
+
     ?'log-info'(
         "~p Terminating conenction IN from ...~p   Reason ~p",
         [?MODULE, OriginNode, normal]
@@ -156,6 +197,9 @@ terminate(
         my_ulid = MyUlid
     } = State
 ) ->
+    %% Unregister immediately to prevent race conditions
+    unregister_arc(MyUlid, NameSpace, in),
+
     ?'log-info'(
         "~p Other side requested to terminate conenction IN from ...~p   Reason ~p",
         [?MODULE, OriginNode, mirrored]
@@ -172,13 +216,19 @@ terminate(
 terminate(
     {shutdown, {swap, _NewOrigin, _NewLock}},
     connected,
-    #state{origin_node = OriginNode} =
+    #state{namespace = NameSpace, my_ulid = MyUlid, origin_node = OriginNode} =
         State
 ) ->
+    %% Unregister immediately to prevent race conditions
+    unregister_arc(MyUlid, NameSpace, in),
+
     ?'log-info'(
-        "~p Terminating conenction IN from ...~p   Reason ~p",
-        [?MODULE, OriginNode, normal]
+        "~p Terminating conenction IN from ...~p   Reason ~p (swap)",
+        [?MODULE, OriginNode, swap]
     ),
+    %% Decrement gauge - this connection is being replaced by a new one with same ULID
+    %% The new connection will increment the gauge, so we must decrement here
+    prometheus_gauge:dec(<<"bbsvx_spray_inview_size">>, [NameSpace]),
     ranch_tcp:send(
         State#state.socket,
         encode_message_helper(#header_connection_closed{
@@ -189,7 +239,11 @@ terminate(
     ),
     gen_tcp:close(State#state.socket),
     void;
-terminate(Reason, _CurrentState, #state{namespace = NameSpace, origin_node = OriginNode} = State) ->
+terminate(Reason, _CurrentState, #state{namespace = NameSpace, my_ulid = MyUlid, origin_node = OriginNode} = State) ->
+    %% Unregister immediately to prevent race conditions
+    %% Property registration may not exist if not in connected state
+    unregister_arc(MyUlid, NameSpace, in),
+
     ?'log-warning'(
         "~p Terminating unconnected connection IN from...~p   Reason ~p",
         [?MODULE, OriginNode, Reason]
@@ -452,7 +506,7 @@ parse_packet(
     case Decoded of
         {complete, #transaction{} = Transacion, Index} ->
             <<_:Index/binary, BinLeft/binary>> = Buffer,
-            bbsvx_transaction_pipeline:receive_transaction(Transacion),
+            bbsvx_actor_ontology:receive_transaction(Transacion),
             parse_packet(BinLeft, Action, State);
         {complete, #ontology_history_request{namespace = NameSpace} = Event, Index} ->
             <<_:Index/binary, BinLeft/binary>> = Buffer,

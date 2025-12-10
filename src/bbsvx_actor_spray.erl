@@ -20,6 +20,8 @@
 -define(SERVER, ?MODULE).
 
 -define(EXCHANGE_INTERVAL, 4000).
+%% Jitter to desynchronize exchanges across nodes (50% of interval)
+-define(EXCHANGE_JITTER, (?EXCHANGE_INTERVAL div 2)).
 -define(WAIT_EXCHANGE_OUT_TIMEOUT, ?EXCHANGE_INTERVAL div 5).
 -define(WAIT_EXCHANGE_ACCEPT_TIMEOUT, ?EXCHANGE_INTERVAL div 5).
 -define(EXCHANGE_END_TIMEOUT, ?EXCHANGE_INTERVAL - round(?EXCHANGE_INTERVAL / 10)).
@@ -322,22 +324,50 @@ handle_event(enter, _, connected, #state{namespace = NameSpace} = State) ->
             undefined ->
                 Me = self(),
                 SprayTimer =
-                    erlang:start_timer(?EXCHANGE_INTERVAL + rand:uniform(100), Me, spray_time),
+                    erlang:start_timer(?EXCHANGE_INTERVAL + rand:uniform(?EXCHANGE_JITTER), Me, spray_time),
                 State#state{spray_timer = SprayTimer};
             _ ->
                 State
         end,
     {keep_state, NewState};
 handle_event(info,
-             #incoming_event{origin_arc = _Ulid,
+             #incoming_event{origin_arc = Ulid,
                              event =
                                  #evt_arc_connected_in{source = Source,
                                                        lock = Lock,
                                                        spread = Spread}},
              connected,
-             #state{namespace = NameSpace} = StateData) ->
+             #state{namespace = NameSpace, my_node = MyNode} = StateData) ->
     ?'log-info'("spray Agent ~p : New incoming arc : ~p", [NameSpace, Source]),
     OutView = get_outview(NameSpace),
+
+    %% Send current_index to newly connected peer for registration
+    %% Only for register-type connections (spread = {true, _}), not arc swaps
+    case Spread of
+        {true, _} ->
+            case bbsvx_actor_ontology:get_current_index(NameSpace) of
+                {ok, CurrentIndex} ->
+                    Arc =
+                        #arc{ulid = Ulid,
+                             lock = Lock,
+                             source = Source,
+                             target = MyNode,
+                             age = 0},
+                    ?'log-info'("spray Agent ~p : Sending registration info to peer ~p "
+                                "(current_index=~p)",
+                                [NameSpace, Source, CurrentIndex]),
+                    send(Ulid,
+                         in,
+                         #registered{registered_arc = Arc,
+                                     current_index = CurrentIndex,
+                                     leader = <<>>});
+                Error ->
+                    ?'log-warning'("spray Agent ~p : Failed to get current_index for registration: ~p",
+                                   [NameSpace, Error])
+            end;
+        _ ->
+            ok
+    end,
 
     %% Check if we need to spread ( send forward join ) to neighbors
     case Spread of
@@ -362,6 +392,12 @@ handle_event(info,
              #state{namespace = NameSpace} = StateData) ->
     ?'log-info'("spray Agent ~p : Arc connected out : ~p", [NameSpace, TargetNode]),
     {next_state, connected, StateData};
+handle_event(info,
+             #incoming_event{origin_arc = _Ulid, event = #evt_arc_swapped_in{}},
+             connected,
+             _StateData) ->
+    %% Arc swap notification - no action needed, connection is already updated
+    keep_state_and_data;
 handle_event(info,
              #incoming_event{origin_arc = _Ulid,
                              event = #evt_arc_disconnected{ulid = Ulid, direction = in}},
@@ -450,18 +486,25 @@ handle_event(info,
             ?'log-info'("spray Agent ~p : Running state, Outview empty, no exchange",
                         [State#state.namespace]),
             Me = self(),
-            SprayTimer = erlang:start_timer(?EXCHANGE_INTERVAL, Me, spray_time),
+            SprayTimer = erlang:start_timer(?EXCHANGE_INTERVAL + rand:uniform(?EXCHANGE_JITTER), Me, spray_time),
 
             {keep_state, State#state{spray_timer = SprayTimer}};
         _ ->
-            ?'log-info'("spray Agent ~p : Starting exchange, Candidates ~p",
-                        [NameSpace, OutViewWithoutLeavingNode]),
+            %% Log arc ages and arcs_to_leave for debugging
+            ArcAges = [{Arc#arc.ulid, Arc#arc.age} || Arc <- OutViewWithoutLeavingNode],
+            ArcsToLeaveUlids = [Ulid || #exchange_entry{ulid = Ulid} <- State#state.arcs_to_leave],
+            ?'log-info'("spray Agent ~p : Starting exchange, Candidate ages: ~p, arcs_to_leave: ~p",
+                        [NameSpace, ArcAges, ArcsToLeaveUlids]),
 
             %% Get oldest arc
-            #arc{ulid = Ulid} = OldestArc = get_oldest_arc(OutViewWithoutLeavingNode),
+            #arc{ulid = Ulid, age = SelectedAge} = OldestArc = get_oldest_arc(OutViewWithoutLeavingNode),
 
-            ?'log-info'("Actor exchanger ~p : Doing exchange with node ~p  on arc ~p",
-                        [NameSpace, OldestArc#arc.target, OldestArc#arc.ulid]),
+            ?'log-info'("Actor exchanger ~p : Doing exchange with node ~p  on arc ~p (age ~p)",
+                        [NameSpace, OldestArc#arc.target, OldestArc#arc.ulid, SelectedAge]),
+
+            %% Reset age of selected arc immediately to rotate selection for next round
+            reset_age(Ulid),
+            ?'log-info'("spray Agent ~p : Reset age for arc ~p", [NameSpace, Ulid]),
 
             %% Partialview without oldest Arc
             {_, _, PartialViewWithoutOldest} =
@@ -497,14 +540,19 @@ handle_event(info,
             ?'log-info'("Actor exchanger ~p : Running state, Sent partial view exchange "
                         "in to ~p   sample : ~p",
                         [State#state.namespace, OldestArc#arc.target, ProposedSample]),
+
+            %% Add proposed sample to arcs_to_leave immediately to prevent re-selection
+            NewArcsToLeave = State#state.arcs_to_leave ++ ProposedSample,
+
             %% program execution of next exchange
             Me = self(),
-            SprayTimer = erlang:start_timer(?EXCHANGE_INTERVAL, Me, spray_time),
+            SprayTimer = erlang:start_timer(?EXCHANGE_INTERVAL + rand:uniform(?EXCHANGE_JITTER), Me, spray_time),
             {next_state,
              connected,
              State#state{current_exchange_peer = OldestArc,
                          exchange_direction = out,
                          proposed_sample = ProposedSample,
+                         arcs_to_leave = NewArcsToLeave,
                          spray_timer = SprayTimer},
              ?WAIT_EXCHANGE_OUT_TIMEOUT}
     end;
@@ -519,7 +567,7 @@ handle_event(info,
                 [State#state.namespace]),
     %% program execution of next exchange
     Me = self(),
-    SprayTimer = erlang:start_timer(?EXCHANGE_INTERVAL, Me, spray_time),
+    SprayTimer = erlang:start_timer(?EXCHANGE_INTERVAL + rand:uniform(?EXCHANGE_JITTER), Me, spray_time),
     {keep_state, State#state{spray_timer = SprayTimer}};
 handle_event(info,
              #incoming_event{origin_arc = OriginUlid,
@@ -585,12 +633,16 @@ handle_event(info,
                     %% Send exchange out to origin node
                     send(OriginUlid, in, #exchange_out{proposed_sample = MySampleEntry}),
 
+                    %% Add proposed sample to arcs_to_leave immediately to prevent re-selection
+                    NewArcsToLeave = ArcsToLeave ++ MySampleEntry,
+
                     {next_state,
                      connected,
                      State#state{proposed_sample = MySampleEntry,
                                  incoming_sample = IncomingSample,
                                  exchange_direction = in,
-                                 current_exchange_peer = ExchangeArc},
+                                 current_exchange_peer = ExchangeArc,
+                                 arcs_to_leave = NewArcsToLeave},
                      ?WAIT_EXCHANGE_ACCEPT_TIMEOUT};
                 _ ->
                     ?'log-warning'("spray Agent ~p : Running state, exchange in from unk node ~p",
@@ -702,11 +754,21 @@ handle_event(info,
                                      namespace = NameSpace}),
             prometheus_counter:inc(<<"bbsvx_spray_exchange_cancelled">>,
                                    [State#state.namespace, exchange_out_cause_empty_outview]),
+
+            %% Remove our proposed sample from arcs_to_leave since exchange was cancelled
+            ProposedUlids = [Ulid || #exchange_entry{ulid = Ulid} <- ProposedSample],
+            NewArcsToLeave =
+                lists:filter(fun(#exchange_entry{ulid = Ulid}) ->
+                                not lists:member(Ulid, ProposedUlids)
+                             end,
+                             ArcsToLeave),
+
             {next_state,
              connected,
              State#state{current_exchange_peer = undefined,
                          proposed_sample = [],
-                         incoming_sample = []}};
+                         incoming_sample = [],
+                         arcs_to_leave = NewArcsToLeave}};
         [_] when IncomingSampleWithoutMyNode == [] ->
             %% We only have one node in outview, and incoming sample is empty
             %% We cancel the exchange as this would leave us with an empty outview
@@ -719,12 +781,22 @@ handle_event(info,
                                      namespace = NameSpace}),
             prometheus_counter:inc(<<"bbsvx_spray_exchange_cancelled">>,
                                    [State#state.namespace, exchange_out_cause_empty_outview]),
+
+            %% Remove our proposed sample from arcs_to_leave since exchange was cancelled
+            ProposedUlids = [Ulid || #exchange_entry{ulid = Ulid} <- ProposedSample],
+            NewArcsToLeave2 =
+                lists:filter(fun(#exchange_entry{ulid = Ulid}) ->
+                                not lists:member(Ulid, ProposedUlids)
+                             end,
+                             ArcsToLeave),
+
             {next_state,
              connected,
              State#state{current_exchange_peer = undefined,
                          exchange_direction = undefined,
                          proposed_sample = [],
-                         incoming_sample = []}};
+                         incoming_sample = [],
+                         arcs_to_leave = NewArcsToLeave2}};
         _ ->
             ?'log-info'("spray Agent ~p : connected state, proceeding to exchange", [NameSpace]),
 
@@ -746,45 +818,79 @@ handle_event(info,
                              MyNode,
                              CurrentExchangePeerArc#arc.target,
                              IncomingSampleWithoutMyNode),
+            %% Don't add ProposedSample to arcs_to_leave here - already added when we sent exchange_out
             {next_state,
              connected,
              State#state{current_exchange_peer = undefined,
-                         arcs_to_leave = ArcsToLeave ++ ProposedSample,
                          proposed_sample = [],
                          incoming_sample = []}}
     end;
 handle_event(info,
              #incoming_event{event = #exchange_cancelled{reason = Reason}},
              CurrentState,
-             #state{current_exchange_peer = #arc{ulid = PeerUlid}, exchange_direction = out} =
+             #state{current_exchange_peer = #arc{ulid = PeerUlid},
+                    exchange_direction = out,
+                    proposed_sample = ProposedSample,
+                    arcs_to_leave = ArcsToLeave} =
                  State)
     when CurrentState == connected orelse CurrentState == empty_inview ->
     ?'log-info'("spray Agent ~p : exchange cancelled out : ~p",
                 [State#state.namespace, Reason]),
-    %% Reset age of the node in outview to put it last in exchange queue
+    %% Note: Age was already reset when arc was selected for exchange
     prometheus_counter:inc(<<"bbsvx_spray_exchange_cancelled">>,
                            [State#state.namespace, Reason]),
-    reset_age(PeerUlid),
+
+    %% Remove proposed arcs from arcs_to_leave since exchange was cancelled
+    %% Compare by ULID only, not entire record (locks can change)
+    ProposedUlids = [Ulid || #exchange_entry{ulid = Ulid} <- ProposedSample],
+    NewArcsToLeave =
+        lists:filter(fun(#exchange_entry{ulid = Ulid}) ->
+                        not lists:member(Ulid, ProposedUlids)
+                     end,
+                     ArcsToLeave),
+
+    %% Restart spray timer to continue exchange attempts
+    Me = self(),
+    SprayTimer = erlang:start_timer(?EXCHANGE_INTERVAL + rand:uniform(?EXCHANGE_JITTER), Me, spray_time),
+
     {next_state,
      connected,
      State#state{current_exchange_peer = undefined,
                  exchange_direction = undefined,
                  proposed_sample = [],
-                 incoming_sample = []}};
+                 incoming_sample = [],
+                 arcs_to_leave = NewArcsToLeave,
+                 spray_timer = SprayTimer}};
 handle_event(info,
              #incoming_event{event = #exchange_cancelled{reason = Reason}},
              CurrentState,
-             #state{exchange_direction = in} = State)
+             #state{exchange_direction = in,
+                    proposed_sample = ProposedSample,
+                    arcs_to_leave = ArcsToLeave} =
+                 State)
     when CurrentState == connected orelse CurrentState == empty_inview ->
     ?'log-info'("spray Agent ~p : exchange cancelled in", [State#state.namespace]),
     prometheus_counter:inc(<<"bbsvx_spray_exchange_cancelled">>,
                            [State#state.namespace, Reason]),
+
+    %% Remove proposed arcs from arcs_to_leave since exchange was cancelled
+    %% Compare by ULID only, not entire record (locks can change)
+    ProposedUlids = [Ulid || #exchange_entry{ulid = Ulid} <- ProposedSample],
+    NewArcsToLeave =
+        lists:filter(fun(#exchange_entry{ulid = Ulid}) ->
+                        not lists:member(Ulid, ProposedUlids)
+                     end,
+                     ArcsToLeave),
+
+    %% No need to restart spray timer for incoming cancellations
+    %% since we weren't the initiator
     {next_state,
      connected,
      State#state{current_exchange_peer = undefined,
                  exchange_direction = undefined,
                  proposed_sample = [],
-                 incoming_sample = []}};
+                 incoming_sample = [],
+                 arcs_to_leave = NewArcsToLeave}};
 handle_event(info,
              #incoming_event{event = #exchange_accept{}},
              CurrentState,
@@ -810,12 +916,12 @@ handle_event(info,
                                             lists:map(fun(#exchange_entry{ulid = Ulid}) -> Ulid end,
                                                       ProposedSample)}),
 
+    %% Don't add ProposedSample to arcs_to_leave here - already added when we sent exchange_in
     {next_state,
      connected,
      State#state{current_exchange_peer = undefined,
                  proposed_sample = [],
-                 incoming_sample = [],
-                 arcs_to_leave = ArcsToLeave ++ ProposedSample}};
+                 incoming_sample = []}};
 %%%%%%%%%%%%%%%%%%%%% Generic handlers %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Reception of spray time event while we are already exchanging:
 %% we reset the spray timer
@@ -924,8 +1030,15 @@ terminate_connection(Ulid, Direction, Reason) ->
 -spec send(Ulid :: binary(), Direction :: in | out, Payload :: term()) -> ok.
 send(Ulid, Direction, Payload) ->
     ?'log-info'("spray Agent : Sending message ~p ~p ~p", [Ulid, Direction, Payload]),
-    gproc:send({n, l, {arc, Direction, Ulid}}, {send, Payload}),
-    ?'log-info'("spray Agent : Message sent ~p ~p ~p", [Ulid, Direction, Payload]),
+    try
+        gproc:send({n, l, {arc, Direction, Ulid}}, {send, Payload}),
+        ?'log-info'("spray Agent : Message sent ~p ~p ~p", [Ulid, Direction, Payload])
+    catch
+        error:badarg ->
+            ?'log-warning'("spray Agent : Failed to send message to arc ~p ~p - "
+                          "arc already disconnected or not registered. Payload: ~p",
+                          [Direction, Ulid, Payload])
+    end,
     ok.
 
 %%-----------------------------------------------------------------------------
@@ -1137,8 +1250,17 @@ reset_age(Ulid) ->
 get_oldest_arc([Arc]) ->
     Arc;
 get_oldest_arc(Arcs) ->
+    %% Sort by age ascending
     Sorted = lists:keysort(#arc.age, Arcs),
-    lists:last(Sorted).
+    %% Get maximum age
+    MaxAge = (lists:last(Sorted))#arc.age,
+    %% Get all arcs with maximum age
+    OldestArcs = [Arc || Arc <- Sorted, Arc#arc.age == MaxAge],
+    %% If multiple arcs have same age, pick one randomly
+    case OldestArcs of
+        [SingleArc] -> SingleArc;
+        Multiple -> lists:nth(rand:uniform(length(Multiple)), Multiple)
+    end.
 
 %%-----------------------------------------------------------------------------
 %% @doc
@@ -1191,8 +1313,16 @@ get_random_sample([_] = View) ->
 get_random_sample(View) ->
     %% Shuffle the view
     Shuffled = [X || {_, X} <- lists:sort([{rand:uniform(), N} || N <- View])],
-    %% split the view in two
-    {_Sample, _Rest} = lists:split(length(View) div 2 - 1, Shuffled).
+    %% Calculate sample size: ⌊length/2⌋ - 1, but at least 1 if view has 2+ arcs
+    %% The -1 accounts for the initiator losing the arc to the exchange peer
+    %% But we need at least 1 arc to make the exchange useful for discovery
+    RawSize = length(View) div 2 - 1,
+    SampleSize = case length(View) of
+                     L when L >= 2 -> max(1, RawSize);
+                     _ -> RawSize
+                 end,
+    %% split the view
+    {_Sample, _Rest} = lists:split(SampleSize, Shuffled).
 
 %%%-----------------------------------------------------------------------------
 %%% @doc
