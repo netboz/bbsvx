@@ -81,8 +81,8 @@ init([Namespace, Options]) ->
         timer:apply_interval(?DEFAULT_ROUND_TIME, gen_server, cast, [self(), next_round]),
 
     case maps:get(boot, Options, false) of
-        root ->
-            ?'log-info'("~p starting discord as root", [?MODULE]),
+        create ->
+            ?'log-info'("~p starting discord as root (create mode)", [?MODULE]),
             {ok, running, #state{
                 round_timer = RoundTimer,
                 namespace = Namespace,
@@ -94,7 +94,7 @@ init([Namespace, Options]) ->
                 next_ball = #{}
             }};
         _ ->
-            ?'log-info'("~p starting discord as non-root", [?MODULE]),
+            ?'log-info'("~p starting discord as non-root (connect/reconnect mode)", [?MODULE]),
             {ok, syncing, #state{
                 round_timer = RoundTimer,
                 namespace = Namespace,
@@ -141,43 +141,14 @@ syncing({call, From}, {epto_broadcast, Payload}, #state{next_ball = NextBall} = 
     {keep_state, State#state{next_ball = maps:put(EvtId, Event, NextBall)}};
 syncing(
     info,
-    {incoming_event, {epto_message, {receive_ball, Ball, CurrentIndex}}},
-    #state{namespace = Namespace} = State
-) ->
-    gproc:send({n, l, {bbsvx_actor_ontology, Namespace}}, {registered, CurrentIndex}),
-    %% This means we are getting connected to the network
-    %% We process the ball and update the index accordingliy
-    UpdatedNextBall =
-        maps:fold(
-            fun
-                (EvtId, #epto_event{ttl = EvtTtl, ts = EvtTs} = Evt, Acc) when
-                    EvtTtl < State#state.ttl
-                ->
-                    NewAcc =
-                        case maps:get(EvtId, Acc, undefined) of
-                            undefined ->
-                                maps:put(EvtId, Evt, Acc);
-                            #epto_event{ttl = EvtBallTtl} = EvtBall when
-                                EvtBallTtl < EvtTtl
-                            ->
-                                maps:put(EvtId, EvtBall#epto_event{ttl = EvtTtl}, Acc);
-                            _ ->
-                                Acc
-                        end,
-                    gen_server:call(State#state.logical_clock_pid, {update_clock, EvtTs}),
-                    NewAcc;
-                (_EvtId, #epto_event{ts = EvtTs}, Acc) ->
-                    gen_server:call(State#state.logical_clock_pid, {update_clock, EvtTs}),
-                    Acc
-            end,
-            State#state.next_ball,
-            Ball
-        ),
-    {next_state, running, State#state{next_ball = UpdatedNextBall, current_index = CurrentIndex}};
-syncing(
-    info,
     {incoming_event, {receive_ball, Ball, CurrentIndex}},
-    #state{namespace = Namespace} = State
+    #state{
+        namespace = Namespace,
+        delivered = Delivered,
+        received = Received,
+        last_delivered_ts = LastDeliveredTs,
+        logical_clock_pid = LogicalClockPid
+    } = State
 ) ->
     gproc:send({n, l, {bbsvx_actor_ontology, Namespace}}, {registered, CurrentIndex}),
     %% This means we are getting connected to the network
@@ -208,7 +179,25 @@ syncing(
             State#state.next_ball,
             Ball
         ),
-    {next_state, running, State#state{next_ball = UpdatedNextBall, current_index = CurrentIndex}};
+
+    %% Process events from the ball for delivery before transitioning to running
+    {NewDelivered, NewReceived, NewLastDeliveredTs, NewIndex} =
+        order_events(
+            UpdatedNextBall,
+            Delivered,
+            Received,
+            LastDeliveredTs,
+            LogicalClockPid,
+            CurrentIndex
+        ),
+
+    {next_state, running, State#state{
+        next_ball = #{},
+        delivered = NewDelivered,
+        current_index = NewIndex,
+        received = NewReceived,
+        last_delivered_ts = NewLastDeliveredTs
+    }};
 syncing(
     cast,
     next_round,
@@ -261,9 +250,11 @@ syncing(cast, next_round, _State) ->
 running(enter, _, State) ->
     ?'log-info'("Entering running state ~p", [State]),
     {keep_state, State};
-running({call, From}, empty_inview, State) ->
+running({call, From}, empty_inview, _State) ->
+    %% TODO: Review SPRAY-EPTO interaction design
+    %% For now, stay in running state - EPTO is resilient to temporary disconnections
     gen_statem:reply(From, ok),
-    {next_state, syncing, State};
+    keep_state_and_data;
 running({call, From}, {epto_broadcast, Payload}, #state{next_ball = NextBall} = State) ->
     ?'log-info'("Epto dissemination component : Broadcast ~p", [Payload]),
 
@@ -322,40 +313,6 @@ running(
         current_index = NewIndex,
         last_delivered_ts = NewLastDeliveredTs
     }};
-running(
-    info,
-    {incoming_event, {epto_message, {receive_ball, Ball, _CurrentIndex}}},
-    #state{namespace = _Namespace} = State
-) ->
-    %% TODO: next event could considerably slow down the ball processing, should be made async ?
-    % gproc:send({p, l, {epto_event, State#state.ontology}}, {received_ball, Ball}),
-    UpdatedNextBall =
-        maps:fold(
-            fun
-                (EvtId, #epto_event{ttl = EvtTtl, ts = EvtTs} = Evt, Acc) when
-                    EvtTtl < State#state.ttl
-                ->
-                    NewAcc =
-                        case maps:get(EvtId, Acc, undefined) of
-                            undefined ->
-                                maps:put(EvtId, Evt, Acc);
-                            #epto_event{ttl = EvtBallTtl} = EvtBall when
-                                EvtBallTtl < EvtTtl
-                            ->
-                                maps:put(EvtId, EvtBall#epto_event{ttl = EvtTtl}, Acc);
-                            _ ->
-                                Acc
-                        end,
-                    gen_server:call(State#state.logical_clock_pid, {update_clock, EvtTs}),
-                    NewAcc;
-                (_EvtId, #epto_event{ts = EvtTs}, Acc) ->
-                    gen_server:call(State#state.logical_clock_pid, {update_clock, EvtTs}),
-                    Acc
-            end,
-            State#state.next_ball,
-            Ball
-        ),
-    {keep_state, State#state{next_ball = UpdatedNextBall}};
 running(
     info,
     {incoming_event, {receive_ball, Ball, _CurrentIndex}},

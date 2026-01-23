@@ -135,7 +135,8 @@
     lock = <<>> :: binary(),
     source :: node_entry(),
     target :: node_entry(),
-    age = 0 :: non_neg_integer()
+    age = 0 :: non_neg_integer(),
+    status = available :: join_forwarding | joining | registering | available | exchanging | accepting_register | accepting_forward_join
 }).
 
 -type arc() :: #arc{}.
@@ -155,12 +156,14 @@
     ulid :: binary(),
     source :: node_entry(),
     lock :: binary(),
+    connection_type :: atom(),
     spread :: {boolean(), binary()} | undefined
 }).
 -record(evt_arc_connected_out, {
     ulid :: binary(),
     target :: node_entry(),
     lock :: binary(),
+    connection_type :: register | join | forward_join,
     spread :: {boolean(), binary()} | undefined
 }).
 -record(evt_arc_swapped_in, {

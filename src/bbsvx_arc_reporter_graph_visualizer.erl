@@ -102,7 +102,7 @@ running(
     Data =
         #{
             action => <<"add">>,
-            ulid => Ulid,
+            ulid => format_ulid(Ulid),
             from => NodeId,
             to => State#state.my_id
         },
@@ -134,7 +134,7 @@ running(
     Data =
         #{
             action => <<"add">>,
-            ulid => Ulid,
+            ulid => format_ulid(Ulid),
             from => State#state.my_id,
             to => TargetNodeId
         },
@@ -161,7 +161,7 @@ running(
         #{
             action => <<"remove">>,
             from => OriginNode#node_entry.node_id,
-            ulid => Ulid,
+            ulid => format_ulid(Ulid),
             reason => normalize_reason(Reason)
         },
     Json = jiffy:encode(Data),
@@ -189,7 +189,7 @@ running(
         #{
             action => <<"remove">>,
             from => State#state.my_id,
-            ulid => Ulid,
+            ulid => format_ulid(Ulid),
             reason => normalize_reason(Reason)
         },
     Json = jiffy:encode(Data),
@@ -275,7 +275,7 @@ running(
     Data =
         #{
             action => <<"swap">>,
-            ulid => Ulid,
+            ulid => format_ulid(Ulid),
             previous_source => PrevSource#node_entry.node_id,
             new_source => NewSource#node_entry.node_id,
             destination => Destination#node_entry.node_id
@@ -421,6 +421,16 @@ cors_headers() ->
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
+
+%% Convert ULID to binary format for JSON encoding
+-spec format_ulid(binary() | tuple()) -> binary().
+format_ulid(Ulid) when is_binary(Ulid) ->
+    Ulid;
+format_ulid({Timestamp, RandomBytes}) when is_integer(Timestamp), is_list(RandomBytes) ->
+    %% Convert tuple format {Timestamp, [Bytes]} to binary representation
+    TimestampBin = integer_to_binary(Timestamp),
+    RandomBin = list_to_binary([integer_to_binary(B, 16) || B <- RandomBytes]),
+    <<TimestampBin/binary, $-, RandomBin/binary>>.
 
 %% Convert any Erlang term to a JSON-safe binary string
 normalize_reason(Reason) when is_atom(Reason) ->

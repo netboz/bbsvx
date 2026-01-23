@@ -53,6 +53,14 @@ init([Namespace, Options]) ->
     ChildSpecs =
         [
             #{
+                id => {bbsvx_arc_registry, Namespace},
+                start => {bbsvx_arc_registry, start_link, [Namespace]},
+                restart => transient,
+                shutdown => 1000,
+                type => worker,
+                modules => [bbsvx_arc_registry]
+            },
+            #{
                 id => {bbsvx_epto_disord_component, Namespace},
                 start => {bbsvx_epto_disord_component, start_link, [Namespace, Options]},
                 restart => transient,

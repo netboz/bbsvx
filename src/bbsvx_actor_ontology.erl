@@ -343,7 +343,7 @@ init([Namespace, Options]) ->
                                 create ->
                                     %% Creating new ontology - start services first, then wait for genesis
                                     ?'log-info'(">> CREATE MODE: Starting services for new root ontology", []),
-                                    case start_ontology_services(Namespace, #{}) of
+                                    case start_ontology_services(Namespace, #{boot => create}) of
                                         {ok, ServicesPid} ->
                                             NewState = State#state{
                                                 connection_state = connecting,
@@ -784,10 +784,12 @@ syncing(
     ?'log-info'("Processing transaction in actor", []),
 
     %% Step 1: Validate (transaction already broadcasted via EPTO)
-    CurrentIndex = OntState#ont_state.current_index,
+    %% Use local_index for validation - this is what we've actually processed
+    %% current_index is the network state, local_index is our local state
+    LocalIndex = OntState#ont_state.local_index,
     CurrentAddress = OntState#ont_state.current_address,
 
-    case validate_transaction(Transaction, CurrentIndex, CurrentAddress, Namespace, ValidationState) of
+    case validate_transaction(Transaction, LocalIndex, CurrentAddress, Namespace, ValidationState) of
         {ok, ValidatedTx, NewCurrentAddress, NewValidationState} ->
             %% Step 3: Process
             case process_transaction(ValidatedTx, OntState, Namespace) of
@@ -826,10 +828,10 @@ syncing(
                             {keep_state, State#state{ont_state = NewOntState}}
                     end;
 
-                {wait_for_result, Transaction, _OntState} ->
+                {wait_for_result, _WaitTx, _OntState} ->
                     %% Follower node needs to wait for goal result from leader
                     ?'log-info'("Transitioning to waiting_for_goal_result state for transaction ~p",
-                                [Transaction#transaction.index]),
+                                [ValidatedTx#transaction.index]),
 
                     %% Check if we already have the result cached (using index as key)
                     TxIndex = ValidatedTx#transaction.index,

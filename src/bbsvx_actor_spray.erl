@@ -1,11 +1,33 @@
 %%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Gen State Machine built from template.
+%%% SPRAY Protocol Actor - Peer-to-Peer Overlay Network Management
 %%% @author yan
-%%% @end
 %%%-----------------------------------------------------------------------------
 
 -module(bbsvx_actor_spray).
+
+-moduledoc """
+Gen State Machine implementation of the SPRAY protocol for distributed peer sampling.
+
+The SPRAY protocol maintains a random overlay network topology through periodic
+view exchanges between nodes. This module implements the full SPRAY lifecycle including
+connection management, arc aging, and exchange protocols.
+
+## Key Responsibilities
+
+- **View Management**: Maintains inview (incoming) and outview (outgoing) connections
+- **Exchange Protocol**: Coordinates view exchanges with peers to maintain network topology
+- **Arc Lifecycle**: Manages arc creation, aging, mirroring, and removal
+- **Broadcast Support**: Provides primitives for EPTO and other protocols to broadcast messages
+
+## Protocol Flow
+
+1. Nodes maintain partial views of the network (in/out connections called "arcs")
+2. Periodic timer triggers exchange with random peer from outview
+3. Nodes swap partial view samples to maintain connectivity
+4. Arc aging ensures fresh connections are preferred over stale ones
+
+Author: yan
+""".
 
 -behaviour(gen_statem).
 
@@ -21,7 +43,7 @@
 
 -define(EXCHANGE_INTERVAL, 4000).
 %% Jitter to desynchronize exchanges across nodes (50% of interval)
--define(EXCHANGE_JITTER, (?EXCHANGE_INTERVAL div 2)).
+-define(EXCHANGE_JITTER, (?EXCHANGE_INTERVAL div 8)).
 -define(WAIT_EXCHANGE_OUT_TIMEOUT, ?EXCHANGE_INTERVAL div 5).
 -define(WAIT_EXCHANGE_ACCEPT_TIMEOUT, ?EXCHANGE_INTERVAL div 5).
 -define(EXCHANGE_END_TIMEOUT, ?EXCHANGE_INTERVAL - round(?EXCHANGE_INTERVAL / 10)).
@@ -35,7 +57,6 @@
     get_n_unique_random/2,
     broadcast_unique_random_subset/3,
     get_inview/1,
-    get_outview/1,
     get_all_inview/1,
     get_all_outview/1,
     get_views/1
@@ -164,29 +185,30 @@ terminate(
     % Normal termination
     % We need to terminate our in and out connections
     % First we get the outview, and keep a single arc per target node
-    OutView = get_outview(NameSpace),
+    OutView = bbsvx_arc_registry:get_available_arcs(NameSpace, out),
     OutArcs =
         lists:usort(
             fun(
-                #arc{target = #node_entry{node_id = NodeId1}},
-                #arc{target = #node_entry{node_id = NodeId2}}
+                {#arc{target = #node_entry{node_id = NodeId1}}, _},
+                {#arc{target = #node_entry{node_id = NodeId2}}, _}
             ) ->
                 NodeId1 < NodeId2
             end,
             OutView
         ),
 
+        %% TODO : this can maybe be optiomized as the second parameter from get_available_arcs is the pid of the connection
     lists:foreach(
-        fun(#arc{ulid = Ulid}) -> terminate_connection(NameSpace, Ulid, out, Reason) end,
+        fun({#arc{ulid = Ulid}, _}) -> terminate_connection(NameSpace, Ulid, out, Reason) end,
         OutArcs
     ),
     ?'log-info'("2", []),
-    InView = get_inview(NameSpace),
+    InView = bbsvx_arc_registry:get_available_arcs(NameSpace, in),
     InArcs =
         lists:usort(
             fun(
-                #arc{source = #node_entry{node_id = NodeId1}},
-                #arc{source = #node_entry{node_id = NodeId2}}
+                {#arc{source = #node_entry{node_id = NodeId1}}, _},
+                {#arc{source = #node_entry{node_id = NodeId2}}, _}
             ) ->
                 NodeId1 < NodeId2
             end,
@@ -194,7 +216,7 @@ terminate(
         ),
     ?'log-info'("3", []),
     lists:foreach(
-        fun(#arc{ulid = Ulid}) -> terminate_connection(NameSpace, Ulid, in, Reason) end,
+        fun({#arc{ulid = Ulid}, _}) -> terminate_connection(NameSpace, Ulid, in, Reason) end,
         InArcs
     ),
     ?'log-info'("4", []),
@@ -2015,13 +2037,12 @@ handle_event(Type, Msg, StateName, StateData) ->
 %%% Internal functions
 %%%=============================================================================
 
-%%-----------------------------------------------------------------------------
-%% @doc
-%% swap_connections/4
-%% Used to initiate proposed connections received from an exchange.
-%% @end
-%% ----------------------------------------------------------------------------
+-doc """
+Initiate proposed connections received from an exchange.
 
+Creates new outgoing connections to nodes provided in the incoming sample from
+an exchange peer, handling mirroring and normal swaps as appropriate.
+""".
 -spec swap_connections(binary(), node_entry(), node_entry(), [exchange_entry()]) -> ok.
 swap_connections(
     NameSpace,
@@ -2517,35 +2538,40 @@ get_random_sample(View) ->
     %% split the view
     {_Sample, _Rest} = lists:split(SampleSize, Shuffled).
 
-%%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Send payload to all connections in the outview
-%%% @returns ok
-%%% @end
-%%%
+-doc """
+Send payload to all connections in the outview.
 
+Broadcasts the given payload to every connection process in the outview.
+This is used for general message dissemination across the overlay network.
+
+Returns: `ok`
+""".
 -spec broadcast(NameSpace :: binary(), Payload :: term()) -> ok.
 broadcast(NameSpace, Payload) ->
-    lists:foreach(fun(Pid) -> Pid ! {send, Payload} end, get_outview_pids(NameSpace)).
+    lists:foreach(fun({_, Pid}) -> Pid ! {send, Payload} end, bbsvx_arc_registry:get_available_arcs(NameSpace, out)).
 
-%%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Send payload to all unique connections in the outview
-%%% @returns ok
-%%% @end
-%%%
+-doc """
+Send payload to all unique connections in the outview.
+
+Gets all available arcs from the outview and sends the payload to each unique connection
+process. This ensures each peer receives the message exactly once, used by EPTO for
+transaction dissemination.
+
+Returns: `ok`
+""".
 -spec broadcast_unique(NameSpace :: binary(), Payload :: term()) -> ok.
 broadcast_unique(NameSpace, Payload) ->
-    Pids = get_outview_pids(NameSpace),
-    UniquePids = lists:usort(Pids),
-    lists:foreach(fun(Pid) -> Pid ! {send, Payload} end, UniquePids).
+    OutView = bbsvx_arc_registry:get_available_arcs(NameSpace, out),
+    lists:foreach(fun({_, Pid}) -> Pid ! {send, Payload} end, OutView).
 
-%%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Send payload to a random subset of the view
-%%% @returns Number of nodes the payload was sent to
-%%% @end
+-doc """
+Send payload to a random subset of the view.
 
+Selects N random unique arcs from the outview and broadcasts the payload to them.
+Useful for probabilistic broadcast protocols that don't require full fanout.
+
+Returns: `{ok, Count}` where Count is the number of nodes the payload was sent to
+""".
 -spec broadcast_unique_random_subset(
     NameSpace :: binary(),
     Payload :: term(),
@@ -2554,95 +2580,75 @@ broadcast_unique(NameSpace, Payload) ->
     {ok, integer()}.
 broadcast_unique_random_subset(NameSpace, Payload, N) ->
     RandomSubset = get_n_unique_random(NameSpace, N),
-    lists:foreach(fun(#arc{ulid = Ulid}) -> send(NameSpace, Ulid, out, Payload) end, RandomSubset),
+    lists:foreach(fun({#arc{ulid = Ulid}, _Pid}) -> send(NameSpace, Ulid, out, Payload) end, RandomSubset),
     {ok, length(RandomSubset)}.
 
-%%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Get n unique random arcs from the outview
-%%% @returns [arc()]
-%%% @end
--spec get_n_unique_random(binary() | list(), N :: integer()) -> [arc()].
+-doc """
+Get N unique random arcs from the outview or from a list.
+
+When called with a binary namespace, retrieves available arcs from the outview and
+returns N random selections. When called with a list, returns N random elements.
+
+Returns: List of arcs or list elements
+""".
+-spec get_n_unique_random(binary(), N :: integer()) -> [arc()];
+                         (list({term, Pid}), N :: integer()) -> [{term, Pid}].
 get_n_unique_random(NameSpace, N) when is_binary(NameSpace) ->
-    OutView = get_outview(NameSpace),
+    OutView = bbsvx_arc_registry:get_available_arcs(NameSpace, out),
     get_n_unique_random(OutView, N);
-%%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Get n unique random elements from the input list
-%%% @returns [term()]
-%%% @end
 get_n_unique_random(List, N) ->
-    lists:sublist(
-        lists:usort(fun(_N1, _N2) -> rand:uniform(2) =< 1 end, List), N
-    ).
+    Shuffled = [X || {_, X} <- lists:sort([{rand:uniform(), E} || E <- List])],
+    lists:sublist(Shuffled, N).
 
-%%-----------------------------------------------------------------------------
-%% @doc
-%% get_outview/1
-%% Get the outview of a namespace (only available arcs)
-%% @end
-%% ----------------------------------------------------------------------------
+-doc """
+Get the inview of a namespace.
 
--spec get_outview(binary()) -> [arc()].
-get_outview(NameSpace) ->
-    %% For internal SPRAY logic, get only available arcs
-    [Arc || {Arc, _} <- bbsvx_arc_registry:get_available_arcs(NameSpace, out)].
+**IMPORTANT**: Uses `get_all_arcs` to count ALL arcs for "empty inview" checks,
+not just available ones (an arc being exchanged is still a connection).
 
-%%-----------------------------------------------------------------------------
-%% @doc
-%% get_inview/1
-%% Get the inview of a namespace
-%% IMPORTANT: Uses get_all_arcs to count ALL arcs for "empty inview" checks,
-%% not just available ones (an arc being exchanged is still a connection)
-%% @end
-%% ----------------------------------------------------------------------------
-
+Returns: List of all incoming arcs
+""".
 -spec get_inview(binary()) -> [arc()].
 get_inview(NameSpace) ->
     %% For empty check, we need ALL arcs - an arc in exchanging status is still there
     [Arc || {Arc, _} <- bbsvx_arc_registry:get_all_arcs(NameSpace, in)].
 
-%%-----------------------------------------------------------------------------
-%% @doc
-%% get_all_outview/1
-%% Get ALL outview arcs (for visualization/debugging)
-%% @end
-%% ----------------------------------------------------------------------------
+-doc """
+Get ALL outview arcs (for visualization/debugging).
 
+Returns all arcs regardless of status, used for visualization and debugging purposes.
+
+Returns: List of all outgoing arcs
+""".
 -spec get_all_outview(binary()) -> [arc()].
 get_all_outview(NameSpace) ->
     %% Get ALL arcs regardless of status for visualization
     [Arc || {Arc, _} <- bbsvx_arc_registry:get_all_arcs(NameSpace, out)].
 
-%%-----------------------------------------------------------------------------
-%% @doc
-%% get_all_inview/1
-%% Get ALL inview arcs (for visualization/debugging)
-%% @end
-%% ----------------------------------------------------------------------------
+-doc """
+Get ALL inview arcs (for visualization/debugging).
 
+Returns all arcs regardless of status, used for visualization and debugging purposes.
+
+Returns: List of all incoming arcs
+""".
 -spec get_all_inview(binary()) -> [arc()].
 get_all_inview(NameSpace) ->
     %% Get ALL arcs regardless of status for visualization
     [Arc || {Arc, _} <- bbsvx_arc_registry:get_all_arcs(NameSpace, in)].
 
-%%-----------------------------------------------------------------------------
-%% @doc
-%% get_views/1
-%% Get the views of a namespace ( inview and outview )
-%% @end
-%% ----------------------------------------------------------------------------
+-doc """
+Get the combined views of a namespace (inview and outview).
 
+Returns the union of inview and outview arcs, sorted. Only includes arcs with
+`available` status.
+
+Returns: Sorted list of all available arcs
+""".
 get_views(NameSpace) ->
     InView = [Arc || {Arc, _} <- bbsvx_arc_registry:get_available_arcs(NameSpace, in)],
     OutView = [Arc || {Arc, _} <- bbsvx_arc_registry:get_available_arcs(NameSpace, out)],
     lists:sort(InView ++ OutView).
-
-get_outview_pids(NameSpace) ->
-    [Pid || {_, Pid} <- bbsvx_arc_registry:get_all_arcs(NameSpace, out)].
-
-get_inview_pids(NameSpace) ->
-    [Pid || {_, Pid} <- bbsvx_arc_registry:get_all_arcs(NameSpace, in)].
 
 format_host(Host) when is_binary(Host) ->
     Host;
@@ -2651,14 +2657,14 @@ format_host(Host) when is_list(Host) ->
 format_host({A, B, C, D}) ->
     list_to_binary(io_lib:format("~p.~p.~p.~p", [A, B, C, D])).
 
-%%%-----------------------------------------------------------------------------
-%%% @doc
-%%% filter_and_count/2
-%%% Filter out the target node from the sample and count the number of time it
-%%% was removed
-%%% @end
-%%% ----------------------------------------------------------------------------
+-doc """
+Filter out the target node from the sample and count removals.
 
+Removes all arcs targeting the specified node ID from the sample and returns
+the count of how many were removed along with the filtered sample.
+
+Returns: `{Count, FilteredSample}` where Count is the number of arcs removed
+""".
 -spec filter_and_count(TargetNodeId :: binary(), [{arc(), pid()}]) -> {integer(), [{arc(), pid()}]}.
 filter_and_count(TargetNodeId, Sample) ->
     lists:foldr(
