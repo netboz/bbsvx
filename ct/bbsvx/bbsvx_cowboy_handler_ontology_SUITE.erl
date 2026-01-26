@@ -33,13 +33,14 @@ all() ->
 
 init_per_suite(Config) ->
     %% Start HTTP client
-    {ok, _} = application:ensure_all_started(inets),
+    %% Handle case where apps are already started from previous suite
+    _ = application:ensure_all_started(inets),
 
     %% Start dependencies in order
-    {ok, _} = application:ensure_all_started(gproc),
-    {ok, _} = application:ensure_all_started(jobs),
-    {ok, _} = application:ensure_all_started(mnesia),
-    {ok, _} = application:ensure_all_started(cowboy),
+    _ = application:ensure_all_started(gproc),
+    _ = application:ensure_all_started(jobs),
+    _ = application:ensure_all_started(mnesia),
+    _ = application:ensure_all_started(cowboy),
 
     %% Start bbsvx application (which starts the HTTP server)
     case application:ensure_all_started(bbsvx) of
@@ -48,6 +49,10 @@ init_per_suite(Config) ->
             %% Give HTTP server time to start
             timer:sleep(1000),
             [{started_apps, Started} | Config];
+        {error, {already_started, bbsvx}} ->
+            %% Already started from previous suite
+            ct:pal("bbsvx already started"),
+            Config;
         {error, {AppName, Reason}} ->
             ct:fail("Failed to start ~p: ~p", [AppName, Reason])
     end.

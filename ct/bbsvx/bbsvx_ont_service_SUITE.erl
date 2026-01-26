@@ -38,9 +38,10 @@ all() ->
 
 init_per_suite(Config) ->
     %% Just ensure dependencies are available, but don't start bbsvx yet
-    {ok, _} = application:ensure_all_started(gproc),
-    {ok, _} = application:ensure_all_started(jobs),
-    {ok, _} = application:ensure_all_started(mnesia),
+    %% Handle case where apps are already started from previous suite
+    _ = application:ensure_all_started(gproc),
+    _ = application:ensure_all_started(jobs),
+    _ = application:ensure_all_started(mnesia),
     Config.
 
 end_per_suite(_Config) ->
@@ -55,6 +56,10 @@ init_per_testcase(TestCase, Config) ->
             ct:pal("Started applications: ~p", [Started]),
             timer:sleep(500),  % Give services time to initialize
             [{started_apps, Started} | Config];
+        {error, {already_started, bbsvx}} ->
+            %% Already running from previous test
+            ct:pal("bbsvx already started"),
+            Config;
         {error, {AppName, Reason}} ->
             ct:fail("Failed to start ~p: ~p", [AppName, Reason])
     end.
