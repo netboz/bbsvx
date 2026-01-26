@@ -62,8 +62,9 @@
     previous_ts :: integer(),
     current_ts :: integer(),
     prolog_state :: erlog_state(),
-    local_index = -1 :: integer(),
-    current_index = 0 :: integer(),
+    %% Single source of truth for processed transactions
+    %% -1 means no transactions processed yet (genesis will be index 0)
+    last_processed_index = -1 :: integer(),
     current_address :: binary(),
     next_address :: binary(),
     contact_nodes :: [node_entry()]

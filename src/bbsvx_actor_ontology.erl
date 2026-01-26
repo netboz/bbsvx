@@ -31,7 +31,7 @@ Integrates Prolog knowledge base management with blockchain transaction processi
 ### Single State Owner
 The gen_statem process owns the complete `ont_state` including:
 - Prolog knowledge base state (erlog)
-- Transaction indices (local_index, current_index)
+- Transaction index (last_processed_index) - EPTO is the source of truth
 - Blockchain addresses (current_address, next_address)
 - Validation state for out-of-order transactions
 
@@ -89,7 +89,7 @@ syncing → Continue processing
     receive_transaction/1,
     accept_transaction_result/1,
     % Query API
-    get_current_index/1,
+    get_last_processed_index/1,
     request_segment/3,
     % Testing API
     get_pending_count/1,
@@ -142,12 +142,10 @@ syncing → Continue processing
 }).
 
 -record(validation_state, {
-    previous_ts :: number() | undefined,
     pending = #{} :: map(),  %% #{Index => Transaction}
     requested_txs = #{} :: #{integer() => integer()}  %% #{Index => RequestTimestamp}
 }).
 
--type state() :: #state{}.
 -type validation_state() :: #validation_state{}.
 
 %%%=============================================================================
@@ -233,11 +231,11 @@ accept_transaction_result(#goal_result{namespace = Namespace} = GoalResult) ->
     end.
 
 -doc """
-Retrieves the current transaction index for the namespace.
+Retrieves the last processed transaction index for the namespace.
 """.
--spec get_current_index(Namespace :: binary()) -> {ok, integer()}.
-get_current_index(Namespace) ->
-    gen_statem:call({via, gproc, {n, l, {?MODULE, Namespace}}}, get_current_index).
+-spec get_last_processed_index(Namespace :: binary()) -> {ok, integer()}.
+get_last_processed_index(Namespace) ->
+    gen_statem:call({via, gproc, {n, l, {?MODULE, Namespace}}}, get_last_processed_index).
 
 -doc """
 Gets the count of pending transactions (for testing).
@@ -308,12 +306,13 @@ init([Namespace, Options]) ->
             case build_initial_prolog_state(Namespace) of
                 {ok, PrologState} ->
                     %% Create initial ont_state with Prolog state
+                    %% last_processed_index starts at -1 (nothing processed yet)
+                    %% For reconnect mode, load_history will update this to the last stored index
                     OntState = #ont_state{
                         namespace = Namespace,
                         current_ts = 0,
                         previous_ts = -1,
-                        local_index = -1,
-                        current_index = -1,
+                        last_processed_index = -1,
                         current_address = <<"-1">>,
                         next_address = <<"0">>,
                         contact_nodes = [],
@@ -442,10 +441,10 @@ wait_for_genesis_transaction(
     ?'log-info'("Processing genesis transaction", []),
 
     %% Step 1: Validate genesis (index must be 0)
-    CurrentIndex = OntState#ont_state.current_index,
+    LastProcessedIndex = OntState#ont_state.last_processed_index,
     CurrentAddress = OntState#ont_state.current_address,
 
-    case validate_transaction(Transaction, CurrentIndex, CurrentAddress, Namespace, ValidationState) of
+    case validate_transaction(Transaction, LastProcessedIndex, CurrentAddress, Namespace, ValidationState) of
         {ok, ValidatedTx, NewCurrentAddress, NewValidationState} ->
             %% Step 2: Accept and broadcast (only after successful validation)
             AcceptedTx = ValidatedTx#transaction{
@@ -462,8 +461,7 @@ wait_for_genesis_transaction(
                         ok ->
                             %% Update state with genesis results
                             UpdatedOntState = NewOntState#ont_state{
-                                local_index = 0,
-                                current_index = 0,
+                                last_processed_index = 0,
                                 current_address = NewCurrentAddress,
                                 next_address = <<"1">>
                             },
@@ -511,15 +509,15 @@ wait_for_genesis_transaction(
 wait_for_genesis_transaction(
     {call, From},
     get_validation_context,
-    #state{ont_state = #ont_state{current_index = Index, current_address = CurrentAddress},
+    #state{ont_state = #ont_state{last_processed_index = Index, current_address = CurrentAddress},
            validation_state = ValidationState}
 ) ->
     {keep_state_and_data, [{reply, From, {ok, Index, ValidationState, CurrentAddress}}]};
 
 wait_for_genesis_transaction(
     {call, From},
-    get_current_index,
-    #state{ont_state = #ont_state{current_index = Index}}
+    get_last_processed_index,
+    #state{ont_state = #ont_state{last_processed_index = Index}}
 ) ->
     {keep_state_and_data, [{reply, From, {ok, Index}}]};
 
@@ -544,8 +542,8 @@ initialize_ontology(state_timeout, load_history, #state{namespace = Namespace, o
 
     %% Load history (this can be slow, but we're not blocking init)
     case load_history(OntState, ReposTable) of
-        #ont_state{local_index = LocalIndex, current_index = CurrentIndex} = NewOntState ->
-            ?'log-info'(">> RECONNECT MODE: History loaded (local_index=~p, current_index=~p)", [LocalIndex, CurrentIndex]),
+        #ont_state{last_processed_index = LastProcessedIndex} = NewOntState ->
+            ?'log-info'(">> RECONNECT MODE: History loaded (last_processed_index=~p)", [LastProcessedIndex]),
 
             %% Start services after loading history
             ?'log-info'(">> RECONNECT MODE: Starting services", []),
@@ -585,17 +583,16 @@ wait_for_registration(
     {registered, CurrentIndex},
     #state{namespace = Namespace, ont_state = OntState, boot = BootMode} = State
 ) ->
-    ?'log-info'(">> ~p MODE SUCCESS: Registered with network (current_index=~p)",
+    ?'log-info'(">> ~p MODE SUCCESS: Registered with network (network_index=~p)",
                 [string:uppercase(atom_to_list(BootMode)), CurrentIndex]),
 
-    LocalIndex = OntState#ont_state.local_index,
-    NewOntState = OntState#ont_state{current_index = CurrentIndex},
+    LastProcessedIndex = OntState#ont_state.last_processed_index,
 
     %% Request missing transactions if needed
-    case CurrentIndex > LocalIndex of
+    case CurrentIndex > LastProcessedIndex of
         true ->
-            ?'log-info'(">> Requesting missing transactions (~p to ~p)", [LocalIndex + 1, CurrentIndex]),
-            request_segment(Namespace, LocalIndex + 1, CurrentIndex);
+            ?'log-info'(">> Requesting missing transactions (~p to ~p)", [LastProcessedIndex + 1, CurrentIndex]),
+            request_segment(Namespace, LastProcessedIndex + 1, CurrentIndex);
         false ->
             ok
     end,
@@ -603,7 +600,7 @@ wait_for_registration(
     %% Update connection state to connected
     ?'log-info'(">> Now CONNECTED and syncing", []),
     {next_state, syncing, State#state{
-        ont_state = NewOntState,
+        ont_state = OntState,
         connection_state = connected
     }};
 
@@ -649,11 +646,11 @@ syncing(enter, _, #state{namespace = Namespace} = State) ->
 
     {keep_state, State};
 
-%% Get current index query
+%% Get last processed index query
 syncing(
     {call, From},
-    get_current_index,
-    #state{ont_state = #ont_state{current_index = Index}}
+    get_last_processed_index,
+    #state{ont_state = #ont_state{last_processed_index = Index}}
 ) ->
     {keep_state_and_data, [{reply, From, {ok, Index}}]};
 
@@ -661,7 +658,7 @@ syncing(
 syncing(
     {call, From},
     get_validation_context,
-    #state{ont_state = #ont_state{current_index = Index, current_address = CurrentAddress},
+    #state{ont_state = #ont_state{last_processed_index = Index, current_address = CurrentAddress},
            validation_state = ValidationState}
 ) ->
     {keep_state_and_data, [{reply, From, {ok, Index, ValidationState, CurrentAddress}}]};
@@ -701,22 +698,27 @@ syncing(
 
     %% Retrieve transactions from storage
     History = retrieve_transaction_history(Namespace, OldestIndex, YoungerIndex),
+    ?'log-info'("Retrieved ~p transactions for history request", [length(History)]),
 
     {ActualOldest, ActualYoungest} = case History of
         [] -> {OldestIndex, YoungerIndex};
         [First | _] = H -> {First#transaction.index, (lists:last(H))#transaction.index}
     end,
 
-    %% Send history response
-    gen_statem:cast(
-        {via, gproc, {n, l, {arc, in, ReqUlid}}},
-        {send_history, #ontology_history{
-            namespace = Namespace,
-            list_tx = History,
-            oldest_index = ActualOldest,
-            younger_index = ActualYoungest
-        }}
-    ),
+    %% Send history response via the arc registry
+    ?'log-info'("Sending history response to arc ~p", [ReqUlid]),
+    HistoryResponse = #ontology_history{
+        namespace = Namespace,
+        list_tx = History,
+        oldest_index = ActualOldest,
+        younger_index = ActualYoungest
+    },
+    case bbsvx_arc_registry:send(Namespace, in, ReqUlid, HistoryResponse) of
+        ok ->
+            ?'log-info'("History response sent successfully");
+        {error, not_found} ->
+            ?'log-warning'("Could not send history response - arc ~p not found", [ReqUlid])
+    end,
 
     keep_state_and_data;
 
@@ -727,6 +729,14 @@ syncing(
     #state{validation_state = ValidationState} = State
 ) ->
     ?'log-info'("Received history: ~p transactions", [length(ListTransactions)]),
+
+    %% Log each transaction's status for debugging
+    lists:foreach(
+        fun(#transaction{index = Idx, status = Status, type = Type}) ->
+            ?'log-info'("History tx ~p: type=~p, status=~p", [Idx, Type, Status])
+        end,
+        ListTransactions
+    ),
 
     %% Queue each transaction for validation
     lists:foreach(
@@ -762,14 +772,14 @@ syncing({call, From}, get_current_address, #state{ont_state = OntState}) ->
 syncing({call, From}, get_validation_state, #state{validation_state = ValidationState}) ->
     {keep_state_and_data, [{reply, From, {ok, ValidationState}}]};
 
-%% Transaction processing handler
+%% Ignore new genesis (status != processed) - these should only be processed in wait_for_genesis state
+%% But allow history genesis (status = processed) to be validated and applied
 syncing(
     cast,
-    {process_transaction, #transaction{type = creation, index = 0}},
+    {process_transaction, #transaction{type = creation, index = 0, status = Status}},
     _State
-) ->
-    %% Genesis transaction should only be processed in wait_for_genesis state
-    ?'log-warning'("Received genesis transaction in syncing state, ignoring", []),
+) when Status =/= processed ->
+    ?'log-warning'("Received new genesis transaction in syncing state, ignoring (status=~p)", [Status]),
     keep_state_and_data;
 
 syncing(
@@ -784,12 +794,11 @@ syncing(
     ?'log-info'("Processing transaction in actor", []),
 
     %% Step 1: Validate (transaction already broadcasted via EPTO)
-    %% Use local_index for validation - this is what we've actually processed
-    %% current_index is the network state, local_index is our local state
-    LocalIndex = OntState#ont_state.local_index,
+    %% last_processed_index is the single source of truth for what we've processed
+    LastProcessedIndex = OntState#ont_state.last_processed_index,
     CurrentAddress = OntState#ont_state.current_address,
 
-    case validate_transaction(Transaction, LocalIndex, CurrentAddress, Namespace, ValidationState) of
+    case validate_transaction(Transaction, LastProcessedIndex, CurrentAddress, Namespace, ValidationState) of
         {ok, ValidatedTx, NewCurrentAddress, NewValidationState} ->
             %% Step 3: Process
             case process_transaction(ValidatedTx, OntState, Namespace) of
@@ -799,8 +808,7 @@ syncing(
                         ok ->
                             %% Update state
                             UpdatedOntState = NewOntState#ont_state{
-                                current_index = ValidatedTx#transaction.index,
-                                local_index = ValidatedTx#transaction.index,
+                                last_processed_index = ValidatedTx#transaction.index,
                                 current_address = NewCurrentAddress,
                                 current_ts = ValidatedTx#transaction.ts_created
                             },
@@ -863,8 +871,7 @@ syncing(
                     bbsvx_transaction:record_transaction(InvalidTx),
                     %% Still need to increment index to maintain chain integrity
                     UpdatedOntState = OntState#ont_state{
-                        current_index = ValidatedTx#transaction.index,
-                        local_index = ValidatedTx#transaction.index,
+                        last_processed_index = ValidatedTx#transaction.index,
                         current_address = NewCurrentAddress,
                         current_ts = ValidatedTx#transaction.ts_created
                     },
@@ -875,11 +882,14 @@ syncing(
             ?'log-info'("Transaction ~p is pending", [TxIndex]),
             {keep_state, State#state{validation_state = NewValidationState}};
 
+        {duplicate, TxIndex, _ValidationState} ->
+            ?'log-debug'("Ignoring duplicate transaction ~p", [TxIndex]),
+            keep_state_and_data;
+
         {history_accepted, Index, NewAddr, NewValidationState} ->
             ?'log-info'("History transaction ~p accepted", [Index]),
             NewOntState = OntState#ont_state{
-                current_index = Index,
-                local_index = Index,
+                last_processed_index = Index,
                 current_address = NewAddr
             },
             {keep_state, State#state{
@@ -888,12 +898,22 @@ syncing(
             }}
     end;
 
-%% Catch-all
+%% Handle duplicate registration messages (ignore - we're already syncing)
+syncing(info, {registered, _Index}, _State) ->
+    ?'log-debug'("Ignoring duplicate registration message in syncing state"),
+    keep_state_and_data;
+
+%% Handle goal results for leader (we already processed the goal, ignore our own result)
+syncing(info, #goal_result{}, _State) ->
+    ?'log-debug'("Ignoring goal_result in syncing state (leader already processed)"),
+    keep_state_and_data;
+
 %% Handle connection status queries
 syncing({call, From}, get_connection_status, State) ->
     Status = build_connection_status(State),
     {keep_state_and_data, [{reply, From, {ok, Status}}]};
 
+%% Catch-all
 syncing(Type, Event, _State) ->
     ?'log-warning'("Unhandled event in syncing state: ~p ~p", [Type, Event]),
     keep_state_and_data.
@@ -1102,18 +1122,17 @@ validate_transaction(
     {pending, TxIndex, NewValidationState};
 
 validate_transaction(
-    #transaction{status = created, ts_created = TsCreated} = Transaction,
-    CurrentIndex,
+    #transaction{status = created, index = TxIndex} = Transaction,
+    LastProcessedIndex,
     CurrentAddress,
     _Namespace,
     ValidationState
-) ->
-    %% New transaction - assign index
-    NewIndex = CurrentIndex + 1,
+) when TxIndex =:= LastProcessedIndex + 1 ->
+    %% EPTO-delivered transaction with expected index - validate and process
+    ?'log-info'("Transaction ~p is next expected (last_processed=~p)", [TxIndex, LastProcessedIndex]),
 
     ValidatedTx = Transaction#transaction{
         status = validated,
-        index = NewIndex,
         prev_address = CurrentAddress
     },
 
@@ -1121,14 +1140,69 @@ validate_transaction(
     bbsvx_transaction:record_transaction(ValidatedTx),
 
     %% Calculate new address
-    NewCurrentAddress = bbsvx_crypto_service:calculate_hash_address(NewIndex, Transaction),
+    NewCurrentAddress = bbsvx_crypto_service:calculate_hash_address(TxIndex, Transaction),
 
-    %% Update validation state with previous timestamp
+    {ok, ValidatedTx, NewCurrentAddress, ValidationState};
+
+validate_transaction(
+    #transaction{status = created, index = TxIndex} = _Transaction,
+    LastProcessedIndex,
+    _CurrentAddress,
+    _Namespace,
+    ValidationState
+) when TxIndex =< LastProcessedIndex ->
+    %% Duplicate transaction - already processed
+    ?'log-info'("Ignoring duplicate transaction ~p (last_processed=~p)", [TxIndex, LastProcessedIndex]),
+    {duplicate, TxIndex, ValidationState};
+
+validate_transaction(
+    #transaction{status = created, index = TxIndex} = Transaction,
+    LastProcessedIndex,
+    _CurrentAddress,
+    Namespace,
+    ValidationState
+) when TxIndex > LastProcessedIndex + 1 ->
+    %% Gap detected - store in pending and request missing
+    ?'log-info'("Gap detected: got ~p, expected ~p, storing in pending", [TxIndex, LastProcessedIndex + 1]),
+
+    #validation_state{pending = Pending, requested_txs = RequestedTxs} = ValidationState,
+    NewPending = Pending#{TxIndex => Transaction},
+
+    %% Check which transactions in the gap need to be requested
+    MissingIndices = lists:seq(LastProcessedIndex + 1, TxIndex - 1),
+    Now = erlang:system_time(millisecond),
+    TimeoutMs = 5000,
+
+    {ToRequest, NewRequestedTxs} = lists:foldl(
+        fun(Index, {AccToRequest, AccRequested}) ->
+            InPending = maps:is_key(Index, NewPending),
+            AlreadyRequested = is_tx_requested(Index, AccRequested, TimeoutMs),
+            case InPending orelse AlreadyRequested of
+                true -> {AccToRequest, AccRequested};
+                false -> {[Index | AccToRequest], AccRequested#{Index => Now}}
+            end
+        end,
+        {[], RequestedTxs},
+        MissingIndices
+    ),
+
+    case ToRequest of
+        [] ->
+            ?'log-debug'("All transactions ~p-~p already pending or requested",
+                        [LastProcessedIndex + 1, TxIndex - 1]);
+        _ ->
+            MinIndex = lists:min(ToRequest),
+            MaxIndex = lists:max(ToRequest),
+            ?'log-info'("Requesting missing segment ~p-~p", [MinIndex, MaxIndex]),
+            request_segment(Namespace, MinIndex, MaxIndex)
+    end,
+
     NewValidationState = ValidationState#validation_state{
-        previous_ts = TsCreated
+        pending = NewPending,
+        requested_txs = NewRequestedTxs
     },
 
-    {ok, ValidatedTx, NewCurrentAddress, NewValidationState};
+    {pending, TxIndex, NewValidationState};
 
 validate_transaction(Transaction, CurrentIndex, _CurrentAddress, Namespace, ValidationState) ->
     %% Out of order - store in pending
@@ -1250,13 +1324,14 @@ process_transaction(
 
 process_transaction(
     #transaction{type = goal, payload = #goal{} = Goal, namespace = Namespace} = Transaction,
-    #ont_state{prolog_state = #est{db = PrologDb} = PrologState} = OntState,
+    #ont_state{prolog_state = PrologState} = OntState,
     Namespace
 ) ->
     %% Get leader
     {ok, Leader} = bbsvx_actor_leader_manager:get_leader(Namespace),
     MyId = bbsvx_crypto_service:my_id(),
     IsLeader = (Leader == MyId),
+    ?'log-info'("Goal processing: Leader=~p, MyId=~p, IsLeader=~p", [Leader, MyId, IsLeader]),
 
     case IsLeader of
         true ->
@@ -1410,8 +1485,7 @@ apply_goal_result_and_continue(
                 ok ->
                     %% Update state with completed transaction
                     FinalOntState = UpdatedOntState#ont_state{
-                        current_index = Index,
-                        local_index = Index,
+                        last_processed_index = Index,
                         current_address = NewCurrentAddress,
                         current_ts = PendingTx#transaction.ts_created
                     },
@@ -1532,7 +1606,7 @@ do_load_history(Key, #ont_state{prolog_state = PrologState} = OntState, ReposTab
                         }
                     },
                     current_address = CurrentAddress,
-                    local_index = Index
+                    last_processed_index = Index
                 },
                 ReposTable
             )
@@ -1558,10 +1632,6 @@ retrieve_transaction_history(Namespace, OldestIndex, YoungerIndex) ->
         fun(#transaction{index = A}, #transaction{index = B}) -> A =< B end,
         HistResult
     ).
-
-%%%=============================================================================
-%%% Worker Functions
-%%%=============================================================================
 
 %%%=============================================================================
 %%% Service Management Functions

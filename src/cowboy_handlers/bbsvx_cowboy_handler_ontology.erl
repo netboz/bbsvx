@@ -289,12 +289,18 @@ accept_goal(Req0, #{namespace := Namespace, goal := Payload} = State) ->
             ?'log-info'("Cowboy Handler : Encoded ~p", [Encoded]),
             Req1 = cowboy_req:set_resp_body(Encoded, Req0),
             {true, Req1, State};
+        {error, Reason} when is_atom(Reason) ->
+            Req1 = cowboy_req:set_resp_body(jiffy:encode([#{error => atom_to_binary(Reason)}]), Req0),
+            {false, Req1, State};
         {error, Reason} ->
-            {jiffy:encode([#{error => atom_to_binary(Reason)}]), Req0, State}
+            ReasonBin = iolist_to_binary(io_lib:format("~p", [Reason])),
+            Req1 = cowboy_req:set_resp_body(jiffy:encode([#{error => ReasonBin}]), Req0),
+            {false, Req1, State}
     catch
         A:B ->
             ?'log-error'("Internal error ~p:~p", [A, B]),
-            {jiffy:encode([#{error => <<"network_internal_error">>}]), Req0, State}
+            Req1 = cowboy_req:set_resp_body(jiffy:encode([#{error => <<"network_internal_error">>}]), Req0),
+            {false, Req1, State}
     end.
 
 %%-----------------------------------------------------------------------------

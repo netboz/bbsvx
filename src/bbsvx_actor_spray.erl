@@ -293,7 +293,7 @@ handle_event(
                     ?'log-info'("spray Agent ~p : disconnected state, New incoming arc : ~p connecting to origin", [NameSpace, Source]),
 
         %% Send current_index to newly connected peer for registration
-    case bbsvx_actor_ontology:get_current_index(NameSpace) of
+    case bbsvx_actor_ontology:get_last_processed_index(NameSpace) of
         {ok, CurrentIndex} ->
             Arc =
                 #arc{
@@ -570,7 +570,7 @@ handle_event(
     ?'log-info'("spray Agent ~p : empty_outview state, New incoming arc : ~p", [NameSpace, Source]),
 
     %% Send current_index to newly connected peer for registration
-    case bbsvx_actor_ontology:get_current_index(NameSpace) of
+    case bbsvx_actor_ontology:get_last_processed_index(NameSpace) of
         {ok, CurrentIndex} ->
             Arc =
                 #arc{
@@ -914,7 +914,7 @@ handle_event(
     prometheus_gauge:dec(<<"bbsvx_spray_inview_depleted">>, [NameSpace]),
     %% Check if we have at least one node in outview. If yes, trigger forward join to nodes in outview
     %% if not connect to incoming node.
-    case bbsvx_actor_ontology:get_current_index(NameSpace) of
+    case bbsvx_actor_ontology:get_last_processed_index(NameSpace) of
         {ok, CurrentIndex} ->
             Arc =
                 #arc{
@@ -1288,7 +1288,7 @@ handle_event(
 ) ->
     ?'log-info'("spray Agent ~p : New incoming arc : ~p", [NameSpace, Source]),
 
-    case bbsvx_actor_ontology:get_current_index(NameSpace) of
+    case bbsvx_actor_ontology:get_last_processed_index(NameSpace) of
         {ok, CurrentIndex} ->
             Arc =
                 #arc{
