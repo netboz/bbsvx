@@ -118,39 +118,6 @@ stop() ->
 %%% Gen State Machine Callbacks
 %%%=============================================================================
 
-%%%=============================================================================
-%%% Terminate Helpers
-%%%=============================================================================
-
-%% Unregister arc from gproc immediately to prevent race conditions
-%% where dying arcs are included in exchange proposals.
-%% This function logs when unregistration fails to aid in debugging.
-unregister_arc(Ulid, NameSpace, Direction) ->
-    %% Unregister named registration {n, l, {arc, Direction, Ulid}}
-    %% This may already be unregistered by arc swap (gproc:unreg_other)
-    NamedKey = {n, l, {arc, Direction, Ulid}},
-    try
-        gproc:unreg(NamedKey),
-        ?'log-info'("~p Successfully unregistered named arc ~p ~p",
-                    [?MODULE, Direction, Ulid])
-    catch
-        error:badarg ->
-            ?'log-info'("~p Named arc ~p ~p already unregistered (likely swapped)",
-                        [?MODULE, Direction, Ulid])
-    end,
-
-    %% Unregister property registration {p, l, {inview, NameSpace}}
-    %% This may not exist if connection never reached connected state
-    ViewKey = {p, l, {inview, NameSpace}},
-    try
-        gproc:unreg(ViewKey),
-        ?'log-info'("~p Successfully unregistered from inview namespace=~p ulid=~p",
-                    [?MODULE, NameSpace, Ulid])
-    catch
-        error:badarg ->
-            ?'log-info'("~p Inview not registered for namespace=~p ulid=~p (not in connected state)",
-                        [?MODULE, NameSpace, Ulid])
-    end.
 
 %%%=============================================================================
 %%% Terminate Callbacks
@@ -166,9 +133,6 @@ terminate(
     } =
         State
 ) ->
-    %% Unregister immediately to prevent race conditions
-    unregister_arc(MyUlid, NameSpace, in),
-
     ?'log-info'(
         "~p Terminating conenction IN from ...~p   Reason ~p",
         [?MODULE, OriginNode, normal]
@@ -197,9 +161,6 @@ terminate(
         my_ulid = MyUlid
     } = State
 ) ->
-    %% Unregister immediately to prevent race conditions
-    unregister_arc(MyUlid, NameSpace, in),
-
     ?'log-info'(
         "~p Other side requested to terminate conenction IN from ...~p   Reason ~p",
         [?MODULE, OriginNode, mirrored]
@@ -219,9 +180,6 @@ terminate(
     #state{namespace = NameSpace, my_ulid = MyUlid, origin_node = OriginNode} =
         State
 ) ->
-    %% Unregister immediately to prevent race conditions
-    unregister_arc(MyUlid, NameSpace, in),
-
     ?'log-info'(
         "~p Terminating conenction IN from ...~p   Reason ~p (swap)",
         [?MODULE, OriginNode, swap]
@@ -240,10 +198,6 @@ terminate(
     gen_tcp:close(State#state.socket),
     void;
 terminate(Reason, _CurrentState, #state{namespace = NameSpace, my_ulid = MyUlid, origin_node = OriginNode} = State) ->
-    %% Unregister immediately to prevent race conditions
-    %% Property registration may not exist if not in connected state
-    unregister_arc(MyUlid, NameSpace, in),
-
     ?'log-warning'(
         "~p Terminating unconnected connection IN from...~p   Reason ~p",
         [?MODULE, OriginNode, Reason]
@@ -398,7 +352,7 @@ connected(
     prometheus_gauge:inc(<<"bbsvx_spray_inview_size">>, [NameSpace]),
 
     {keep_state, State};
-connected(info, {tcp, _Ref, BinData}, #state{buffer = Buffer} = State) ->
+connected(info, {tcp, _Ref, BinData}, #state{buffer = Buffer, my_ulid = MyUlid} = State) ->
     parse_packet(<<Buffer/binary, BinData/binary>>, keep_state, State);
 connected(info, #incoming_event{event = #peer_connect_to_sample{} = Msg}, State) ->
     ?'log-info'(
@@ -500,6 +454,8 @@ parse_packet(
             {DecodedEvent, NbBytesUsed} when is_number(NbBytesUsed) ->
                 {complete, DecodedEvent, NbBytesUsed};
             error ->
+                ?'log-info'("SERVER_CONNECTION: Decode failed, buffer_size=~p bytes, first_bytes=~p",
+                           [byte_size(Buffer), binary:part(Buffer, 0, min(20, byte_size(Buffer)))]),
                 {incomplete, Buffer}
         end,
 
@@ -516,6 +472,7 @@ parse_packet(
             ),
             parse_packet(BinLeft, Action, State);
         {complete, #exchange_in{} = Msg, Index} ->
+            ?'log-info'("SERVER_CONNECTION: Received exchange_in from arc ~p: ~p", [MyUlid, Msg]),
             <<_:Index/binary, BinLeft/binary>> = Buffer,
             arc_event(NameSpace, MyUlid, Msg),
             parse_packet(BinLeft, Action, State);
@@ -593,10 +550,16 @@ process_subscription_header(
     #state{namespace = NameSpace, transport = Transport, socket = Socket, origin_node = OriginNode} =
         State
 ) when OriginNode =/= undefined ->
-    %% Register this arc. If collision ( never happened up to now), this process will crash
-    %% with the incoming connection on ther side. At least
-    %% it keeps arcs consistent.
-    gproc:reg({n, l, {arc, in, Ulid}}, {Lock, OriginNode}),
+    %% Register this arc process with arc_registry (single call)
+    Arc = #arc{
+        ulid = Ulid,
+        lock = Lock,
+        source = OriginNode,
+        target = State#state.my_node,
+        age = 0,
+        status = accepting_register
+    },
+    ok = bbsvx_arc_registry:register(NameSpace, in, Ulid, self(), Arc),
 
     %% Notify spray agent to add to inview
     arc_event(
@@ -606,7 +569,8 @@ process_subscription_header(
             ulid = Ulid,
             lock = Lock,
             source = OriginNode,
-            spread = {true, Lock}
+            spread = {true, Lock},
+            connection_type = register
         }
     ),
     %% Acknledge the registration and activate socket
@@ -622,6 +586,9 @@ process_subscription_header(
     ),
     Transport:setopts(Socket, [{active, true}]),
 
+    %% Mark arc as available for exchanges now that it's fully connected
+    bbsvx_arc_registry:update_status(NameSpace, in, Ulid, available),
+
     {next_state, connected, State#state{my_ulid = Ulid}};
 process_subscription_header(
     #header_forward_join{ulid = Ulid, lock = Lock},
@@ -630,9 +597,17 @@ process_subscription_header(
 ) when NameSpace =/= undefined andalso OriginNode =/= undefined ->
     %% TOO: There is no security here. Lock should be checked against the
     %% registration lock as an exemple.
-    %% There shouldn't be any arc registered for this ulid, here, as, like in register,
-    %% a new arc is created.
-    gproc:reg({n, l, {arc, in, Ulid}}, {Lock, OriginNode}),
+    %% Register this arc process with arc_registry (single call)
+    Arc = #arc{
+        ulid = Ulid,
+        lock = Lock,
+        source = OriginNode,
+        target = State#state.my_node,
+        age = 0,
+        status = accepting_forward_join
+    },
+    ok = bbsvx_arc_registry:register(NameSpace, in, Ulid, self(), Arc),
+
     %% Notify spray agent to add this new arc to inview
     arc_event(
         NameSpace,
@@ -640,7 +615,8 @@ process_subscription_header(
         #evt_arc_connected_in{
             ulid = Ulid,
             lock = Lock,
-            source = OriginNode
+            source = OriginNode,
+            connection_type = forward_join
         }
     ),
     %% Acknledge the registration and activate socket
@@ -650,6 +626,10 @@ process_subscription_header(
         encode_message_helper(#header_forward_join_ack{result = ok, type = forward_join})
     ),
     Transport:setopts(State#state.socket, [{active, true}]),
+
+    %% Mark arc as available for exchanges now that it's fully connected
+    bbsvx_arc_registry:update_status(NameSpace, in, Ulid, available),
+
     {next_state, connected, State#state{
         my_ulid = Ulid,
         lock = Lock
@@ -673,49 +653,10 @@ process_subscription_header(
     %% on which it emitted the exchange request, be reverser
     %% (destination becomes source and source becomes destination).
 
-    %% Debug: we dump all the arcs to console
-    Key = {arc, '_', '_'},
-    GProcKey = {'_', '_', Key},
-    MatchHead = {GProcKey, '_', '_'},
-    Guard = [],
-    Result = ['$$'],
-
-    GG = gproc:select([{MatchHead, Guard, Result}]),
-    ?'log-info'("GG: ~p", [GG]),
-
     %% We look for the mirrored arc lock upon the Ulid
     %% and validate it.
-
-    case gproc:lookup_value({n, l, {arc, out, Ulid}}) of
-        {gproc_error, Error} ->
-            ?'log-alert'("~p No arc found for ulid ~p", [?MODULE, Ulid]),
-            Transport:send(
-                Socket,
-                encode_message_helper(#header_join_ack{
-                    result = {error, Error},
-                    type = Type,
-                    options = Options
-                })
-            ),
-            {stop, normal, State};
-        {CurrentLock, _PreviousOriginNode} ->
-            ?'log-info'("~p Locks match ~p", [?MODULE, CurrentLock]),
-            %% Change change the connection attributed to ulid to this one
-            OtherConnectionPid = gproc:where({n, l, {arc, out, Ulid}}),
-            gproc:unreg_other({n, l, {arc, out, Ulid}}, OtherConnectionPid),
-            gproc:reg({n, l, {arc, in, Ulid}}, {NewLock, OriginNode}),
-            %% Stop the previous connection
-            gen_statem:stop(OtherConnectionPid, {shutdown, mirror}, infinity),
-            arc_event(
-                NameSpace,
-                Ulid,
-                #evt_arc_connected_in{
-                    ulid = Ulid,
-                    lock = NewLock,
-                    source = OriginNode
-                }
-            ),
-
+    case bbsvx_arc_registry:mirror(NameSpace, OriginNode, Ulid, CurrentLock, NewLock, self()) of
+        ok ->
             %% Notify other side we accepted the connection
             Transport:send(
                 Socket,
@@ -726,25 +667,16 @@ process_subscription_header(
                 })
             ),
             Transport:setopts(Socket, [{active, true}]),
+            ?'log-info'("~p Mirror arc lock updated ~p -> ~p", [?MODULE, CurrentLock, NewLock]),
             {next_state, connected, State#state{
                 my_ulid = Ulid,
                 lock = NewLock
             }};
-        Else ->
-            ?'log-warning'(
-                "~p Locks don't match incoming arc lock ~p    stored locky lock : ~p",
-                [?MODULE, CurrentLock, Else]
-            ),
-            Transport:send(
-                Socket,
-                encode_message_helper(#header_join_ack{
-                    result = {error, lock_mismatch},
-                    type = Type,
-                    options = Options
-                })
-            ),
+        {error, Reason} ->
+            ?'log-warning'("~p Mirror arc lock update failed ~p", [?MODULE, Reason]),
             {stop, normal, State}
     end;
+
 process_subscription_header(
     #header_join{
         type = normal = Type,
@@ -757,46 +689,17 @@ process_subscription_header(
         namespace = NameSpace,
         transport = Transport,
         socket = Socket,
-        origin_node = OriginNode,
-        my_node = MyNode
+        origin_node = OriginNode
     } = State
 ) when NameSpace =/= undefined andalso OriginNode =/= undefined ->
-    Key = {arc, '_', '_'},
-    GProcKey = {'_', '_', Key},
-    MatchHead = {GProcKey, '_', '_'},
-    Guard = [],
-    Result = ['$$'],
-    GG = gproc:select([{MatchHead, Guard, Result}]),
-    ?'log-info'("GG: ~p", [GG]),
     ?'log-info'("~p Normal connection ~p   current lock ~p", [?MODULE, Ulid, CurrentLock]),
+        ?'log-info'("~p Ulid ~p", [?MODULE, Ulid]),
+
     %% This is a swapped connection, so we shoud already have a
     %% server connection undr this arc ulid.
-    case gproc:lookup_value({n, l, {arc, in, Ulid}}) of
-        {gproc_error, Error} ->
-            ?'log-alert'("~p No arc found for ulid ~p", [?MODULE, Ulid]),
-            Transport:send(
-                Socket,
-                encode_message_helper(#header_join_ack{
-                    result = {error, Error},
-                    type = Type,
-                    options = Options
-                })
-            ),
-            {stop, normal, State};
-        {CurrentLock, PreviousOriginNode} ->
-            ?'log-info'("~p Locks match ~p", [?MODULE, CurrentLock]),
-            %% Change change the connection attributed to ulid to this one
-            Key = {arc, '_', '_'},
-            GProcKey = {'_', '_', Key},
-            MatchHead = {GProcKey, '_', '_'},
-            Guard = [],
-            Result = ['$$'],
-            GP = gproc:select([{MatchHead, Guard, Result}]),
-            ?'log-info'("GP: ~p", [GP]),
-            OtherConnectionPid = gproc:where({n, l, {arc, in, Ulid}}),
-            gproc:unreg_other({n, l, {arc, in, Ulid}}, OtherConnectionPid),
-            gproc:reg({n, l, {arc, in, Ulid}}, {NewLock, OriginNode}),
-            %% Notify other side we accepted the connection
+
+    case bbsvx_arc_registry:swap(NameSpace, OriginNode, Ulid, CurrentLock, NewLock, self()) of
+        ok ->
             Transport:send(
                 Socket,
                 encode_message_helper(#header_join_ack{
@@ -806,26 +709,14 @@ process_subscription_header(
                 })
             ),
 
-            arc_event(NameSpace, Ulid, #evt_arc_swapped_in{
-                ulid = Ulid,
-                newlock = NewLock,
-                destination = MyNode,
-                previous_source = PreviousOriginNode,
-                new_source = OriginNode
-            }),
-
-            %% Stop the previous connection
-            gen_statem:stop(OtherConnectionPid, {shutdown, {swap, OriginNode, NewLock}}, infinity),
             Transport:setopts(Socket, [{active, true}]),
+
             {next_state, connected, State#state{
                 my_ulid = Ulid,
                 lock = NewLock
             }};
-        Else ->
-            ?'log-warning'(
-                "~p Locks don't match ~p    incoming lock : ~p",
-                [?MODULE, CurrentLock, Else]
-            ),
+        {error, Reason} ->
+            ?'log-warning'("~p Swap arc lock update failed ~p", [?MODULE, Reason]),
             Transport:send(
                 Socket,
                 encode_message_helper(#header_join_ack{

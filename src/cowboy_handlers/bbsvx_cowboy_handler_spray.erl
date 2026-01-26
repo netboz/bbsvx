@@ -129,10 +129,12 @@ get_view(Type, Namespace) when Type == get_inview orelse Type == get_outview ->
     %% Look for spray agent
     case Type of
         get_inview ->
-            InView = bbsvx_actor_spray:get_inview(Namespace),
+            %% Get ALL inview arcs for visualization (not just available ones)
+            InView = bbsvx_actor_spray:get_all_inview(Namespace),
             {ok, InView};
         get_outview ->
-            OutView = bbsvx_actor_spray:get_outview(Namespace),
+            %% Get ALL outview arcs for visualization (not just available ones)
+            OutView = bbsvx_actor_spray:get_all_outview(Namespace),
             {ok, OutView}
     end.
 
@@ -160,7 +162,7 @@ provide_outview(Req, #{namespace := Namespace} = State) ->
                         ) ->
                             #{
                                 my_id => MyId,
-                                ulid => Ulid,
+                                ulid => format_ulid(Ulid),
                                 source => node_entry_to_map(Source),
                                 target => node_entry_to_map(Target),
                                 lock => Lock,
@@ -198,7 +200,7 @@ provide_inview(Req, #{namespace := Namespace} = State) ->
                         ) ->
                             #{
                                 my_id => MyId,
-                                ulid => Ulid,
+                                ulid => format_ulid(Ulid),
                                 source => node_entry_to_map(Source),
                                 target => node_entry_to_map(Target),
                                 lock => Lock,
@@ -219,6 +221,17 @@ format_host(Host) when is_list(Host) ->
     list_to_binary(Host);
 format_host({A, B, C, D}) ->
     list_to_binary(io_lib:format("~p.~p.~p.~p", [A, B, C, D])).
+
+%% Convert ULID to binary format for JSON encoding
+-spec format_ulid(binary() | tuple()) -> binary().
+format_ulid(Ulid) when is_binary(Ulid) ->
+    Ulid;
+format_ulid({Timestamp, RandomBytes}) when is_integer(Timestamp), is_list(RandomBytes) ->
+    %% Convert tuple format {Timestamp, [Bytes]} to binary representation
+    %% This is a simple hex encoding for now
+    TimestampBin = integer_to_binary(Timestamp),
+    RandomBin = list_to_binary([integer_to_binary(B, 16) || B <- RandomBytes]),
+    <<TimestampBin/binary, $-, RandomBin/binary>>.
 
 %% Convert a node_entry to a map
 -spec node_entry_to_map(node_entry()) -> map().

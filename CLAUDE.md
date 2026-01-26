@@ -273,36 +273,6 @@ BBSvx provides the following REST API endpoints (default port: 8085):
 
 ## Recent Work and Improvements
 
-### Protocol Performance (ASN.1 Implementation)
-BBSvx now uses **ASN.1 encoding as the default protocol format** for superior performance:
-
-- **Performance**: ASN.1 is 102x faster than Erlang term encoding (0.34 μs vs 34.5 μs per operation)
-- **Size**: ASN.1 produces 2.4x smaller messages (90 bytes vs 118 bytes)
-- **Interoperability**: Standardized format enables cross-language compatibility
-- **Migration**: Automatic format detection maintains backward compatibility with term encoding
-
-#### Protocol Codec Usage
-```erlang
-%% Default encoding (ASN.1)
-{ok, Binary} = bbsvx_protocol_codec:encode(Message),
-{ok, DecodedMessage} = bbsvx_protocol_codec:decode(Binary),
-
-%% Explicit format selection
-{ok, ASN1Binary} = bbsvx_protocol_codec:encode(Message, asn1),
-{ok, TermBinary} = bbsvx_protocol_codec:encode(Message, term),
-
-%% Auto-detection for migration
-{ok, Message} = bbsvx_protocol_codec:decode(Binary, auto),
-```
-
-#### Benchmarking
-Use `benchmark_test:run().` to compare encoding performance:
-```bash
-# In Erlang shell
-rebar3 shell
-> benchmark_test:run().
-```
-
 ### SPRAY Protocol Stability Fixes
 Fixed critical race conditions in arc exchange that caused "depleted views":
 
@@ -312,7 +282,7 @@ Fixed critical race conditions in arc exchange that caused "depleted views":
 - **Impact**: `get_inview/1`/`get_outview/1` returned empty results, showing as depleted views in Grafana
 
 #### Solution Implemented
-Atomic arc swapping in `bbsvx_server_connection.erl` and `bbsvx_server_connection_asn1.erl`:
+Atomic arc swapping in `bbsvx_server_connection.erl`:
 ```erlang
 %% Atomic arc swap: register new connection first, then unregister old
 try

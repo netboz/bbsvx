@@ -4,8 +4,8 @@
 
 -module(bbsvx_client_connection).
 
--moduledoc "BBSvx Client Connection Module\n\n"
-"Gen State Machine for managing outbound P2P connections in SPRAY protocol.\n\n"
+-moduledoc "BBSvx Client Connection Module"
+"Gen State Machine for managing outbound P2P connections in SPRAY protocol."
 "Handles connection establishment, registration, arc exchanges, and message forwarding.".
 
 -behaviour(gen_statem).
@@ -85,13 +85,19 @@ start_link(join, NameSpace, MyNode, TargetNode, Ulid, Lock, Type, Options) ->
 ) ->
     gen_statem:start_ret().
 start_link(forward_join, NameSpace, MyNode, TargetNode, Options) ->
+    Ulid = ulid:new(),
     gen_statem:start_link(
         ?MODULE,
-        [forward_join, NameSpace, MyNode, TargetNode, Options],
+        [forward_join, NameSpace, MyNode, TargetNode, Options, Ulid],
         []
     );
 start_link(register, NameSpace, MyNode, TargetNode, Options) ->
-    gen_statem:start_link(?MODULE, [register, NameSpace, MyNode, TargetNode, Options], []).
+    Ulid = ulid:new(),
+    gen_statem:start_link(
+        ?MODULE,
+        [register, NameSpace, MyNode, TargetNode, Options, Ulid],
+        []
+    ).
 
 new(Type, NameSpace, MyNode, TargetNode) ->
     supervisor:start_child(
@@ -113,11 +119,21 @@ stop() ->
 %%% Gen State Machine Callbacks
 %%%=============================================================================
 
-init([forward_join, NameSpace, MyNode, TargetNode, Options]) ->
+init([forward_join, NameSpace, MyNode, TargetNode, Options, Ulid]) ->
     ?'log-info'("Initializing forward join connection fromage ~p, to ~p", [MyNode, TargetNode]),
     Lock = get_lock(?LOCK_SIZE),
-    Ulid = get_ulid(),
-    gproc:reg({n, l, {arc, out, Ulid}}, {Lock, TargetNode}),
+
+    %% Register this arc process with arc_registry
+    Arc = #arc{
+        ulid = Ulid,
+        lock = Lock,
+        source = MyNode,
+        target = TargetNode,
+        age = 0,
+        status = join_forwarding
+    },
+    ok = bbsvx_arc_registry:register(NameSpace, out, Ulid, self(), Arc),
+
     {ok, connect, #state{
         type = forward_join,
         namespace = NameSpace,
@@ -136,7 +152,17 @@ init([join, NameSpace, MyNode, TargetNode, Ulid, TargetLock, Type, Options]) ->
         [Ulid, TargetNode, Type]
     ),
 
-    gproc:reg({n, l, {arc, out, Ulid}}, {TargetLock, TargetNode}),
+    %% Register arc with arc_registry for lock validation during handshake
+    Arc = #arc{
+        ulid = Ulid,
+        lock = TargetLock,
+        source = MyNode,
+        target = TargetNode,
+        age = 0,
+        status = joining
+    },
+    ok = bbsvx_arc_registry:register(NameSpace, out, Ulid, self(), Arc),
+
     %% We have CONNECTION_TIMEOUT to connect to the target node
     %% Start a timer to notify timeout
     JoinTimer = erlang:send_after(?CONNECTION_TIMEOUT, self(), {close, connection_timeout}),
@@ -151,7 +177,7 @@ init([join, NameSpace, MyNode, TargetNode, Ulid, TargetLock, Type, Options]) ->
         options = Options,
         target_node = TargetNode
     }};
-init([register, NameSpace, MyNode, TargetNode, Options]) ->
+init([register, NameSpace, MyNode, TargetNode, Options, Ulid]) ->
     process_flag(trap_exit, true),
     ?'log-info'(
         "Initializing register connection from ~p, to ~p",
@@ -162,8 +188,17 @@ init([register, NameSpace, MyNode, TargetNode, Options]) ->
     ),
     Lock = get_lock(?LOCK_SIZE),
 
-    Ulid = get_ulid(),
-    gproc:reg({n, l, {arc, out, Ulid}}, {Lock, TargetNode}),
+    %% Register this arc process with arc_registry
+    Arc = #arc{
+        ulid = Ulid,
+        lock = Lock,
+        source = MyNode,
+        target = TargetNode,
+        age = 0,
+        status = registering
+    },
+    ok = bbsvx_arc_registry:register(NameSpace, out, Ulid, self(), Arc),
+
     {ok, connect, #state{
         type = register,
         namespace = NameSpace,
@@ -176,42 +211,6 @@ init([register, NameSpace, MyNode, TargetNode, Options]) ->
     }}.
 
 %%%=============================================================================
-%%% Terminate Helpers
-%%%=============================================================================
-
-%% @doc
-%% Unregister arc from gproc immediately to prevent race conditions
-%% where dying arcs are included in exchange proposals.
-%% This function logs when unregistration fails to aid in debugging.
-%% @end
-unregister_arc(Ulid, NameSpace, Direction) ->
-    %% Unregister named registration {n, l, {arc, Direction, Ulid}}
-    %% This may already be unregistered by arc swap (gproc:unreg_other)
-    NamedKey = {n, l, {arc, Direction, Ulid}},
-    try
-        gproc:unreg(NamedKey),
-        ?'log-info'("~p Successfully unregistered named arc ~p ~p",
-                    [?MODULE, Direction, Ulid])
-    catch
-        error:badarg ->
-            ?'log-info'("~p Named arc ~p ~p already unregistered (likely swapped)",
-                        [?MODULE, Direction, Ulid])
-    end,
-
-    %% Unregister property registration {p, l, {outview, NameSpace}}
-    %% This may not exist if connection never reached connected state
-    ViewKey = {p, l, {outview, NameSpace}},
-    try
-        gproc:unreg(ViewKey),
-        ?'log-info'("~p Successfully unregistered from outview namespace=~p ulid=~p",
-                    [?MODULE, NameSpace, Ulid])
-    catch
-        error:badarg ->
-            ?'log-info'("~p Outview not registered for namespace=~p ulid=~p (not in connected state)",
-                        [?MODULE, NameSpace, Ulid])
-    end.
-
-%%%=============================================================================
 %%% Terminate Callbacks
 %%%=============================================================================
 
@@ -221,9 +220,6 @@ terminate(
     connected,
     #state{ulid = MyUlid, namespace = NameSpace, my_node = MyNode} = State
 ) ->
-    %% Unregister immediately to prevent race conditions
-    unregister_arc(MyUlid, NameSpace, out),
-
     ?'log-info'(
         "~p Terminating connection from ~p, to ~p while in state ~p "
         "with reason ~p",
@@ -250,9 +246,6 @@ terminate(
     connected,
     #state{ulid = MyUlid, namespace = NameSpace, my_node = MyNode} = State
 ) ->
-    %% Unregister immediately to prevent race conditions
-    unregister_arc(MyUlid, NameSpace, out),
-
     ?'log-info'(
         "~p Terminating connection from ~p, to ~p while in state ~p "
         "with reason ~p",
@@ -266,9 +259,6 @@ terminate(
 terminate(
     Reason, connected, #state{ulid = MyUlid, namespace = NameSpace, my_node = MyNode} = State
 ) ->
-    %% Unregister immediately to prevent race conditions
-    unregister_arc(MyUlid, NameSpace, out),
-
     ?'log-info'(
         "~p Terminating connection from ~p, to ~p while in state ~p "
         "with reason ~p",
@@ -282,10 +272,6 @@ terminate(
 terminate(
     Reason, PreviousState, #state{ulid = MyUlid, namespace = NameSpace, my_node = MyNode} = State
 ) ->
-    %% Unregister immediately to prevent race conditions
-    %% Property registration may not exist if not in connected state
-    unregister_arc(MyUlid, NameSpace, out),
-
     ?'log-warning'(
         "~p Terminating connection from ~p, to ~p while in state ~p "
         "with reason ~p",
@@ -392,6 +378,8 @@ connect(
             case ConnectHeader#header_connect_ack.result of
                 ok ->
                     <<_:ByteRead/binary, BinLeft/binary>> = Bin,
+                    %% Update arc target with actual node_id in registry
+                    bbsvx_arc_registry:update_target_node_id(NameSpace, out, MyUlid, TargetNodeId),
 
                     case Type of
                         register ->
@@ -432,7 +420,10 @@ connect(
                                 ?HEADER_TIMEOUT};
                         mirror ->
                             NewLock = get_lock(?LOCK_SIZE),
-                            gproc:set_value({n, l, {arc, out, MyUlid}}, {NewLock, TargetNode}),
+                            %% Update arc lock in registry
+                            {ok, {Arc, _Pid}} = bbsvx_arc_registry:get_arc(NameSpace, out, MyUlid),
+                            UpdatedArc = Arc#arc{lock = NewLock},
+                            ok = bbsvx_arc_registry:register(NameSpace, out, MyUlid, self(), UpdatedArc),
 
                             gen_tcp:send(
                                 Socket,
@@ -456,7 +447,11 @@ connect(
                                 ?HEADER_TIMEOUT};
                         normal ->
                             NewLock = get_lock(?LOCK_SIZE),
-                            gproc:set_value({n, l, {arc, out, MyUlid}}, {NewLock, TargetNode}),
+                            %% Update arc lock in registry
+                            {ok, {Arc, _Pid}} = bbsvx_arc_registry:get_arc(NameSpace, out, MyUlid),
+                            UpdatedArc = Arc#arc{lock = NewLock},
+                            ok = bbsvx_arc_registry:register(NameSpace, out, MyUlid, self(), UpdatedArc),
+
                             gen_tcp:send(
                                 Socket,
                                 encode_message_helper(#header_join{
@@ -617,9 +612,13 @@ register(
                         #evt_arc_connected_out{
                             ulid = MyUlid,
                             lock = CurrentLock,
-                            target = TargetNode
+                            target = TargetNode,
+                            connection_type = register
                         }
                     ),
+
+                    %% Mark arc as available for exchanges now that it's fully connected
+                    bbsvx_arc_registry:update_status(NameSpace, out, MyUlid, available),
 
                     {next_state, connected, State#state{socket = Socket, buffer = BinLeft}};
                 Else ->
@@ -713,9 +712,13 @@ forward_join(
                         #evt_arc_connected_out{
                             target = TargetNode,
                             lock = CurrentLock,
-                            ulid = MyUlid
+                            ulid = MyUlid, 
+                            connection_type = forward_join
                         }
                     ),
+
+                    %% Mark arc as available for exchanges now that it's fully connected
+                    bbsvx_arc_registry:update_status(NameSpace, out, MyUlid, available),
 
                     {next_state, connected, State#state{socket = Socket, buffer = BinLeft}};
                 Else ->
@@ -815,9 +818,13 @@ join(
                         #evt_arc_connected_out{
                             ulid = MyUlid,
                             lock = CurrentLock,
-                            target = TargetNode
+                            target = TargetNode,
+                            connection_type = join
                         }
                     ),
+
+                    %% Mark arc as available for exchanges now that it's fully connected
+                    bbsvx_arc_registry:update_status(NameSpace, out, MyUlid, available),
 
                     {next_state, connected, State#state{socket = Socket, buffer = BinLeft}};
                 Else ->
@@ -834,8 +841,8 @@ join(
                     ),
                     {stop, normal, State}
             end;
-        _ ->
-            logger:error("~p Invalid header received from ~p~n", [?MODULE, TargetNode]),
+        Other ->
+            logger:error("~p Invalid header received from ~p   Header ~pn", [?MODULE, TargetNode, Other]),
             gproc:send(
                 {p, l, {?MODULE, NameSpace}},
                 {connection_error, invalid_header, NameSpace, TargetNode}
@@ -887,37 +894,20 @@ connected(
     _,
     #state{
         namespace = NameSpace,
-        target_node = TargetNode,
-        my_node = MyNode,
         ulid = MyUlid
     } =
         State
 ) ->
-    gproc:reg(
-        {p, l, {outview, NameSpace}},
-        #arc{
-            source = MyNode,
-            target = TargetNode,
-            lock = State#state.current_lock,
-            ulid = MyUlid
-        }
-    ),
+    %% Update arc status to available now that connection is established
+    %% (process is already registered via via tuple)
+    ok = bbsvx_arc_registry:update_status(NameSpace, out, MyUlid, available),
     prometheus_gauge:inc(<<"bbsvx_spray_outview_size">>, [NameSpace]),
 
     {keep_state, State};
 connected(info, {tcp, _Socket, BinData}, #state{buffer = Buffer} = State) ->
     parse_packet(<<Buffer/binary, BinData/binary>>, State);
-connected(info, reset_age, #state{namespace = NameSpace, ulid = Ulid} = State) ->
-    #arc{age = OldAge} = Arc = gproc:get_value({p, l, {outview, NameSpace}}),
-    gproc:set_value({p, l, {outview, NameSpace}}, Arc#arc{age = 0}),
-    ?'log-info'("~p Arc ~p age reset: ~p -> 0", [?MODULE, Ulid, OldAge]),
-    {keep_state, State};
-connected(info, inc_age, #state{namespace = NameSpace, ulid = Ulid} = State) ->
-    #arc{age = CurrentAge} = Arc = gproc:get_value({p, l, {outview, NameSpace}}),
-    NewAge = CurrentAge + 1,
-    gproc:set_value({p, l, {outview, NameSpace}}, Arc#arc{age = NewAge}),
-    ?'log-info'("~p Arc ~p age inc: ~p -> ~p", [?MODULE, Ulid, CurrentAge, NewAge]),
-    {keep_state, State};
+%% Note: reset_age and inc_age are now handled directly by bbsvx_actor_spray
+%% via bbsvx_arc_registry API calls, so these message handlers are removed
 connected(
     info,
     #incoming_event{event = #open_forward_join{} = Msg},
@@ -932,8 +922,7 @@ connected(
     gen_tcp:send(Socket, encode_message_helper(Msg)),
     {keep_state, State};
 connected(info, {send, Event}, #state{socket = Socket} = State) when
-    Socket =/= undefined
-->
+    Socket =/= undefined ->
     gen_tcp:send(Socket, encode_message_helper(Event)),
     {keep_state, State};
 connected(info, {tcp_closed, Socket}, #state{socket = Socket, ulid = MyUlid}) ->
@@ -971,14 +960,6 @@ get_lock(Length) ->
     base64:encode(
         crypto:strong_rand_bytes(Length)
     ).
-
-%% Return a unique identifier
--spec get_ulid() -> binary().
-get_ulid() ->
-    UlidGen = persistent_term:get(ulid_gen),
-    {NewGen, Ulid} = ulid:generate(UlidGen),
-    persistent_term:put(ulid_gen, NewGen),
-    Ulid.
 
 %% Send an event related to arc events on this namespace
 -spec arc_event(binary(), binary(), term()) -> ok.
@@ -1069,6 +1050,10 @@ parse_packet(
                 }
             ),
             parse_packet(BinLeft, State);
+        {complete, {terminate, Reason}, Index} ->
+            <<_:Index/binary, _BinLeft/binary>> = Buffer,
+            ?'log-info'("Connection received terminate message: ~p", [Reason]),
+            {stop, normal};
         {incomplete, Buffer} ->
             {keep_state, State#state{buffer = Buffer}}
     end.

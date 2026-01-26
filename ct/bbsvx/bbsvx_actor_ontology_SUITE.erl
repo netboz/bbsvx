@@ -56,13 +56,14 @@ groups() ->
 
 init_per_suite(Config) ->
     %% Start required applications
-    {ok, _} = application:ensure_all_started(gproc),
-    {ok, _} = application:ensure_all_started(jobs),
-    {ok, _} = application:ensure_all_started(prometheus),
-    mnesia:start(),
+    %% Handle case where apps are already started from previous suite
+    _ = application:ensure_all_started(gproc),
+    _ = application:ensure_all_started(jobs),
+    _ = application:ensure_all_started(prometheus),
+    _ = mnesia:start(),
 
     %% Start bbsvx application
-    application:ensure_all_started(bbsvx),
+    _ = application:ensure_all_started(bbsvx),
 
     Config.
 
