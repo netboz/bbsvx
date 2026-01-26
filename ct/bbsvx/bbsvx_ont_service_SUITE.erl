@@ -65,6 +65,13 @@ end_per_testcase(TestCase, Config) ->
     %% Stop bbsvx application first
     application:stop(bbsvx),
 
+    %% Stop the ranch listener explicitly (not stopped by application:stop)
+    try
+        ranch:stop_listener(bbsvx_spray_service)
+    catch
+        _:_ -> ok
+    end,
+
     %% Also stop jobs application to clean up queues
     %% (jobs is a dependency that may persist between tests)
     application:stop(jobs),

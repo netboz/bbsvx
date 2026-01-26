@@ -59,6 +59,13 @@ end_per_testcase(_TestName, Config) ->
     Config.
 
 end_per_suite(Config) ->
+    %% Stop the ranch listener first (not stopped by application:stop)
+    try
+        ranch:stop_listener(bbsvx_spray_service)
+    catch
+        _:_ -> ok
+    end,
+
     %% Stop applications in reverse order
     Started = proplists:get_value(started_apps, Config, []),
     [application:stop(App) || App <- lists:reverse(Started)],
