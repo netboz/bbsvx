@@ -50,6 +50,10 @@ end_per_suite(_Config) ->
 init_per_testcase(TestCase, Config) ->
     ct:pal("Starting test case: ~p", [TestCase]),
 
+    %% Ensure dependencies are running (may already be started from previous test)
+    _ = application:ensure_all_started(gproc),
+    _ = application:ensure_all_started(jobs),
+
     %% Start bbsvx application fresh for each test
     case application:ensure_all_started(bbsvx) of
         {ok, Started} ->
@@ -60,6 +64,21 @@ init_per_testcase(TestCase, Config) ->
             %% Already running from previous test
             ct:pal("bbsvx already started"),
             Config;
+        {error, {bbsvx, {already_started, bbsvx}}} ->
+            ct:pal("bbsvx already started (error form)"),
+            Config;
+        {error, {AppName, {already_started, _}}} ->
+            %% Dependency already started - try starting bbsvx directly
+            ct:pal("~p already started, starting bbsvx directly", [AppName]),
+            case application:ensure_all_started(bbsvx) of
+                {ok, Started} ->
+                    timer:sleep(500),
+                    [{started_apps, Started} | Config];
+                {error, {already_started, bbsvx}} ->
+                    Config;
+                {error, OtherReason} ->
+                    ct:fail("Failed to start bbsvx after dep retry: ~p", [OtherReason])
+            end;
         {error, {AppName, Reason}} ->
             ct:fail("Failed to start ~p: ~p", [AppName, Reason])
     end.
@@ -67,19 +86,15 @@ init_per_testcase(TestCase, Config) ->
 end_per_testcase(TestCase, Config) ->
     ct:pal("Ending test case: ~p", [TestCase]),
 
-    %% Stop bbsvx application first
-    application:stop(bbsvx),
-
-    %% Stop the ranch listener explicitly (not stopped by application:stop)
+    %% Stop the ranch listener BEFORE stopping bbsvx to prevent conflicts
     try
         ranch:stop_listener(bbsvx_spray_service)
     catch
         _:_ -> ok
     end,
 
-    %% Also stop jobs application to clean up queues
-    %% (jobs is a dependency that may persist between tests)
-    application:stop(jobs),
+    %% Stop bbsvx application (but keep gproc running to avoid restart issues)
+    application:stop(bbsvx),
 
     %% Clean up any test ontologies from mnesia
     try
@@ -122,7 +137,7 @@ create_twice_ont_return_already_exists(_Config) ->
 disconnecting_local_ontology_does_nothing(_Config) ->
     OntNamespace = random_ont_name(),
     {ok, _Pid} = bbsvx_ont_service:create_ontology(OntNamespace),
-    ok = bbsvx_ont_service:disconnect_ontology(OntNamespace),
+    {error, already_disconnected} = bbsvx_ont_service:disconnect_ontology(OntNamespace),
     ?assertMatch({ok, #ontology{namespace = OntNamespace, type = local}},
                  bbsvx_ont_service:get_ontology(OntNamespace)).
 

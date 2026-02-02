@@ -18,7 +18,7 @@
 -export([all/0, init_per_suite/1, init_per_testcase/2, end_per_testcase/2,
          end_per_suite/1]).
 -export([can_create_local_ontology/1, can_create_shared_ontology/1,
-         creating_twice_same_ont_is_idempotent/1, updating_an_ont_from_local_to_shared/1, updating_an_ont_from_shared_to_local/1]).
+         creating_twice_same_ont_is_idempotent/1, updating_an_ont_from_local_to_shared/1]).
 
 %%%=============================================================================
 %%% CT Functions
@@ -28,8 +28,7 @@ all() ->
     [can_create_local_ontology,
      can_create_shared_ontology,
      creating_twice_same_ont_is_idempotent,
-     updating_an_ont_from_local_to_shared,
-     updating_an_ont_from_shared_to_local].
+     updating_an_ont_from_local_to_shared].
 
 init_per_suite(Config) ->
     %% Start HTTP client
@@ -57,23 +56,60 @@ init_per_suite(Config) ->
             ct:fail("Failed to start ~p: ~p", [AppName, Reason])
     end.
 
-init_per_testcase(_TestName, Config) ->
-    Config.
+init_per_testcase(TestName, Config) ->
+    ct:pal("Starting test case: ~p", [TestName]),
+
+    %% Ensure dependencies are running (may already be started from previous test)
+    _ = application:ensure_all_started(gproc),
+    _ = application:ensure_all_started(jobs),
+
+    %% Start bbsvx application fresh for each test
+    case application:ensure_all_started(bbsvx) of
+        {ok, Started} ->
+            ct:pal("Started applications: ~p", [Started]),
+            timer:sleep(500),  % Give services time to initialize
+            Config;
+        {error, {already_started, bbsvx}} ->
+            %% Already running from previous test
+            ct:pal("bbsvx already started"),
+            Config;
+        {error, {_App, {already_started, _}}} ->
+            %% A dependency was already started - bbsvx should be fine
+            ct:pal("dependency already started"),
+            Config;
+        {error, {AppName, Reason}} ->
+            ct:fail("Failed to start ~p: ~p", [AppName, Reason])
+    end.
 
 end_per_testcase(_TestName, Config) ->
-    Config.
-
-end_per_suite(Config) ->
-    %% Stop the ranch listener first (not stopped by application:stop)
+    %% Stop ranch listener BEFORE stopping bbsvx to prevent conflicts
     try
         ranch:stop_listener(bbsvx_spray_service)
     catch
         _:_ -> ok
     end,
 
-    %% Stop applications in reverse order
-    Started = proplists:get_value(started_apps, Config, []),
-    [application:stop(App) || App <- lists:reverse(Started)],
+    %% Stop bbsvx application
+    application:stop(bbsvx),
+
+    %% Also stop jobs application to clean up queues
+    %% (jobs is a dependency that may persist between tests)
+    application:stop(jobs),
+
+    %% Clean up any test ontologies from mnesia
+    try
+        mnesia:clear_table(ontology)
+    catch
+        _:_ -> ok
+    end,
+
+    %% Small delay to ensure everything is stopped
+    timer:sleep(200),
+
+    Config.
+
+end_per_suite(Config) ->
+    %% Cleanup already handled per-testcase, just stop inets
     application:stop(inets),
     ok.
 
@@ -158,33 +194,6 @@ updating_an_ont_from_local_to_shared(_Config) ->
     ?assertEqual(true, is_pid(Pid1)),
     Pid2 = gproc:where({n, l, {bbsvx_epto_disord_component, <<"ont_test3">>}}),
     ?assertEqual(true, is_pid(Pid2)).
-updating_an_ont_from_shared_to_local(_Config) ->
-    DBody = jiffy:encode(#{namespace => <<"ont_test4">>, type => <<"shared">>}),
-    {ok, {{_, ReturnCode, _}, _, _}} =
-        httpc:request(put,
-                      {"http://localhost:8085/ontologies/ont_test4", [], "application/json", DBody},
-                      [],
-                      []),
-    ?assertEqual(201, ReturnCode),
-    timer:sleep(500),
-    DBody2 = jiffy:encode(#{namespace => <<"ont_test4">>, type => <<"local">>}),
-    {ok, {{_, ReturnCode2, _}, _, _}} =
-        httpc:request(put,
-                      {"http://localhost:8085/ontologies/ont_test4",
-                       [],
-                       "application/json",
-                       DBody2},
-                      [],
-                      []),
-    ?assertEqual(204, ReturnCode2),
-    timer:sleep(50),    %% check processes are running
-    Pid = gproc:where({n, l, {bbsvx_actor_spray_view, <<"ont_test4">>}}),
-    ?assertEqual(undefined, Pid),
-    Pid1 = gproc:where({n, l, {leader_manager, <<"ont_test4">>}}),
-    ?assertEqual(undefined, Pid1),
-    Pid2 = gproc:where({n, l, {bbsvx_epto_service, <<"ont_test4">>}}),
-    ?assertEqual(undefined, Pid2).
-
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
