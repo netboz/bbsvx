@@ -50,37 +50,35 @@ end_per_suite(_Config) ->
 init_per_testcase(TestCase, Config) ->
     ct:pal("Starting test case: ~p", [TestCase]),
 
-    %% Ensure dependencies are running (may already be started from previous test)
-    _ = application:ensure_all_started(gproc),
-    _ = application:ensure_all_started(jobs),
+    %% Check if bbsvx is already running
+    case lists:keyfind(bbsvx, 1, application:which_applications()) of
+        {bbsvx, _, _} ->
+            ct:pal("bbsvx already running"),
+            Config;
+        false ->
+            %% Need to start bbsvx - handle potential orphan gproc process
+            start_bbsvx_safely(Config)
+    end.
 
-    %% Start bbsvx application fresh for each test
+start_bbsvx_safely(Config) ->
+    %% Kill any orphan gproc process that might exist from previous test run
+    case whereis(gproc) of
+        undefined ->
+            ok;
+        Pid when is_pid(Pid) ->
+            ct:pal("Found orphan gproc process ~p, killing it", [Pid]),
+            exit(Pid, kill),
+            timer:sleep(100)
+    end,
+
+    %% Now start bbsvx
     case application:ensure_all_started(bbsvx) of
         {ok, Started} ->
             ct:pal("Started applications: ~p", [Started]),
-            timer:sleep(500),  % Give services time to initialize
+            timer:sleep(500),
             [{started_apps, Started} | Config];
-        {error, {already_started, bbsvx}} ->
-            %% Already running from previous test
-            ct:pal("bbsvx already started"),
-            Config;
-        {error, {bbsvx, {already_started, bbsvx}}} ->
-            ct:pal("bbsvx already started (error form)"),
-            Config;
-        {error, {AppName, {already_started, _}}} ->
-            %% Dependency already started - try starting bbsvx directly
-            ct:pal("~p already started, starting bbsvx directly", [AppName]),
-            case application:ensure_all_started(bbsvx) of
-                {ok, Started} ->
-                    timer:sleep(500),
-                    [{started_apps, Started} | Config];
-                {error, {already_started, bbsvx}} ->
-                    Config;
-                {error, OtherReason} ->
-                    ct:fail("Failed to start bbsvx after dep retry: ~p", [OtherReason])
-            end;
-        {error, {AppName, Reason}} ->
-            ct:fail("Failed to start ~p: ~p", [AppName, Reason])
+        {error, Reason} ->
+            ct:fail("Failed to start bbsvx: ~p", [Reason])
     end.
 
 end_per_testcase(TestCase, Config) ->

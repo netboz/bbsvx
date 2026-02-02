@@ -73,21 +73,14 @@ end_per_suite(_Config) ->
 init_per_testcase(TestCase, Config) ->
     ct:pal("Starting test: ~p", [TestCase]),
 
-    %% Ensure dependencies are running (may already be started from previous test)
-    _ = application:ensure_all_started(gproc),
-    _ = application:ensure_all_started(jobs),
-
-    %% Ensure bbsvx application is running with clean state
-    case application:ensure_all_started(bbsvx) of
-        {ok, _Started} ->
-            timer:sleep(500);  % Give services time to initialize
-        {error, {already_started, bbsvx}} ->
+    %% Check if bbsvx is already running
+    case lists:keyfind(bbsvx, 1, application:which_applications()) of
+        {bbsvx, _, _} ->
+            ct:pal("bbsvx already running"),
             ok;
-        {error, {_App, {already_started, _}}} ->
-            %% A dependency was already started - bbsvx should be fine
-            ok;
-        {error, Reason} ->
-            ct:fail("Failed to start bbsvx application: ~p", [Reason])
+        false ->
+            %% Need to start bbsvx - handle orphan gproc process
+            start_bbsvx_safely()
     end,
 
     %% Generate unique namespace for this test
@@ -400,3 +393,23 @@ wait_for_death(Pid, Timeout) when Timeout > 0 ->
     end;
 wait_for_death(_Pid, _Timeout) ->
     ok.
+
+start_bbsvx_safely() ->
+    %% Kill any orphan gproc process that might exist from previous test run
+    case whereis(gproc) of
+        undefined ->
+            ok;
+        Pid when is_pid(Pid) ->
+            ct:pal("Found orphan gproc process ~p, killing it", [Pid]),
+            exit(Pid, kill),
+            timer:sleep(100)
+    end,
+
+    %% Now start bbsvx
+    case application:ensure_all_started(bbsvx) of
+        {ok, _Started} ->
+            timer:sleep(500),
+            ok;
+        {error, Reason} ->
+            ct:fail("Failed to start bbsvx: ~p", [Reason])
+    end.
