@@ -405,6 +405,14 @@ start_bbsvx_safely() ->
             timer:sleep(100)
     end,
 
+    %% Clean up any orphan ranch listener from previous test run
+    try
+        ranch:stop_listener(bbsvx_spray_service),
+        ct:pal("Stopped orphan ranch listener bbsvx_spray_service")
+    catch
+        _:_ -> ok
+    end,
+
     %% Now start bbsvx
     case application:ensure_all_started(bbsvx) of
         {ok, _Started} ->

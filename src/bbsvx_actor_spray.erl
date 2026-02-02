@@ -56,7 +56,6 @@ Author: yan
     broadcast_unique/2,
     get_n_unique_random/2,
     broadcast_unique_random_subset/3,
-    get_inview/1,
     get_all_inview/1,
     get_all_outview/1,
     get_views/1
@@ -140,33 +139,10 @@ init([NameSpace, Options]) ->
 
     SprayTimer = spawn_link(?MODULE, trigger_exchange, [MyPid]),
 
-    %% TODO: Reove next
-    Data =
-        #{
-            action => <<"add">>,
-            node_id => MyNodeId,
-            metadata =>
-                #{
-                    host => format_host(Host),
-                    port => Port,
-                    namespace => NameSpace,
-                    node_id => MyNodeId
-                }
-        },
-    %?'log-info'("add node post data: ~p", [Data]),
-    %% Encode Data to json
-    Json = jiffy:encode(Data),
-    %% Post json data to http://graph-visualizer/nodes
-    %% TODO: move next to another place
-    httpc:request(
-        post,
-        {"http://graph-visualizer:3400/nodes", [], "application/json", Json},
-        [],
-        []
-    ),
+    %% Notify subscribers that this node has started (for graph visualizer when enabled)
+    gproc:send({p, l, {spray_exchange, NameSpace}},
+        #incoming_event{event = {node_started, NameSpace, MyNode}}),
 
-    %Me = self(),
-    %SprayTimer = erlang:start_timer(?EXCHANGE_INTERVAL, Me, spray_time),
     {ok, disconnected, #state{
         namespace = NameSpace,
         spray_timer = SprayTimer,
@@ -179,7 +155,7 @@ init([NameSpace, Options]) ->
 terminate(
     Reason,
     _CurrentState,
-    #state{namespace = NameSpace, my_node = #node_entry{node_id = MyNodeId}}
+    #state{namespace = NameSpace, my_node = #node_entry{node_id = MyNodeId} = MyNode}
 ) ->
     ?'log-info'("spray Agent ~p : Terminating. Reason :~p", [MyNodeId, Reason]),
     % Normal termination
@@ -219,18 +195,12 @@ terminate(
         fun({#arc{ulid = Ulid}, _}) -> terminate_connection(NameSpace, Ulid, in, Reason) end,
         InArcs
     ),
-    ?'log-info'("4", []),
-    Data = #{action => <<"remove">>, node_id => MyNodeId},
-    %?'log-info'("add node post data: ~p", [Data]),
-    %% Encode Data to json
-    Json = jiffy:encode(Data),
-    %% Post json data to http://graph-visualizer/nodes
-    httpc:request(
-        post,
-        {"http://graph-visualizer:3400/nodes", [], "application/json", Json},
-        [],
-        []
-    ),
+
+    %% Notify subscribers that this node has stopped (for graph visualizer when enabled)
+    gproc:send({p, l, {spray_exchange, NameSpace}},
+        #incoming_event{event = {node_stopped, NameSpace, MyNode}}),
+
+    ?'log-info'("spray Agent ~p : Termination complete", [MyNodeId]),
     Reason.
 
 code_change(_Vsn, State, Data, _Extra) ->
@@ -866,7 +836,7 @@ handle_event(
 
     %% Get only available arcs (not currently being exchanged)
     OutViewAvailable = bbsvx_arc_registry:get_available_arcs(State#state.namespace, out),
-    InView = get_inview(State#state.namespace),
+    InView = bbsvx_arc_registry:get_all_arcs(State#state.namespace, in),
 
     ?'log-info'("Start manage quitted node ~p", [OutViewAvailable]),
     manage_quitted_node(OutViewAvailable, InView, Evt, State);
@@ -1251,7 +1221,7 @@ handle_event(
     ),
     %% Get only available arcs (not currently being exchanged)
     OutViewAvailable = bbsvx_arc_registry:get_available_arcs(State#state.namespace, out),
-    InView = get_inview(State#state.namespace),
+    InView = bbsvx_arc_registry:get_all_arcs(State#state.namespace, in),
     ?'log-info'("Start manage quitted node ~p", [OutViewAvailable]),
     manage_quitted_node(OutViewAvailable, InView, Evt, State);
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Connected state %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -2020,7 +1990,7 @@ handle_event(
 
     %% Get only available arcs (not currently being exchanged)
     OutViewAvailable = bbsvx_arc_registry:get_available_arcs(State#state.namespace, out),
-    InView = get_inview(State#state.namespace),
+    InView = bbsvx_arc_registry:get_all_arcs(State#state.namespace, in),
 
     ?'log-info'("Start manage quitted node ~p", [OutViewAvailable]),
     manage_quitted_node(OutViewAvailable, InView, Evt, State);
@@ -2599,19 +2569,6 @@ get_n_unique_random(NameSpace, N) when is_binary(NameSpace) ->
 get_n_unique_random(List, N) ->
     Shuffled = [X || {_, X} <- lists:sort([{rand:uniform(), E} || E <- List])],
     lists:sublist(Shuffled, N).
-
--doc """
-Get the inview of a namespace.
-
-**IMPORTANT**: Uses `get_all_arcs` to count ALL arcs for "empty inview" checks,
-not just available ones (an arc being exchanged is still a connection).
-
-Returns: List of all incoming arcs
-""".
--spec get_inview(binary()) -> [arc()].
-get_inview(NameSpace) ->
-    %% For empty check, we need ALL arcs - an arc in exchanging status is still there
-    [Arc || {Arc, _} <- bbsvx_arc_registry:get_all_arcs(NameSpace, in)].
 
 -doc """
 Get ALL outview arcs (for visualization/debugging).

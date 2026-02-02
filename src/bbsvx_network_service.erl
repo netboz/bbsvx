@@ -112,6 +112,8 @@ handle_info(_Info, State) ->
     {noreply, State}.
 
 terminate(_Reason, _State) ->
+    %% Stop the ranch listener to allow clean restart in tests
+    ranch:stop_listener(bbsvx_spray_service),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
