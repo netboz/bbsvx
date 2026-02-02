@@ -28,6 +28,7 @@
     namespace = <<>> :: binary(),
     result :: atom(),
     diff :: term(),
+    bindings = [] :: list(),
     index :: integer(),
     address :: binary(),
     signature :: binary()
@@ -97,6 +98,7 @@
     external_predicates = [] :: [atom()],
     payload :: term(),
     diff = [] :: [term()],
+    bindings = [] :: list(),
     status = created :: atom()
 }).
 -record(transaction_payload_init_ontology, {
