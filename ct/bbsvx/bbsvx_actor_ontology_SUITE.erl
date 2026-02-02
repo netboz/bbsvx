@@ -119,19 +119,8 @@ end_per_testcase(TestCase, Config) ->
             wait_for_death(Pid, 1000)
     end,
 
-    %% Stop ranch listeners BEFORE stopping bbsvx (they can prevent clean shutdown)
-    try
-        ranch:stop_listener(bbsvx_spray_service)
-    catch
-        _:_ -> ok
-    end,
-
-    %% Stop bbsvx application to ensure clean state for next test
-    application:stop(bbsvx),
-
-    %% Also stop jobs application to clean up queues
-    %% (jobs is a dependency that may persist between tests)
-    application:stop(jobs),
+    %% DON'T stop bbsvx between tests - this causes gproc restart issues
+    %% Just clean up test data instead
 
     %% Clean up any test data from mnesia
     try
@@ -140,8 +129,8 @@ end_per_testcase(TestCase, Config) ->
         _:_ -> ok
     end,
 
-    %% Small delay to ensure everything is stopped
-    timer:sleep(200),
+    %% Small delay to ensure cleanup is complete
+    timer:sleep(100),
 
     ok.
 
