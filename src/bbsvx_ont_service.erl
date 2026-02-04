@@ -297,12 +297,24 @@ handle_call(
                 ok ->
                     case index_new_ontology(Ont) of
                         ok ->
-                          
-                                    ActivationResult = activate_ontology(Namespace, #{
-                                        boot => create
-                                    }),
-                                    {reply, ActivationResult, State};
-                              
+                            case activate_ontology(Namespace, #{boot => create}) of
+                                {ok, _Pid} ->
+                                    ?'log-info'("Ontology ~p activated, building genesis transaction", [Namespace]),
+                                    %% Build and submit genesis transaction for the new ontology
+                                    case bbsvx_transaction:build_genesis_transaction(Namespace, Options) of
+                                        {ok, GenesisTx} ->
+                                            ?'log-info'("Submitting genesis transaction to ontology ~p", [Namespace]),
+                                            bbsvx_actor_ontology:receive_transaction(GenesisTx),
+                                            {reply, ok, State};
+                                        {error, GenesisReason} ->
+                                            ?'log-error'("Failed to build genesis transaction for ~p: ~p",
+                                                        [Namespace, GenesisReason]),
+                                            {reply, {error, GenesisReason}, State}
+                                    end;
+                                {error, ActivationReason} ->
+                                    ?'log-error'("Failed to activate ontology ~p: ~p", [Namespace, ActivationReason]),
+                                    {reply, {error, ActivationReason}, State}
+                            end;
                         {error, Reason} ->
                             ?'log-error'(
                                 "Failed to index new ontology ~p at boot with reason : ~p", [

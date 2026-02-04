@@ -78,7 +78,7 @@ get_interp_functors(Database) -> \[Functor].
 -export([retract_clause/3, abolish_clauses/2]).
 -export([get_procedure/2, get_procedure_type/2]).
 -export([get_interpreted_functors/1]).
--export([apply_diff/2]).
+-export([apply_diff/2, clear_diff/1]).
 
 %%%=============================================================================
 %%% API
@@ -204,28 +204,39 @@ get_interpreted_functors(#db_differ{out_db = #db{mod = OutMod, ref = Ref}}) ->
 apply_diff(GoalDiff, #db{mod = Mod} = DbIn) ->
     %% TODO: This can be avoided by making diff commutative
     %% Apply the diff to the database state
-    {ok,
-        lists:foldr(
-            fun
-                ({asserta, Functor, Head, Body}, #db{ref = Ref} = Db) ->
-                    {ok, NewRef} = Mod:asserta_clause(Ref, Functor, Head, Body),
-                    Db#db{ref = NewRef};
-                ({assertz, Functor, Head, Body}, #db{ref = Ref} = Db) ->
-                    {ok, NewRef} = Mod:assertz_clause(Ref, Functor, Head, Body),
-                    Db#db{ref = NewRef};
-                ({retract, Functor, Tag}, #db{ref = Ref} = Db) ->
-                    {ok, NewRef} = Mod:retract_clause(Ref, Functor, Tag),
-                    Db#db{ref = NewRef};
-                ({abolish, Functor}, #db{ref = Ref} = Db) ->
-                    {ok, NewRef} = Mod:abolish_clauses(Ref, Functor),
-                    Db#db{ref = NewRef};
-                (Op, Db) ->
-                    logger:error("Unknown operation in diff: ~p", [Op]),
-                    Db
-            end,
-            DbIn,
-            GoalDiff
-        )}.
+    ResultDb = lists:foldr(
+        fun
+            ({asserta, Functor, Head, Body}, #db{ref = Ref} = Db) ->
+                {ok, NewRef} = Mod:asserta_clause(Ref, Functor, Head, Body),
+                Db#db{ref = NewRef};
+            ({assertz, Functor, Head, Body}, #db{ref = Ref} = Db) ->
+                {ok, NewRef} = Mod:assertz_clause(Ref, Functor, Head, Body),
+                Db#db{ref = NewRef};
+            ({retract, Functor, Tag}, #db{ref = Ref} = Db) ->
+                {ok, NewRef} = Mod:retract_clause(Ref, Functor, Tag),
+                Db#db{ref = NewRef};
+            ({abolish, Functor}, #db{ref = Ref} = Db) ->
+                {ok, NewRef} = Mod:abolish_clauses(Ref, Functor),
+                Db#db{ref = NewRef};
+            (Op, Db) ->
+                logger:error("Unknown operation in diff: ~p", [Op]),
+                Db
+        end,
+        DbIn,
+        GoalDiff
+    ),
+    %% Clear the op_fifo since these are replayed operations, not new ones
+    case ResultDb of
+        #db{ref = #db_differ{} = Differ} = Db ->
+            {ok, Db#db{ref = clear_diff(Differ)}};
+        Db ->
+            {ok, Db}
+    end.
+
+%% Clear the diff operation FIFO after extracting it for a transaction
+-spec clear_diff(#db_differ{}) -> #db_differ{}.
+clear_diff(#db_differ{} = DiffRef) ->
+    DiffRef#db_differ{op_fifo = []}.
 
 state_entry_to_map({{Functor, Arity}, built_in}) ->
     #{

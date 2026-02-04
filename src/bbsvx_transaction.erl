@@ -25,6 +25,8 @@
     record_transaction/1,
     read_transaction/2,
     build_root_genesis_transaction/1,
+    build_genesis_transaction/1,
+    build_genesis_transaction/2,
     string_to_eterm/1
 ]).
 
@@ -136,6 +138,70 @@ build_root_genesis_transaction(Options) ->
         {ok, {Failled, _Succeeded}} ->
             ?'log-error'("Failed to load external predicates: ~p", [Failled]),
             {error, failed_to_load_modules}
+    end.
+
+%%------------------------------------------------------------------------------
+%% build_genesis_transaction/1,2 - Build genesis transaction for new ontologies
+%%
+%% Creates a minimal genesis transaction for a new shared ontology.
+%% This allows new ontologies to bootstrap without external predicates or
+%% static ontology files.
+%%
+%% Parameters:
+%% - Namespace: binary() - The namespace of the new ontology
+%% - Options: map() - Optional configuration (external_predicates, static_predicates)
+%%
+%% Returns:
+%% - {ok, #transaction{}} - Genesis transaction ready to be sent
+%% - {error, Reason} - If building fails
+%%------------------------------------------------------------------------------
+-spec build_genesis_transaction(Namespace :: binary()) -> {ok, transaction()} | {error, term()}.
+build_genesis_transaction(Namespace) ->
+    build_genesis_transaction(Namespace, #{}).
+
+-spec build_genesis_transaction(Namespace :: binary(), Options :: map()) -> {ok, transaction()} | {error, term()}.
+build_genesis_transaction(Namespace, Options) when is_binary(Namespace) ->
+    ExternalPreds = maps:get(external_predicates, Options, []),
+    StaticPreds = maps:get(static_predicates, Options, []),
+
+    %% Verify external predicate modules can be loaded
+    case load_external_predicates(ExternalPreds, [], []) of
+        {ok, {[], _Succeeded}} ->
+            %% All external predicates loaded successfully
+            MyId = bbsvx_crypto_service:my_id(),
+            Timestamp = erlang:system_time(millisecond),
+
+            %% Build initial goal with static predicates (if any)
+            InitialGoal = #goal{
+                id = ulid:generate(),
+                namespace = Namespace,
+                source_id = MyId,
+                timestamp = Timestamp,
+                payload = case StaticPreds of
+                    [] -> [];  %% No static predicates
+                    _ -> [{asserta, StaticPreds}]
+                end
+            },
+
+            {ok, #transaction{
+                type = creation,
+                index = 0,
+                external_predicates = ExternalPreds,
+                current_address = <<"0">>,
+                prev_address = <<"-1">>,
+                prev_hash = <<"0">>,
+                signature = <<"">>,  %% TODO: Should be signature of ontology owner
+                ts_created = Timestamp,
+                ts_processed = Timestamp,
+                source_ontology_id = <<"">>,
+                leader = MyId,
+                diff = [],
+                namespace = Namespace,
+                payload = InitialGoal
+            }};
+        {ok, {Failed, _Succeeded}} ->
+            ?'log-error'("Failed to load external predicates for ~p: ~p", [Namespace, Failed]),
+            {error, {failed_to_load_modules, Failed}}
     end.
 
 %% Asserts that Erlang modules linked to an ontology are loaded.
