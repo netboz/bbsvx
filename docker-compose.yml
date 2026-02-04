@@ -19,6 +19,7 @@ services:
         - BBSVX_BOOT=root
         - BBSVX_P2P_PORT=2304
         - BBSVX_HTTP_PORT=8085
+        - BBSVX_ENABLE_GRAPH_VISUALIZER=true
       networks:
         - bbsvx-net
       volumes:
@@ -44,6 +45,7 @@ services:
       - BBSVX_CONTACT_NODES=bbsvx_root:2304
       - BBSVX_P2P_PORT=2304
       - BBSVX_HTTP_PORT=8085
+      - BBSVX_ENABLE_GRAPH_VISUALIZER=true
     networks:
       - bbsvx-net
     volumes:
@@ -141,6 +143,7 @@ services:
     restart: unless-stopped
     labels:
       - "monitoring=enabled"
+
   # prometheus:
   #   image: prom/prometheus
   #   hostname: prometheus

@@ -110,6 +110,11 @@ fi
 BOOT_MODE=${BBSVX_BOOT:-root}
 echo "boot = $BOOT_MODE" >> "$CONFIG_OVERRIDES"
 
+# Set graph visualizer if provided
+if [ ! -z "$BBSVX_ENABLE_GRAPH_VISUALIZER" ]; then
+    echo "network.enable_graph_visualizer = $BBSVX_ENABLE_GRAPH_VISUALIZER" >> "$CONFIG_OVERRIDES"
+fi
+
 echo "Docker configuration:"
 echo "===================="
 echo "Node Name: $FINAL_NODE_NAME (was: $BBSVX_NODE_NAME)"
