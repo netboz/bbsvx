@@ -1705,6 +1705,20 @@ handle_event(
                         MySampleEntry
                     ),
 
+                    %% Mark inview arcs that will be mirrored as 'exchanging' to prevent
+                    %% concurrent exchanges from counting them in protection checks.
+                    %% This fixes a race condition where multiple exchanges pass protection
+                    %% because they all see the same inview count before any completes.
+                    lists:foreach(
+                        fun(#exchange_entry{ulid = ArcUlid, target = #node_entry{node_id = TargetNodeId}}) when
+                                TargetNodeId == SourceNode#node_entry.node_id ->
+                            bbsvx_arc_registry:update_status(NameSpace, in, ArcUlid, exchanging);
+                           (_) ->
+                            ok
+                        end,
+                        IncomingSample
+                    ),
+
                     %% Send exchange out to origin node
                     send(NameSpace, OriginUlid, in, #exchange_out{proposed_sample = MySampleEntry}),
 
