@@ -22,8 +22,6 @@ action(create_ontology_predicate(OntologyName, shared),
          [],
          instance_of(ontology, OntologyName)).
 
-
-
 %% Define event type 
 isa(event, thing).  
 have_attribute(event, timestamp). 
@@ -75,3 +73,10 @@ have_attribute(visible, scale).         % 3D scale
 have_attribute(visible, mesh_type).     % sphere, box, custom, etc.
 have_attribute(visible, material).      % color, texture, shader
 have_attribute(visible, visibility).    % true/false
+
+%% Define animal types as visible things
+isa(animal, visible_thing).
+isa(rabbit, animal).
+
+%% Test instance of a rabbit
+rabbit(bunny).
