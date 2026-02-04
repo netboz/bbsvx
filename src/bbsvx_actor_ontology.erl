@@ -91,6 +91,7 @@ syncing → Continue processing
     % Query API
     get_last_processed_index/1,
     request_segment/3,
+    get_prolog_state/1,
     % Testing API
     get_pending_count/1,
     is_transaction_pending/2
@@ -256,6 +257,25 @@ is_transaction_pending(Namespace, Index) ->
         gen_statem:call({via, gproc, {n, l, {?MODULE, Namespace}}}, get_validation_context, 5000),
     IsPending = maps:is_key(Index, ValidationState#validation_state.pending),
     {ok, IsPending}.
+
+-doc """
+Retrieves the Prolog state for cross-ontology queries.
+Returns the current Prolog state even if ontology is not fully synced.
+Used by the :: operator for cross-ontology predicate calls.
+""".
+-spec get_prolog_state(binary()) -> {ok, erlog_state()} | {error, term()}.
+get_prolog_state(Namespace) ->
+    case gproc:where({n, l, {?MODULE, Namespace}}) of
+        undefined ->
+            {error, ontology_not_found};
+        Pid ->
+            try
+                gen_statem:call(Pid, get_prolog_state, 5000)
+            catch
+                exit:{timeout, _} -> {error, timeout};
+                exit:{noproc, _} -> {error, ontology_not_found}
+            end
+    end.
 
 -doc """
 Requests a segment of transaction history from the network.
@@ -571,6 +591,12 @@ initialize_ontology(state_timeout, load_history, #state{namespace = Namespace, o
             {stop, {error, {load_history_failed, Reason}}, State}
     end;
 
+%% Allow cross-ontology queries during initialization (state may be stale)
+initialize_ontology({call, From}, get_prolog_state, #state{ont_state = OntState}) when OntState =/= undefined ->
+    {keep_state_and_data, [{reply, From, {ok, OntState#ont_state.prolog_state}}]};
+initialize_ontology({call, From}, get_prolog_state, _State) ->
+    {keep_state_and_data, [{reply, From, {error, not_initialized}}]};
+
 initialize_ontology(_EventType, _Event, _State) ->
     keep_state_and_data.
 
@@ -629,6 +655,12 @@ wait_for_registration(state_timeout, registration_timeout, #state{boot = BootMod
 wait_for_registration(cast, {process_transaction, _Tx}, _State) ->
     %% Reject transactions when not connected
     {keep_state_and_data, [{reply, {error, ontology_disconnected}}]};
+
+%% Allow cross-ontology queries during registration (state may be stale)
+wait_for_registration({call, From}, get_prolog_state, #state{ont_state = OntState}) when OntState =/= undefined ->
+    {keep_state_and_data, [{reply, From, {ok, OntState#ont_state.prolog_state}}]};
+wait_for_registration({call, From}, get_prolog_state, _State) ->
+    {keep_state_and_data, [{reply, From, {error, not_initialized}}]};
 
 wait_for_registration(_EventType, _Event, _State) ->
     keep_state_and_data.
@@ -1057,6 +1089,10 @@ waiting_for_goal_result(
     NewPending = Pending#{TxIndex => Transaction},
     NewValidationState = ValidationState#validation_state{pending = NewPending},
     {keep_state, State#state{validation_state = NewValidationState}};
+
+%% Allow cross-ontology queries even while waiting for goal result
+waiting_for_goal_result({call, From}, get_prolog_state, #state{ont_state = OntState}) ->
+    {keep_state_and_data, [{reply, From, {ok, OntState#ont_state.prolog_state}}]};
 
 %% Catch-all
 waiting_for_goal_result(Type, Event, _State) ->
@@ -1736,13 +1772,56 @@ is_tx_requested(Index, RequestedTxs, TimeoutMs) ->
 
 -doc """
 Builds initial Prolog state for a new ontology.
+Loads common predicates (like ::) that are available to all ontologies.
 """.
 build_initial_prolog_state(Namespace) ->
     DbRepos = bbsvx_ont_service:binary_to_table_name(Namespace),
     DbMod = bbsvx_erlog_db_ets,
     DbRef = DbRepos,
 
-    erlog_int:new(bbsvx_erlog_db_differ, {DbRef, DbMod}).
+    %% Create base Prolog state
+    {ok, BaseState} = erlog_int:new(bbsvx_erlog_db_differ, {DbRef, DbMod}),
+
+    %% Set unknown=fail so missing predicates fail gracefully instead of throwing errors
+    StateWithFlags = set_unknown_flag(fail, BaseState),
+
+    %% Load common predicates available to ALL ontologies
+    {ok, load_common_predicates(StateWithFlags)}.
+
+-doc """
+Loads common predicates into a Prolog state.
+Common predicates are defined in bbsvx_common_predicates and are
+available to all ontologies (e.g., :: for cross-ontology calls).
+""".
+load_common_predicates(#est{db = #db{ref = DbDiffer} = PrologDb} = PrologState) ->
+    CommonPreds = bbsvx_common_predicates:external_predicates(),
+    ?'log-debug'("Loading ~p common predicates", [length(CommonPreds)]),
+
+    UpdatedDbDiffer = lists:foldl(
+        fun({{Functor, Arity}, Mod, Func}, DbDifferAcc) ->
+            case bbsvx_erlog_db_differ:add_compiled_proc(DbDifferAcc, {Functor, Arity}, Mod, Func) of
+                {ok, NewDbDiffer} ->
+                    ?'log-debug'("Added common predicate ~p/~p", [Functor, Arity]),
+                    NewDbDiffer;
+                error ->
+                    ?'log-warning'("Failed to add common predicate ~p/~p", [Functor, Arity]),
+                    DbDifferAcc
+            end
+        end,
+        DbDiffer,
+        CommonPreds
+    ),
+
+    %% Return updated Prolog state
+    PrologState#est{db = PrologDb#db{ref = UpdatedDbDiffer}}.
+
+-doc """
+Sets the 'unknown' flag in the Prolog state flags.
+When set to 'fail', missing predicates fail gracefully instead of throwing errors.
+""".
+set_unknown_flag(Value, #est{fs = Flags} = State) ->
+    NewFlags = lists:keyreplace(unknown, 1, Flags, {unknown, Value, [error, fail, warning]}),
+    State#est{fs = NewFlags}.
 
 -doc """
 Loads transaction history from persistent storage.

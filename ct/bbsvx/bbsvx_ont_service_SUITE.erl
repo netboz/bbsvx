@@ -114,14 +114,18 @@ end_per_testcase(TestCase, Config) ->
 %% Test that creating an ontology registers it in the index
 create_ontology_test(_Config) ->
     OntNamespace = random_ont_name(),
-    {ok, _Pid} = bbsvx_ont_service:create_ontology(OntNamespace),
+    ok = bbsvx_ont_service:create_ontology(OntNamespace),
+    %% Give time for genesis transaction to be processed
+    timer:sleep(200),
     ?assertMatch({ok, #ontology{namespace = OntNamespace, type = shared}},
                  bbsvx_ont_service:get_ontology(OntNamespace)).
 
 %% Test that creating the same ontology twice returns already_exists
 create_twice_ont_return_already_exists(_Config) ->
     OntNamespace = random_ont_name(),
-    {ok, _Pid} = bbsvx_ont_service:create_ontology(OntNamespace),
+    ok = bbsvx_ont_service:create_ontology(OntNamespace),
+    %% Give time for genesis transaction to be processed
+    timer:sleep(200),
     ct:pal("All keys ~p",
            [mnesia:activity(transaction, fun() -> mnesia:all_keys(ontology) end)]),
     ?assertMatch({error, already_exists},
@@ -130,9 +134,9 @@ create_twice_ont_return_already_exists(_Config) ->
 %% Test that creating an ontology automatically starts SPRAY and other network processes
 create_ontology_starts_necessary_processes(_Config) ->
     OntNamespace = random_ont_name(),
-    {ok, _Pid} = bbsvx_ont_service:create_ontology(OntNamespace),
+    ok = bbsvx_ont_service:create_ontology(OntNamespace),
     %% Give processes time to start
-    timer:sleep(200),
+    timer:sleep(300),
     %% Verify SPRAY agent is running
     SprayPid = gproc:where({n, l, {bbsvx_actor_spray, OntNamespace}}),
     ct:pal("Spray agent pid: ~p", [SprayPid]),
@@ -149,16 +153,16 @@ create_ontology_starts_necessary_processes(_Config) ->
 %% Test that deleting an ontology removes it from the index and stops processes
 delete_ontology_test(_Config) ->
     OntNamespace = random_ont_name(),
-    {ok, _Pid} = bbsvx_ont_service:create_ontology(OntNamespace),
+    ok = bbsvx_ont_service:create_ontology(OntNamespace),
     %% Give processes time to start
-    timer:sleep(200),
+    timer:sleep(300),
     %% Verify ontology exists
     ?assertMatch({ok, #ontology{namespace = OntNamespace}},
                  bbsvx_ont_service:get_ontology(OntNamespace)),
     %% Delete the ontology
     ok = bbsvx_ont_service:delete_ontology(OntNamespace),
     %% Give processes time to stop
-    timer:sleep(200),
+    timer:sleep(300),
     %% Verify ontology is removed from index
     ?assertMatch({error, not_found},
                  bbsvx_ont_service:get_ontology(OntNamespace)),
