@@ -20,14 +20,14 @@
 -define(SERVER, ?MODULE).
 
 %% External API
--export([start_link/0, stop/0, example_action/0]).
+-export([start_link/0, start_link/1, stop/0, example_action/0, set_namespace/1]).
 %% Gen State Machine Callbacks
 -export([init/1, code_change/4, callback_mode/0, terminate/3]).
 %% State transitions
 -export([running/3]).
 -export([do/1]).
 
--record(state, {my_id :: binary()}).
+-record(state, {my_id :: binary(), namespace :: binary()}).
 
 %%%=============================================================================
 %%% API
@@ -35,7 +35,16 @@
 
 -spec start_link() -> gen_statem:start_ret().
 start_link() ->
-    gen_statem:start({local, ?SERVER}, ?MODULE, [], []).
+    %% Default to bbsvx:root, can be overridden with BBSVX_VISUALIZER_NAMESPACE env var
+    Namespace = case os:getenv("BBSVX_VISUALIZER_NAMESPACE") of
+        false -> <<"bbsvx:root">>;
+        NS -> list_to_binary(NS)
+    end,
+    start_link(Namespace).
+
+-spec start_link(binary()) -> gen_statem:start_ret().
+start_link(Namespace) when is_binary(Namespace) ->
+    gen_statem:start({local, ?SERVER}, ?MODULE, [Namespace], []).
 
 -spec stop() -> ok.
 stop() ->
@@ -45,14 +54,18 @@ stop() ->
 example_action() ->
     gen_statem:call(?SERVER, example_action).
 
+-spec set_namespace(binary()) -> ok.
+set_namespace(Namespace) when is_binary(Namespace) ->
+    gen_statem:call(?SERVER, {set_namespace, Namespace}).
+
 %%%=============================================================================
 %%% Gen State Machine Callbacks
 %%%=============================================================================
 
-init([]) ->
+init([Namespace]) ->
     MyId = bbsvx_crypto_service:my_id(),
-    gproc:reg({p, l, {spray_exchange, <<"bbsvx:root">>}}),
-    ?'log-info'("Starting graph visualizer arc reporter with id: ~p", [MyId]),
+    gproc:reg({p, l, {spray_exchange, Namespace}}),
+    ?'log-info'("Starting graph visualizer arc reporter with id: ~p for namespace: ~p", [MyId, Namespace]),
     %% Get my host port
     {ok, {Host, _Port}} = bbsvx_network_service:my_host_port(),
     inets:start(),
@@ -69,7 +82,7 @@ init([]) ->
         ]
     ),
     ?'log-info'("httpd started with result: ~p", [R]),
-    {ok, running, #state{my_id = MyId}}.
+    {ok, running, #state{my_id = MyId, namespace = Namespace}}.
 
 terminate(_Reason, _State, _Data) ->
     void.
@@ -90,13 +103,13 @@ running(
         event =
             #evt_arc_connected_in{
                 ulid = Ulid,
-                source = #node_entry{node_id = NodeId}
+                source = #node_entry{node_id = NodeId} = SourceNode
             }
     },
     State
 ) ->
-    %% Ensure both nodes exist in graph
-    create_node_if_needed(NodeId),
+    %% Ensure both nodes exist in graph with full metadata
+    create_node_with_metadata(SourceNode),
     create_node_if_needed(State#state.my_id),
 
     Data =
@@ -122,14 +135,14 @@ running(
         event =
             #evt_arc_connected_out{
                 ulid = Ulid,
-                target = #node_entry{node_id = TargetNodeId}
+                target = #node_entry{node_id = TargetNodeId} = TargetNode
             }
     },
     State
 ) ->
-    %% Ensure both nodes exist in graph
+    %% Ensure both nodes exist in graph with full metadata
     create_node_if_needed(State#state.my_id),
-    create_node_if_needed(TargetNodeId),
+    create_node_with_metadata(TargetNode),
 
     Data =
         #{
@@ -365,10 +378,17 @@ running(
         []
     ),
     {next_state, running, State};
+%% Handle set_namespace call to switch which ontology we're monitoring
+running({call, From}, {set_namespace, NewNamespace}, #state{namespace = OldNamespace} = State) ->
+    %% Unregister from old namespace and register for new one
+    gproc:unreg({p, l, {spray_exchange, OldNamespace}}),
+    gproc:reg({p, l, {spray_exchange, NewNamespace}}),
+    ?'log-info'("Switched graph visualizer from namespace ~p to ~p", [OldNamespace, NewNamespace]),
+    {next_state, running, State#state{namespace = NewNamespace}, [{reply, From, ok}]};
 %% Handle any other arc events we might have missed
 running(
     info,
-    #incoming_event{event = Event} = IncomingEvent,
+    #incoming_event{event = _Event},
     State
 ) ->
     {next_state, running, State};
@@ -462,6 +482,41 @@ create_node_if_needed(NodeId) when NodeId =/= undefined ->
     );
 create_node_if_needed(_) ->
     ok.
+
+%% Create a node in the graph with full metadata from node_entry
+create_node_with_metadata(#node_entry{node_id = NodeId, host = Host, port = Port}) ->
+    %% Convert IP tuple to string for JSON encoding
+    HostStr = format_host(Host),
+    Data =
+        #{
+            action => <<"add">>,
+            node_id => NodeId,
+            metadata =>
+                #{
+                    node_id => NodeId,
+                    host => HostStr,
+                    port => Port
+                }
+        },
+    Json = jiffy:encode(Data),
+    httpc:request(
+        post,
+        {"http://graph-visualizer:3400/nodes", [], "application/json", Json},
+        [],
+        []
+    );
+create_node_with_metadata(_) ->
+    ok.
+
+%% Format host (IP tuple or binary) to binary string for JSON
+format_host({A, B, C, D}) when is_integer(A), is_integer(B), is_integer(C), is_integer(D) ->
+    iolist_to_binary(io_lib:format("~p.~p.~p.~p", [A, B, C, D]));
+format_host(Host) when is_binary(Host) ->
+    Host;
+format_host(Host) when is_list(Host) ->
+    list_to_binary(Host);
+format_host(_) ->
+    <<"unknown">>.
 
 %%%=============================================================================
 %%% Eunit Tests
