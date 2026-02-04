@@ -22,6 +22,12 @@
 
 -define(SERVER, ?MODULE).
 -define(DEFAULT_ROUND_TIME, 20).
+%% Minimum TTL - ensures delivery even in small networks
+-define(MIN_TTL, 4).
+%% Maximum TTL - prevents excessive latency in large networks
+-define(MAX_TTL, 20).
+%% TTL update interval in rounds (update every N rounds to avoid thrashing)
+-define(TTL_UPDATE_INTERVAL, 50).
 
 %% External API
 -export([start_link/2, stop/0]).
@@ -40,7 +46,9 @@
     logical_clock_pid :: pid(),
     received = #{} :: map(),
     delivered :: ordsets:ordset(term()),
-    last_delivered_ts = 0 :: integer()
+    last_delivered_ts = 0 :: integer(),
+    %% Round counter for periodic TTL updates
+    round_count = 0 :: integer()
 }).
 
 %%%=============================================================================
@@ -72,29 +80,34 @@ init([Namespace, Options]) ->
     {ok, LogicalClock} = bbsvx_epto_logical_clock:start_link(Namespace, Ttl),
     %% Register to epto messages received at inview (ejabberd mod )
     ?'log-info'(
-        "Epto dissemination component starting ~p with options ~p",
-        [Namespace, Options]
+        "Epto dissemination component starting ~p with options ~p (initial TTL=~p)",
+        [Namespace, Options, Ttl]
     ),
     gproc:reg({p, l, {epto_event, Namespace}}),
+    %% Initialize Prometheus TTL metric
+    prometheus_gauge:set(<<"bbsvx_epto_ttl">>, [Namespace], Ttl),
 
     {ok, RoundTimer} =
         timer:apply_interval(?DEFAULT_ROUND_TIME, gen_server, cast, [self(), next_round]),
 
     case maps:get(boot, Options, false) of
-        root ->
-            ?'log-info'("~p starting discord as root", [?MODULE]),
+        create ->
+            %% Start with current_index = 1 because genesis transaction (index 0)
+            %% is submitted directly to ontology actor, bypassing EPTO.
+            %% First user transaction will be delivered with index 1.
+            ?'log-info'("~p starting discord as root (create mode, starting at index 1)", [?MODULE]),
             {ok, running, #state{
                 round_timer = RoundTimer,
                 namespace = Namespace,
                 logical_clock_pid = LogicalClock,
                 fanout = Fanout,
-                current_index = 0,
+                current_index = 1,
                 delivered = ordsets:new(),
                 ttl = Ttl,
                 next_ball = #{}
             }};
         _ ->
-            ?'log-info'("~p starting discord as non-root", [?MODULE]),
+            ?'log-info'("~p starting discord as non-root (connect/reconnect mode)", [?MODULE]),
             {ok, syncing, #state{
                 round_timer = RoundTimer,
                 namespace = Namespace,
@@ -141,43 +154,14 @@ syncing({call, From}, {epto_broadcast, Payload}, #state{next_ball = NextBall} = 
     {keep_state, State#state{next_ball = maps:put(EvtId, Event, NextBall)}};
 syncing(
     info,
-    {incoming_event, {epto_message, {receive_ball, Ball, CurrentIndex}}},
-    #state{namespace = Namespace} = State
-) ->
-    gproc:send({n, l, {bbsvx_actor_ontology, Namespace}}, {registered, CurrentIndex}),
-    %% This means we are getting connected to the network
-    %% We process the ball and update the index accordingliy
-    UpdatedNextBall =
-        maps:fold(
-            fun
-                (EvtId, #epto_event{ttl = EvtTtl, ts = EvtTs} = Evt, Acc) when
-                    EvtTtl < State#state.ttl
-                ->
-                    NewAcc =
-                        case maps:get(EvtId, Acc, undefined) of
-                            undefined ->
-                                maps:put(EvtId, Evt, Acc);
-                            #epto_event{ttl = EvtBallTtl} = EvtBall when
-                                EvtBallTtl < EvtTtl
-                            ->
-                                maps:put(EvtId, EvtBall#epto_event{ttl = EvtTtl}, Acc);
-                            _ ->
-                                Acc
-                        end,
-                    gen_server:call(State#state.logical_clock_pid, {update_clock, EvtTs}),
-                    NewAcc;
-                (_EvtId, #epto_event{ts = EvtTs}, Acc) ->
-                    gen_server:call(State#state.logical_clock_pid, {update_clock, EvtTs}),
-                    Acc
-            end,
-            State#state.next_ball,
-            Ball
-        ),
-    {next_state, running, State#state{next_ball = UpdatedNextBall, current_index = CurrentIndex}};
-syncing(
-    info,
     {incoming_event, {receive_ball, Ball, CurrentIndex}},
-    #state{namespace = Namespace} = State
+    #state{
+        namespace = Namespace,
+        delivered = Delivered,
+        received = Received,
+        last_delivered_ts = LastDeliveredTs,
+        logical_clock_pid = LogicalClockPid
+    } = State
 ) ->
     gproc:send({n, l, {bbsvx_actor_ontology, Namespace}}, {registered, CurrentIndex}),
     %% This means we are getting connected to the network
@@ -208,7 +192,25 @@ syncing(
             State#state.next_ball,
             Ball
         ),
-    {next_state, running, State#state{next_ball = UpdatedNextBall, current_index = CurrentIndex}};
+
+    %% Process events from the ball for delivery before transitioning to running
+    {NewDelivered, NewReceived, NewLastDeliveredTs, NewIndex} =
+        order_events(
+            UpdatedNextBall,
+            Delivered,
+            Received,
+            LastDeliveredTs,
+            LogicalClockPid,
+            CurrentIndex
+        ),
+
+    {next_state, running, State#state{
+        next_ball = #{},
+        delivered = NewDelivered,
+        current_index = NewIndex,
+        received = NewReceived,
+        last_delivered_ts = NewLastDeliveredTs
+    }};
 syncing(
     cast,
     next_round,
@@ -261,9 +263,11 @@ syncing(cast, next_round, _State) ->
 running(enter, _, State) ->
     ?'log-info'("Entering running state ~p", [State]),
     {keep_state, State};
-running({call, From}, empty_inview, State) ->
+running({call, From}, empty_inview, _State) ->
+    %% TODO: Review SPRAY-EPTO interaction design
+    %% For now, stay in running state - EPTO is resilient to temporary disconnections
     gen_statem:reply(From, ok),
-    {next_state, syncing, State};
+    keep_state_and_data;
 running({call, From}, {epto_broadcast, Payload}, #state{next_ball = NextBall} = State) ->
     ?'log-info'("Epto dissemination component : Broadcast ~p", [Payload]),
 
@@ -288,14 +292,19 @@ running(
         received = Received,
         current_index = CurrentIndex,
         last_delivered_ts = LastDeliveredTs,
-        logical_clock_pid = LogicalClockPid
+        logical_clock_pid = LogicalClockPid,
+        round_count = RoundCount
     } =
         State
 ) ->
+    %% Increment round counter and maybe update TTL adaptively
+    NewRoundCount = RoundCount + 1,
+    StateWithTTL = maybe_update_ttl(State#state{round_count = NewRoundCount}),
+
     NewBall =
         maps:map(
             fun(_EvtId, #epto_event{ttl = EvtTtl} = Evt) -> Evt#epto_event{ttl = EvtTtl + 1} end,
-            State#state.next_ball
+            StateWithTTL#state.next_ball
         ),
 
     %% Broadcast next ball to sample peers
@@ -315,47 +324,13 @@ running(
             LogicalClockPid,
             CurrentIndex
         ),
-    {keep_state, State#state{
+    {keep_state, StateWithTTL#state{
         next_ball = #{},
         delivered = NewDelivered,
         received = NewReceived,
         current_index = NewIndex,
         last_delivered_ts = NewLastDeliveredTs
     }};
-running(
-    info,
-    {incoming_event, {epto_message, {receive_ball, Ball, _CurrentIndex}}},
-    #state{namespace = _Namespace} = State
-) ->
-    %% TODO: next event could considerably slow down the ball processing, should be made async ?
-    % gproc:send({p, l, {epto_event, State#state.ontology}}, {received_ball, Ball}),
-    UpdatedNextBall =
-        maps:fold(
-            fun
-                (EvtId, #epto_event{ttl = EvtTtl, ts = EvtTs} = Evt, Acc) when
-                    EvtTtl < State#state.ttl
-                ->
-                    NewAcc =
-                        case maps:get(EvtId, Acc, undefined) of
-                            undefined ->
-                                maps:put(EvtId, Evt, Acc);
-                            #epto_event{ttl = EvtBallTtl} = EvtBall when
-                                EvtBallTtl < EvtTtl
-                            ->
-                                maps:put(EvtId, EvtBall#epto_event{ttl = EvtTtl}, Acc);
-                            _ ->
-                                Acc
-                        end,
-                    gen_server:call(State#state.logical_clock_pid, {update_clock, EvtTs}),
-                    NewAcc;
-                (_EvtId, #epto_event{ts = EvtTs}, Acc) ->
-                    gen_server:call(State#state.logical_clock_pid, {update_clock, EvtTs}),
-                    Acc
-            end,
-            State#state.next_ball,
-            Ball
-        ),
-    {keep_state, State#state{next_ball = UpdatedNextBall}};
 running(
     info,
     {incoming_event, {receive_ball, Ball, _CurrentIndex}},
@@ -550,6 +525,58 @@ deliver(Index, Evt) when is_binary(Evt#epto_event.payload) ->
     file:write(F, iolist_to_binary(Evt#epto_event.payload)),
     file:close(F),
     Index.
+
+%% Calculate adaptive TTL based on current outview size.
+%% SPRAY maintains |outview| ≈ ln(N) connections, so we estimate N ≈ e^|outview|
+%% EPTO formula: TTL >= 2 * ceil((c+1) * log2(N)) + 1
+%% With c=1 (covers single failure scenarios)
+-spec calculate_adaptive_ttl(Namespace :: binary()) -> integer().
+calculate_adaptive_ttl(Namespace) ->
+    OutViewSize = length(bbsvx_arc_registry:get_available_arcs(Namespace, out)),
+    case OutViewSize of
+        0 ->
+            %% No connections yet, use minimum TTL
+            ?MIN_TTL;
+        Size ->
+            %% Estimate N from view size: N ≈ e^|view|
+            %% But SPRAY view size is actually closer to ln(N), so this is reasonable
+            %% For safety, we add 1 to the view size before exponentiating
+            EstimatedN = math:exp(Size),
+            %% EPTO formula with c=1: TTL >= 2 * ceil(2 * log2(N)) + 1
+            C = 1,
+            RawTTL = 2 * ceil((C + 1) * math:log2(max(EstimatedN, 2))) + 1,
+            %% Clamp to valid range
+            TTL = max(?MIN_TTL, min(?MAX_TTL, round(RawTTL))),
+            ?'log-debug'(
+                "Adaptive TTL: outview_size=~p, estimated_n=~p, raw_ttl=~p, clamped_ttl=~p",
+                [Size, round(EstimatedN), RawTTL, TTL]
+            ),
+            TTL
+    end.
+
+%% Update TTL in state and sync with logical clock if changed
+-spec maybe_update_ttl(State :: #state{}) -> #state{}.
+maybe_update_ttl(#state{round_count = RoundCount} = State)
+  when RoundCount rem ?TTL_UPDATE_INTERVAL =/= 0 ->
+    %% Not time to update yet
+    State;
+maybe_update_ttl(#state{namespace = Namespace, ttl = CurrentTTL, logical_clock_pid = LogicalClockPid} = State) ->
+    NewTTL = calculate_adaptive_ttl(Namespace),
+    case NewTTL of
+        CurrentTTL ->
+            %% No change needed
+            State;
+        _ ->
+            ?'log-info'(
+                "EPTO adaptive TTL update: ~p -> ~p (namespace=~p)",
+                [CurrentTTL, NewTTL, Namespace]
+            ),
+            %% Update the logical clock's TTL threshold
+            gen_server:call(LogicalClockPid, {set_ttl, NewTTL}),
+            %% Update Prometheus metric for monitoring
+            prometheus_gauge:set(<<"bbsvx_epto_ttl">>, [Namespace], NewTTL),
+            State#state{ttl = NewTTL}
+    end.
 
 %%%=============================================================================
 %%% Eunit Tests

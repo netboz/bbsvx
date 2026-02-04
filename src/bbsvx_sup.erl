@@ -38,7 +38,10 @@ init([]) ->
     Port = application:get_env(bbsvx, port, 2304),
     LocalIp = local_ip_v4(),
 
-    ChildSpecs =
+    %% Graph visualizer is optional - only enabled when explicitly configured
+    GraphVisualizerEnabled = application:get_env(bbsvx, enable_graph_visualizer, false),
+
+    BaseChildSpecs =
         %% Start crypto service
         [
             #{
@@ -85,15 +88,6 @@ init([]) ->
                 type => worker,
                 modules => [bbsvx_network_service]
             },
-            %% Start metrics arc reporter
-            #{
-                id => bbsvx_arc_reporter_graph_visualizer,
-                start => {bbsvx_arc_reporter_graph_visualizer, start_link, []},
-                restart => permanent,
-                shutdown => brutal_kill,
-                type => worker,
-                modules => [bbsvx_arc_reporter_graph_visualizer]
-            },
             #{
                 id => bbsvx_ont_service,
                 start => {bbsvx_ont_service, start_link, []},
@@ -103,6 +97,23 @@ init([]) ->
                 modules => [bbsvx_ont_service]
             }
         ],
+
+    %% Conditionally add graph visualizer reporter if enabled
+    ChildSpecs = case GraphVisualizerEnabled of
+        true ->
+            BaseChildSpecs ++ [
+                #{
+                    id => bbsvx_arc_reporter_graph_visualizer,
+                    start => {bbsvx_arc_reporter_graph_visualizer, start_link, []},
+                    restart => permanent,
+                    shutdown => brutal_kill,
+                    type => worker,
+                    modules => [bbsvx_arc_reporter_graph_visualizer]
+                }
+            ];
+        false ->
+            BaseChildSpecs
+    end,
     {ok, {SupFlags, ChildSpecs}}.
 
 %% internal functions

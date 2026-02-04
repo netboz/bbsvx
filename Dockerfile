@@ -33,9 +33,6 @@ COPY src ./src
 COPY include ./include
 COPY config ./config
 COPY priv ./priv
-COPY BBSVXProtocol.hrl ./BBSVXProtocol.hrl
-COPY BBSVXProtocol.erl ./BBSVXProtocol.erl
-COPY BBSVXProtocol.asn1db ./BBSVXProtocol.asn1db
 
 # Build the release
 ENV BUILD_WITHOUT_QUIC=true
@@ -112,6 +109,11 @@ fi
 # Set boot mode
 BOOT_MODE=${BBSVX_BOOT:-root}
 echo "boot = $BOOT_MODE" >> "$CONFIG_OVERRIDES"
+
+# Set graph visualizer if provided
+if [ ! -z "$BBSVX_ENABLE_GRAPH_VISUALIZER" ]; then
+    echo "network.enable_graph_visualizer = $BBSVX_ENABLE_GRAPH_VISUALIZER" >> "$CONFIG_OVERRIDES"
+fi
 
 echo "Docker configuration:"
 echo "===================="

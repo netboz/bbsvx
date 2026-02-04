@@ -49,6 +49,7 @@ start(_StartType, _StartArgs) ->
     init_file_logger(),
     init_metrics(),
     init_ulid_generator(),
+    init_ai_code_cache(),
     mnesia:change_table_copy_type(schema, node(), disc_copies),
     Dispatch =
         cowboy_router:compile([
@@ -56,6 +57,8 @@ start(_StartType, _StartArgs) ->
                 %% Ontology management endpoints
                 {"/ontologies/prove", bbsvx_cowboy_handler_ontology, #{}},
                 {"/ontologies/:namespace", bbsvx_cowboy_handler_ontology, #{}},
+                %% AI code generation
+                {"/ai/generate", bbsvx_cowboy_handler_ai, #{}},
                 %% SPRAY protocol debugging routes
                 {"/spray/outview", bbsvx_cowboy_handler_spray, #{}},
                 {"/spray/nodes", bbsvx_cowboy_handler_spray, #{}},
@@ -161,6 +164,16 @@ init_ulid_generator() ->
     UlidGen = ulid:new(),
     persistent_term:put(ulid_gen, UlidGen).
 
+init_ai_code_cache() ->
+    %% Create ETS table for AI-generated code caching
+    %% This table persists for the lifetime of the application
+    ets:new(bbsvx_ai_code_cache, [set, public, named_table, {read_concurrency, true}]),
+    logger:info("AI code cache initialized", #{
+        component => "bbsvx_app",
+        operation => "ai_cache_init",
+        event_type => "system_config"
+    }).
+
 -spec init_metrics() -> ok.
 init_metrics() ->
     prometheus_gauge:declare([
@@ -242,6 +255,11 @@ init_metrics() ->
         {name, <<"bbsvx_pending_transactions">>},
         {labels, [<<"namespace">>]},
         {help, "Number of pending (out-of-order) transactions waiting to be processed"}
+    ]),
+    prometheus_gauge:declare([
+        {name, <<"bbsvx_epto_ttl">>},
+        {labels, [<<"namespace">>]},
+        {help, "Current adaptive TTL threshold for EPTO protocol"}
     ]).
 
 %%%=============================================================================
@@ -386,14 +404,15 @@ list_ontologies() ->
 
 create_ontology(Namespace, Type) ->
     try
-        Ontology = #{
-            namespace => Namespace,
+        Options = #{
             type => Type,
             version => <<"0.0.1">>,
             contact_nodes => []
         },
-        case bbsvx_ont_service:new_ontology(Ontology) of
+        case bbsvx_ont_service:create_ontology(Namespace, Options) of
             ok ->
+                io_lib:format("Ontology '~s' created successfully with type '~s'", [Namespace, Type]);
+            {ok, _} ->
                 io_lib:format("Ontology '~s' created successfully with type '~s'", [Namespace, Type]);
             {error, Reason} ->
                 io_lib:format("Failed to create ontology: ~p", [Reason])

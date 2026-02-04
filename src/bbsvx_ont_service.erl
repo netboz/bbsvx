@@ -104,8 +104,6 @@ delete_ontology(Namespace) ->
     gen_server:call(?SERVER, {delete_ontology, Namespace}).
 
 -spec disconnect_ontology(Namespace :: binary()) -> ok | {error, atom()}.
-%%%-----------------------------------------------------------------------------
-%% Disconnect an ontology from the network
 disconnect_ontology(Namespace) ->
     gen_server:call(?SERVER, {disconnect_ontology, Namespace}).
 
@@ -184,7 +182,7 @@ init([]) ->
                                             %% Build and submit genesis transaction with root ontology predicates
                                             case bbsvx_transaction:build_root_genesis_transaction([
                                                 {extenal_predicates, [bbsvx_ont_root]},
-                                                {static_ontology, []}
+                                                {static_ontology, [{file, bbsvx, <<"bbsvx_root.pl">>}]}
                                             ]) of
                                                 {ok, GenesisTx} ->
                                                     ?'log-info'("Submitting genesis transaction to root ontology for validation", []),
@@ -274,9 +272,9 @@ init([]) ->
     end.
 
 handle_call(
-    {create_ontology, 
+    {create_ontology,
         Namespace,
-        _Options},
+        Options},
     _From,
     State
 ) ->
@@ -285,23 +283,38 @@ handle_call(
         {error, not_found} ->
             %% No, we can continue into ontology creation
 
+            %% Extract type from options, default to local for backward compatibility with tests
+            Type = maps:get(type, Options, shared),
+
             Ont = #ontology{
                 namespace = Namespace,
                 contact_nodes = [],
                 version = <<"0.0.1">>,
-                type = shared,
+                type = Type,
                 last_update = erlang:system_time(microsecond)
             },
             case create_transaction_table(Namespace) of
                 ok ->
                     case index_new_ontology(Ont) of
                         ok ->
-                          
-                                    ActivationResult = activate_ontology(Namespace, #{
-                                        boot => create
-                                    }),
-                                    {reply, ActivationResult, State};
-                              
+                            case activate_ontology(Namespace, #{boot => create}) of
+                                {ok, _Pid} ->
+                                    ?'log-info'("Ontology ~p activated, building genesis transaction", [Namespace]),
+                                    %% Build and submit genesis transaction for the new ontology
+                                    case bbsvx_transaction:build_genesis_transaction(Namespace, Options) of
+                                        {ok, GenesisTx} ->
+                                            ?'log-info'("Submitting genesis transaction to ontology ~p", [Namespace]),
+                                            bbsvx_actor_ontology:receive_transaction(GenesisTx),
+                                            {reply, ok, State};
+                                        {error, GenesisReason} ->
+                                            ?'log-error'("Failed to build genesis transaction for ~p: ~p",
+                                                        [Namespace, GenesisReason]),
+                                            {reply, {error, GenesisReason}, State}
+                                    end;
+                                {error, ActivationReason} ->
+                                    ?'log-error'("Failed to activate ontology ~p: ~p", [Namespace, ActivationReason]),
+                                    {reply, {error, ActivationReason}, State}
+                            end;
                         {error, Reason} ->
                             ?'log-error'(
                                 "Failed to index new ontology ~p at boot with reason : ~p", [
@@ -460,27 +473,28 @@ handle_call({get_ontology, Namespace}, _From, State) ->
 handle_call({delete_ontology, Namespace}, _From, State) when is_binary(Namespace) ->
     TabDeleteResult =
         case get_ontology_from_index(Namespace) of
-            {ok, #ontology{type = shared}} ->
-                supervisor:terminate_child(bbsvx_sup_spray_view_agents, Namespace),
+            {ok, #ontology{}} ->
+                %% Stop the ontology services supervisor if running
+                case deactivate_ontology(Namespace) of
+                    ok -> ok;
+                    {error, _} -> ok  %% Ignore if already stopped
+                end,
+                %% Delete the transaction table
                 case mnesia:delete_table(binary_to_atom(Namespace)) of
                     {atomic, ok} ->
+                        FunDel = fun() -> mnesia:delete({?INDEX_TABLE, Namespace}) end,
+                        mnesia:activity(transaction, FunDel);
+                    {aborted, {no_exists, _}} ->
+                        %% Table doesn't exist, just delete from index
                         FunDel = fun() -> mnesia:delete({?INDEX_TABLE, Namespace}) end,
                         mnesia:activity(transaction, FunDel);
                     Else ->
                         {error, Else}
                 end;
-            {ok, #ontology{type = _}} ->
-                case mnesia:delete_table(binary_to_atom(Namespace)) of
-                    {atomic, ok} ->
-                        FunDel = fun() -> mnesia:delete({?INDEX_TABLE, Namespace}) end,
-                        mnesia:activity(transaction, FunDel);
-                    Else ->
-                        {error, Else}
-                end;
-            [] ->
+            {error, not_found} ->
                 {error, not_found}
         end,
-    ?'log-info'("Onto service : deleted table ~p", [TabDeleteResult]),
+    ?'log-info'("Onto service : deleted ontology ~p result: ~p", [Namespace, TabDeleteResult]),
     {reply, TabDeleteResult, State};
 handle_call({store_goal, #goal{} = Goal}, _From, State) ->
     %% Insert the goal into the database or perform any necessary operations
@@ -586,7 +600,16 @@ activate_ontology(Namespace, Options) ->
 
 -spec deactivate_ontology(Namespace :: binary()) -> ok | {error, Reason :: atom()}.
 deactivate_ontology(Namespace) ->
-    supervisor:terminate_child(bbsvx_sup_actors_ontologies, [Namespace]).
+    %% For simple_one_for_one supervisors, we need the child PID to terminate
+    %% Look up the ontology actor via gproc
+    case gproc:where({n, l, {bbsvx_actor_ontology, Namespace}}) of
+        undefined ->
+            %% Actor not running, nothing to deactivate
+            {error, not_running};
+        Pid when is_pid(Pid) ->
+            %% Terminate the child process
+            supervisor:terminate_child(bbsvx_sup_actors_ontologies, Pid)
+    end.
 
 -spec update_ontology(NewOntology :: ontology()) -> ok | {error, Reason :: term()}.
 update_ontology(NewOntology) ->

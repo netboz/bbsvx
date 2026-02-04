@@ -30,16 +30,26 @@ encode(Message) ->
     end.
 
 %% Decode message with byte consumption for streaming protocol
+%% Note: We don't use [safe] option because:
+%% 1. This is a trusted P2P network with nodes running same code
+%% 2. The [safe] option rejects terms with atoms not in the atom table,
+%%    which can happen with node names or dynamically created atoms
 -spec decode_message_used(binary()) -> {tuple(), non_neg_integer()} | error.
 decode_message_used(Binary) ->
     try
-        case binary_to_term(Binary, [safe, used]) of
+        case binary_to_term(Binary, [used]) of
             {Message, BytesUsed} when is_tuple(Message) ->
                 {Message, BytesUsed};
-            _ ->
+            Other ->
+                ?'log-warning'("decode_message_used: unexpected result ~p", [Other]),
                 error
         end
     catch
-        _:_ ->
+        Class:Reason:_Stack ->
+            %% Log detailed info for debugging decode failures
+            BufferSize = byte_size(Binary),
+            FirstBytes = binary:part(Binary, 0, min(30, BufferSize)),
+            ?'log-debug'("decode_message_used: ~p:~p, size=~p, first_30_bytes=~w",
+                        [Class, Reason, BufferSize, FirstBytes]),
             error
     end.

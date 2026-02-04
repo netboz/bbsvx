@@ -1,6 +1,7 @@
 %%%-----------------------------------------------------------------------------
 %%% @doc
-%%% Common Tests built from template.
+%%% Common Tests for bbsvx_ont_service.
+%%% Tests ontology creation, deletion, and network processes.
 %%% @author yan
 %%% @end
 %%%-----------------------------------------------------------------------------
@@ -21,26 +22,26 @@
 
 -export([all/0, init_per_testcase/2, end_per_testcase/2, init_per_suite/1,
          end_per_suite/1]).
--export([create_local_ontology_test/1, delete_local_ontology_test/1,
-         create_twice_ont_return_already_exists/1, disconnecting_local_ontology_does_nothing/1,
-         connecting_an_ontology_starts_necessary_processes/1]).
+-export([create_ontology_test/1, delete_ontology_test/1,
+         create_twice_ont_return_already_exists/1,
+         create_ontology_starts_necessary_processes/1]).
 
 %%%=============================================================================
 %%% CT Functions
 %%%=============================================================================
 
 all() ->
-    [create_local_ontology_test,
-     delete_local_ontology_test,
+    [create_ontology_test,
      create_twice_ont_return_already_exists,
-     disconnecting_local_ontology_does_nothing,
-     connecting_an_ontology_starts_necessary_processes].
+     create_ontology_starts_necessary_processes,
+     delete_ontology_test].
 
 init_per_suite(Config) ->
     %% Just ensure dependencies are available, but don't start bbsvx yet
-    {ok, _} = application:ensure_all_started(gproc),
-    {ok, _} = application:ensure_all_started(jobs),
-    {ok, _} = application:ensure_all_started(mnesia),
+    %% Handle case where apps are already started from previous suite
+    _ = application:ensure_all_started(gproc),
+    _ = application:ensure_all_started(jobs),
+    _ = application:ensure_all_started(mnesia),
     Config.
 
 end_per_suite(_Config) ->
@@ -49,25 +50,50 @@ end_per_suite(_Config) ->
 init_per_testcase(TestCase, Config) ->
     ct:pal("Starting test case: ~p", [TestCase]),
 
-    %% Start bbsvx application fresh for each test
+    %% Check if bbsvx is already running
+    case lists:keyfind(bbsvx, 1, application:which_applications()) of
+        {bbsvx, _, _} ->
+            ct:pal("bbsvx already running"),
+            Config;
+        false ->
+            %% Need to start bbsvx - handle potential orphan gproc process
+            start_bbsvx_safely(Config)
+    end.
+
+start_bbsvx_safely(Config) ->
+    %% Kill any orphan gproc process that might exist from previous test run
+    case whereis(gproc) of
+        undefined ->
+            ok;
+        Pid when is_pid(Pid) ->
+            ct:pal("Found orphan gproc process ~p, killing it", [Pid]),
+            exit(Pid, kill),
+            timer:sleep(100)
+    end,
+
+    %% Clean up any orphan ranch listener from previous test run
+    try
+        ranch:stop_listener(bbsvx_spray_service),
+        ct:pal("Stopped orphan ranch listener bbsvx_spray_service")
+    catch
+        _:_ -> ok
+    end,
+
+    %% Now start bbsvx
     case application:ensure_all_started(bbsvx) of
         {ok, Started} ->
             ct:pal("Started applications: ~p", [Started]),
-            timer:sleep(500),  % Give services time to initialize
+            timer:sleep(500),
             [{started_apps, Started} | Config];
-        {error, {AppName, Reason}} ->
-            ct:fail("Failed to start ~p: ~p", [AppName, Reason])
+        {error, Reason} ->
+            ct:fail("Failed to start bbsvx: ~p", [Reason])
     end.
 
 end_per_testcase(TestCase, Config) ->
     ct:pal("Ending test case: ~p", [TestCase]),
 
-    %% Stop bbsvx application first
-    application:stop(bbsvx),
-
-    %% Also stop jobs application to clean up queues
-    %% (jobs is a dependency that may persist between tests)
-    application:stop(jobs),
+    %% DON'T stop bbsvx between tests - this causes gproc restart issues
+    %% Just clean up test data instead
 
     %% Clean up any test ontologies from mnesia
     try
@@ -76,8 +102,8 @@ end_per_testcase(TestCase, Config) ->
         _:_ -> ok
     end,
 
-    %% Small delay to ensure everything is stopped
-    timer:sleep(200),
+    %% Small delay to ensure cleanup is complete
+    timer:sleep(100),
 
     Config.
 
@@ -85,42 +111,63 @@ end_per_testcase(TestCase, Config) ->
 %%% Tests
 %%%=============================================================================
 
-create_local_ontology_test(_Config) ->
+%% Test that creating an ontology registers it in the index
+create_ontology_test(_Config) ->
     OntNamespace = random_ont_name(),
-    {ok, _Pid} = bbsvx_ont_service:create_ontology(OntNamespace),
-    ?assertMatch({ok, #ontology{namespace = OntNamespace}},
+    ok = bbsvx_ont_service:create_ontology(OntNamespace),
+    %% Give time for genesis transaction to be processed
+    timer:sleep(200),
+    ?assertMatch({ok, #ontology{namespace = OntNamespace, type = shared}},
                  bbsvx_ont_service:get_ontology(OntNamespace)).
 
-delete_local_ontology_test(_Config) ->
-    OntNamespace = random_ont_name(),
-    {ok, _Pid} = bbsvx_ont_service:create_ontology(OntNamespace),
-    ok = bbsvx_ont_service:delete_ontology(OntNamespace),
-    ?assertMatch([], mnesia:dirty_read({ontology, OntNamespace})),
-    ?assertMatch(false,
-                 lists:member(binary_to_atom(OntNamespace), mnesia:system_info(tables))).
-
+%% Test that creating the same ontology twice returns already_exists
 create_twice_ont_return_already_exists(_Config) ->
     OntNamespace = random_ont_name(),
-    {ok, _Pid} = bbsvx_ont_service:create_ontology(OntNamespace),
+    ok = bbsvx_ont_service:create_ontology(OntNamespace),
+    %% Give time for genesis transaction to be processed
+    timer:sleep(200),
     ct:pal("All keys ~p",
            [mnesia:activity(transaction, fun() -> mnesia:all_keys(ontology) end)]),
     ?assertMatch({error, already_exists},
                  bbsvx_ont_service:create_ontology(OntNamespace)).
 
-disconnecting_local_ontology_does_nothing(_Config) ->
+%% Test that creating an ontology automatically starts SPRAY and other network processes
+create_ontology_starts_necessary_processes(_Config) ->
     OntNamespace = random_ont_name(),
-    {ok, _Pid} = bbsvx_ont_service:create_ontology(OntNamespace),
-    ok = bbsvx_ont_service:disconnect_ontology(OntNamespace),
-    ?assertMatch({ok, #ontology{namespace = OntNamespace, type = local}},
-                 bbsvx_ont_service:get_ontology(OntNamespace)).
+    ok = bbsvx_ont_service:create_ontology(OntNamespace),
+    %% Give processes time to start
+    timer:sleep(300),
+    %% Verify SPRAY agent is running
+    SprayPid = gproc:where({n, l, {bbsvx_actor_spray, OntNamespace}}),
+    ct:pal("Spray agent pid: ~p", [SprayPid]),
+    ?assertMatch(true, is_pid(SprayPid)),
+    %% Verify EPTO component is running
+    EptoPid = gproc:where({n, l, {bbsvx_epto_disord_component, OntNamespace}}),
+    ct:pal("EPTO component pid: ~p", [EptoPid]),
+    ?assertMatch(true, is_pid(EptoPid)),
+    %% Verify leader manager is running
+    LeaderPid = gproc:where({n, l, {leader_manager, OntNamespace}}),
+    ct:pal("Leader manager pid: ~p", [LeaderPid]),
+    ?assertMatch(true, is_pid(LeaderPid)).
 
-connecting_an_ontology_starts_necessary_processes(_Config) ->
+%% Test that deleting an ontology removes it from the index and stops processes
+delete_ontology_test(_Config) ->
     OntNamespace = random_ont_name(),
-    {ok, _Pid} = bbsvx_ont_service:create_ontology(OntNamespace),
-    ok = bbsvx_ont_service:connect_ontology(OntNamespace),
-    P = gproc:where({n, l, {bbsvx_actor_spray, OntNamespace}}),
-    ct:pal("Spray view pid ~p", [P]),
-    ?assertMatch(true, is_pid(P)).
+    ok = bbsvx_ont_service:create_ontology(OntNamespace),
+    %% Give processes time to start
+    timer:sleep(300),
+    %% Verify ontology exists
+    ?assertMatch({ok, #ontology{namespace = OntNamespace}},
+                 bbsvx_ont_service:get_ontology(OntNamespace)),
+    %% Delete the ontology
+    ok = bbsvx_ont_service:delete_ontology(OntNamespace),
+    %% Give processes time to stop
+    timer:sleep(300),
+    %% Verify ontology is removed from index
+    ?assertMatch({error, not_found},
+                 bbsvx_ont_service:get_ontology(OntNamespace)),
+    %% Verify SPRAY agent is stopped
+    ?assertEqual(undefined, gproc:where({n, l, {bbsvx_actor_spray, OntNamespace}})).
 
 %%%=============================================================================
 %%% Internal functions

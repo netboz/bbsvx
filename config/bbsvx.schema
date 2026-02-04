@@ -155,3 +155,11 @@
   {datatype, {enum, [debug, info, notice, warning, error, critical, alert, emergency]}}
 ]}.
 
+%% Graph Visualizer Configuration
+{mapping, "network.enable_graph_visualizer", "bbsvx.enable_graph_visualizer", [
+  {default, false},
+  {datatype, {flag, true, false}},
+  {env, "BBSVX_ENABLE_GRAPH_VISUALIZER"},
+  {comment, "Enable graph visualizer integration for network topology visualization (Docker only)"}
+]}.
+

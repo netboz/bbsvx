@@ -31,7 +31,7 @@ Integrates Prolog knowledge base management with blockchain transaction processi
 ### Single State Owner
 The gen_statem process owns the complete `ont_state` including:
 - Prolog knowledge base state (erlog)
-- Transaction indices (local_index, current_index)
+- Transaction index (last_processed_index) - EPTO is the source of truth
 - Blockchain addresses (current_address, next_address)
 - Validation state for out-of-order transactions
 
@@ -89,8 +89,9 @@ syncing → Continue processing
     receive_transaction/1,
     accept_transaction_result/1,
     % Query API
-    get_current_index/1,
+    get_last_processed_index/1,
     request_segment/3,
+    get_prolog_state/1,
     % Testing API
     get_pending_count/1,
     is_transaction_pending/2
@@ -142,12 +143,10 @@ syncing → Continue processing
 }).
 
 -record(validation_state, {
-    previous_ts :: number() | undefined,
     pending = #{} :: map(),  %% #{Index => Transaction}
     requested_txs = #{} :: #{integer() => integer()}  %% #{Index => RequestTimestamp}
 }).
 
--type state() :: #state{}.
 -type validation_state() :: #validation_state{}.
 
 %%%=============================================================================
@@ -233,11 +232,11 @@ accept_transaction_result(#goal_result{namespace = Namespace} = GoalResult) ->
     end.
 
 -doc """
-Retrieves the current transaction index for the namespace.
+Retrieves the last processed transaction index for the namespace.
 """.
--spec get_current_index(Namespace :: binary()) -> {ok, integer()}.
-get_current_index(Namespace) ->
-    gen_statem:call({via, gproc, {n, l, {?MODULE, Namespace}}}, get_current_index).
+-spec get_last_processed_index(Namespace :: binary()) -> {ok, integer()}.
+get_last_processed_index(Namespace) ->
+    gen_statem:call({via, gproc, {n, l, {?MODULE, Namespace}}}, get_last_processed_index).
 
 -doc """
 Gets the count of pending transactions (for testing).
@@ -258,6 +257,25 @@ is_transaction_pending(Namespace, Index) ->
         gen_statem:call({via, gproc, {n, l, {?MODULE, Namespace}}}, get_validation_context, 5000),
     IsPending = maps:is_key(Index, ValidationState#validation_state.pending),
     {ok, IsPending}.
+
+-doc """
+Retrieves the Prolog state for cross-ontology queries.
+Returns the current Prolog state even if ontology is not fully synced.
+Used by the :: operator for cross-ontology predicate calls.
+""".
+-spec get_prolog_state(binary()) -> {ok, erlog_state()} | {error, term()}.
+get_prolog_state(Namespace) ->
+    case gproc:where({n, l, {?MODULE, Namespace}}) of
+        undefined ->
+            {error, ontology_not_found};
+        Pid ->
+            try
+                gen_statem:call(Pid, get_prolog_state, 5000)
+            catch
+                exit:{timeout, _} -> {error, timeout};
+                exit:{noproc, _} -> {error, ontology_not_found}
+            end
+    end.
 
 -doc """
 Requests a segment of transaction history from the network.
@@ -308,12 +326,13 @@ init([Namespace, Options]) ->
             case build_initial_prolog_state(Namespace) of
                 {ok, PrologState} ->
                     %% Create initial ont_state with Prolog state
+                    %% last_processed_index starts at -1 (nothing processed yet)
+                    %% For reconnect mode, load_history will update this to the last stored index
                     OntState = #ont_state{
                         namespace = Namespace,
                         current_ts = 0,
                         previous_ts = -1,
-                        local_index = -1,
-                        current_index = -1,
+                        last_processed_index = -1,
                         current_address = <<"-1">>,
                         next_address = <<"0">>,
                         contact_nodes = [],
@@ -343,7 +362,7 @@ init([Namespace, Options]) ->
                                 create ->
                                     %% Creating new ontology - start services first, then wait for genesis
                                     ?'log-info'(">> CREATE MODE: Starting services for new root ontology", []),
-                                    case start_ontology_services(Namespace, #{}) of
+                                    case start_ontology_services(Namespace, #{boot => create}) of
                                         {ok, ServicesPid} ->
                                             NewState = State#state{
                                                 connection_state = connecting,
@@ -442,17 +461,21 @@ wait_for_genesis_transaction(
     ?'log-info'("Processing genesis transaction", []),
 
     %% Step 1: Validate genesis (index must be 0)
-    CurrentIndex = OntState#ont_state.current_index,
+    LastProcessedIndex = OntState#ont_state.last_processed_index,
     CurrentAddress = OntState#ont_state.current_address,
 
-    case validate_transaction(Transaction, CurrentIndex, CurrentAddress, Namespace, ValidationState) of
+    case validate_transaction(Transaction, LastProcessedIndex, CurrentAddress, Namespace, ValidationState) of
         {ok, ValidatedTx, NewCurrentAddress, NewValidationState} ->
-            %% Step 2: Accept and broadcast (only after successful validation)
+            %% Step 2: Mark as accepted
+            %% NOTE: Do NOT broadcast genesis via EPTO because:
+            %% - At creation time, no peers exist to receive it
+            %% - Broadcasting causes genesis to be delivered back with an index
+            %%   that conflicts with the already-processed genesis (index 0)
+            %% - Joining nodes receive genesis via history sync, not EPTO
             AcceptedTx = ValidatedTx#transaction{
                 status = accepted,
                 ts_created = erlang:system_time()
             },
-            bbsvx_epto_service:broadcast(Namespace, AcceptedTx),
 
             %% Step 3: Process genesis
             case process_transaction(AcceptedTx, OntState, Namespace) of
@@ -462,8 +485,7 @@ wait_for_genesis_transaction(
                         ok ->
                             %% Update state with genesis results
                             UpdatedOntState = NewOntState#ont_state{
-                                local_index = 0,
-                                current_index = 0,
+                                last_processed_index = 0,
                                 current_address = NewCurrentAddress,
                                 next_address = <<"1">>
                             },
@@ -511,15 +533,15 @@ wait_for_genesis_transaction(
 wait_for_genesis_transaction(
     {call, From},
     get_validation_context,
-    #state{ont_state = #ont_state{current_index = Index, current_address = CurrentAddress},
+    #state{ont_state = #ont_state{last_processed_index = Index, current_address = CurrentAddress},
            validation_state = ValidationState}
 ) ->
     {keep_state_and_data, [{reply, From, {ok, Index, ValidationState, CurrentAddress}}]};
 
 wait_for_genesis_transaction(
     {call, From},
-    get_current_index,
-    #state{ont_state = #ont_state{current_index = Index}}
+    get_last_processed_index,
+    #state{ont_state = #ont_state{last_processed_index = Index}}
 ) ->
     {keep_state_and_data, [{reply, From, {ok, Index}}]};
 
@@ -544,8 +566,8 @@ initialize_ontology(state_timeout, load_history, #state{namespace = Namespace, o
 
     %% Load history (this can be slow, but we're not blocking init)
     case load_history(OntState, ReposTable) of
-        #ont_state{local_index = LocalIndex, current_index = CurrentIndex} = NewOntState ->
-            ?'log-info'(">> RECONNECT MODE: History loaded (local_index=~p, current_index=~p)", [LocalIndex, CurrentIndex]),
+        #ont_state{last_processed_index = LastProcessedIndex} = NewOntState ->
+            ?'log-info'(">> RECONNECT MODE: History loaded (last_processed_index=~p)", [LastProcessedIndex]),
 
             %% Start services after loading history
             ?'log-info'(">> RECONNECT MODE: Starting services", []),
@@ -569,6 +591,12 @@ initialize_ontology(state_timeout, load_history, #state{namespace = Namespace, o
             {stop, {error, {load_history_failed, Reason}}, State}
     end;
 
+%% Allow cross-ontology queries during initialization (state may be stale)
+initialize_ontology({call, From}, get_prolog_state, #state{ont_state = OntState}) when OntState =/= undefined ->
+    {keep_state_and_data, [{reply, From, {ok, OntState#ont_state.prolog_state}}]};
+initialize_ontology({call, From}, get_prolog_state, _State) ->
+    {keep_state_and_data, [{reply, From, {error, not_initialized}}]};
+
 initialize_ontology(_EventType, _Event, _State) ->
     keep_state_and_data.
 
@@ -585,17 +613,16 @@ wait_for_registration(
     {registered, CurrentIndex},
     #state{namespace = Namespace, ont_state = OntState, boot = BootMode} = State
 ) ->
-    ?'log-info'(">> ~p MODE SUCCESS: Registered with network (current_index=~p)",
+    ?'log-info'(">> ~p MODE SUCCESS: Registered with network (network_index=~p)",
                 [string:uppercase(atom_to_list(BootMode)), CurrentIndex]),
 
-    LocalIndex = OntState#ont_state.local_index,
-    NewOntState = OntState#ont_state{current_index = CurrentIndex},
+    LastProcessedIndex = OntState#ont_state.last_processed_index,
 
     %% Request missing transactions if needed
-    case CurrentIndex > LocalIndex of
+    case CurrentIndex > LastProcessedIndex of
         true ->
-            ?'log-info'(">> Requesting missing transactions (~p to ~p)", [LocalIndex + 1, CurrentIndex]),
-            request_segment(Namespace, LocalIndex + 1, CurrentIndex);
+            ?'log-info'(">> Requesting missing transactions (~p to ~p)", [LastProcessedIndex + 1, CurrentIndex]),
+            request_segment(Namespace, LastProcessedIndex + 1, CurrentIndex);
         false ->
             ok
     end,
@@ -603,7 +630,7 @@ wait_for_registration(
     %% Update connection state to connected
     ?'log-info'(">> Now CONNECTED and syncing", []),
     {next_state, syncing, State#state{
-        ont_state = NewOntState,
+        ont_state = OntState,
         connection_state = connected
     }};
 
@@ -629,6 +656,12 @@ wait_for_registration(cast, {process_transaction, _Tx}, _State) ->
     %% Reject transactions when not connected
     {keep_state_and_data, [{reply, {error, ontology_disconnected}}]};
 
+%% Allow cross-ontology queries during registration (state may be stale)
+wait_for_registration({call, From}, get_prolog_state, #state{ont_state = OntState}) when OntState =/= undefined ->
+    {keep_state_and_data, [{reply, From, {ok, OntState#ont_state.prolog_state}}]};
+wait_for_registration({call, From}, get_prolog_state, _State) ->
+    {keep_state_and_data, [{reply, From, {error, not_initialized}}]};
+
 wait_for_registration(_EventType, _Event, _State) ->
     keep_state_and_data.
 
@@ -649,11 +682,11 @@ syncing(enter, _, #state{namespace = Namespace} = State) ->
 
     {keep_state, State};
 
-%% Get current index query
+%% Get last processed index query
 syncing(
     {call, From},
-    get_current_index,
-    #state{ont_state = #ont_state{current_index = Index}}
+    get_last_processed_index,
+    #state{ont_state = #ont_state{last_processed_index = Index}}
 ) ->
     {keep_state_and_data, [{reply, From, {ok, Index}}]};
 
@@ -661,7 +694,7 @@ syncing(
 syncing(
     {call, From},
     get_validation_context,
-    #state{ont_state = #ont_state{current_index = Index, current_address = CurrentAddress},
+    #state{ont_state = #ont_state{last_processed_index = Index, current_address = CurrentAddress},
            validation_state = ValidationState}
 ) ->
     {keep_state_and_data, [{reply, From, {ok, Index, ValidationState, CurrentAddress}}]};
@@ -701,22 +734,27 @@ syncing(
 
     %% Retrieve transactions from storage
     History = retrieve_transaction_history(Namespace, OldestIndex, YoungerIndex),
+    ?'log-info'("Retrieved ~p transactions for history request", [length(History)]),
 
     {ActualOldest, ActualYoungest} = case History of
         [] -> {OldestIndex, YoungerIndex};
-        [First | _] = H -> {First#transaction.index, (lists:last(H))#transaction.index}
+        [ #transaction{} = First | _] = H -> {First#transaction.index, (lists:last(H))#transaction.index}
     end,
 
-    %% Send history response
-    gen_statem:cast(
-        {via, gproc, {n, l, {arc, in, ReqUlid}}},
-        {send_history, #ontology_history{
-            namespace = Namespace,
-            list_tx = History,
-            oldest_index = ActualOldest,
-            younger_index = ActualYoungest
-        }}
-    ),
+    %% Send history response via the arc registry
+    ?'log-info'("Sending history response to arc ~p", [ReqUlid]),
+    HistoryResponse = #ontology_history{
+        namespace = Namespace,
+        list_tx = History,
+        oldest_index = ActualOldest,
+        younger_index = ActualYoungest
+    },
+    case bbsvx_arc_registry:send(Namespace, in, ReqUlid, HistoryResponse) of
+        ok ->
+            ?'log-info'("History response sent successfully");
+        {error, not_found} ->
+            ?'log-warning'("Could not send history response - arc ~p not found", [ReqUlid])
+    end,
 
     keep_state_and_data;
 
@@ -727,6 +765,14 @@ syncing(
     #state{validation_state = ValidationState} = State
 ) ->
     ?'log-info'("Received history: ~p transactions", [length(ListTransactions)]),
+
+    %% Log each transaction's status for debugging
+    lists:foreach(
+        fun(#transaction{index = Idx, status = Status, type = Type}) ->
+            ?'log-info'("History tx ~p: type=~p, status=~p", [Idx, Type, Status])
+        end,
+        ListTransactions
+    ),
 
     %% Queue each transaction for validation
     lists:foreach(
@@ -762,14 +808,22 @@ syncing({call, From}, get_current_address, #state{ont_state = OntState}) ->
 syncing({call, From}, get_validation_state, #state{validation_state = ValidationState}) ->
     {keep_state_and_data, [{reply, From, {ok, ValidationState}}]};
 
-%% Transaction processing handler
+syncing({call, From}, get_db_ref, #state{ont_state = OntState}) ->
+    #ont_state{prolog_state = PrologState} = OntState,
+    #est{db = Db} = PrologState,
+    #db{ref = DbDiffer} = Db,
+    #db_differ{out_db = OutDb} = DbDiffer,
+    #db{ref = Ref} = OutDb,
+    {keep_state_and_data, [{reply, From, {ok, Ref}}]};
+
+%% Ignore new genesis (status != processed) - these should only be processed in wait_for_genesis state
+%% But allow history genesis (status = processed) to be validated and applied
 syncing(
     cast,
-    {process_transaction, #transaction{type = creation, index = 0}},
+    {process_transaction, #transaction{type = creation, index = 0, status = Status}},
     _State
-) ->
-    %% Genesis transaction should only be processed in wait_for_genesis state
-    ?'log-warning'("Received genesis transaction in syncing state, ignoring", []),
+) when Status =/= processed ->
+    ?'log-warning'("Received new genesis transaction in syncing state, ignoring (status=~p)", [Status]),
     keep_state_and_data;
 
 syncing(
@@ -784,10 +838,11 @@ syncing(
     ?'log-info'("Processing transaction in actor", []),
 
     %% Step 1: Validate (transaction already broadcasted via EPTO)
-    CurrentIndex = OntState#ont_state.current_index,
+    %% last_processed_index is the single source of truth for what we've processed
+    LastProcessedIndex = OntState#ont_state.last_processed_index,
     CurrentAddress = OntState#ont_state.current_address,
 
-    case validate_transaction(Transaction, CurrentIndex, CurrentAddress, Namespace, ValidationState) of
+    case validate_transaction(Transaction, LastProcessedIndex, CurrentAddress, Namespace, ValidationState) of
         {ok, ValidatedTx, NewCurrentAddress, NewValidationState} ->
             %% Step 3: Process
             case process_transaction(ValidatedTx, OntState, Namespace) of
@@ -797,8 +852,7 @@ syncing(
                         ok ->
                             %% Update state
                             UpdatedOntState = NewOntState#ont_state{
-                                current_index = ValidatedTx#transaction.index,
-                                local_index = ValidatedTx#transaction.index,
+                                last_processed_index = ValidatedTx#transaction.index,
                                 current_address = NewCurrentAddress,
                                 current_ts = ValidatedTx#transaction.ts_created
                             },
@@ -826,23 +880,23 @@ syncing(
                             {keep_state, State#state{ont_state = NewOntState}}
                     end;
 
-                {wait_for_result, Transaction, _OntState} ->
+                {wait_for_result, _WaitTx, _OntState} ->
                     %% Follower node needs to wait for goal result from leader
                     ?'log-info'("Transitioning to waiting_for_goal_result state for transaction ~p",
-                                [Transaction#transaction.index]),
+                                [ValidatedTx#transaction.index]),
 
                     %% Check if we already have the result cached (using index as key)
                     TxIndex = ValidatedTx#transaction.index,
                     case maps:get(TxIndex, State#state.cached_goal_results, undefined) of
                         undefined ->
-                            %% No cached result - transition to waiting state with 1 sec timeout
+                            %% No cached result - transition to waiting state with 5 sec timeout
                             {next_state, waiting_for_goal_result,
                              State#state{
                                  pending_goal_transaction = ValidatedTx,
                                  ont_state = OntState,
                                  validation_state = NewValidationState
                              },
-                             [{state_timeout, 1000, goal_result_timeout}]};
+                             [{state_timeout, 15000, goal_result_timeout}]};
 
                         CachedResult ->
                             %% We already have the result - process it immediately
@@ -861,8 +915,7 @@ syncing(
                     bbsvx_transaction:record_transaction(InvalidTx),
                     %% Still need to increment index to maintain chain integrity
                     UpdatedOntState = OntState#ont_state{
-                        current_index = ValidatedTx#transaction.index,
-                        local_index = ValidatedTx#transaction.index,
+                        last_processed_index = ValidatedTx#transaction.index,
                         current_address = NewCurrentAddress,
                         current_ts = ValidatedTx#transaction.ts_created
                     },
@@ -873,25 +926,55 @@ syncing(
             ?'log-info'("Transaction ~p is pending", [TxIndex]),
             {keep_state, State#state{validation_state = NewValidationState}};
 
-        {history_accepted, Index, NewAddr, NewValidationState} ->
-            ?'log-info'("History transaction ~p accepted", [Index]),
+        {duplicate, TxIndex, _ValidationState} ->
+            ?'log-debug'("Ignoring duplicate transaction ~p", [TxIndex]),
+            keep_state_and_data;
+
+        {history_accepted, Index, NewAddr, Diff, NewValidationState} ->
+            ?'log-info'("History transaction ~p accepted with ~p diffs", [Index, length(Diff)]),
+            %% Apply the diff to our Prolog state
+            #ont_state{prolog_state = PrologState} = OntState,
+            {ok, NewDb} = bbsvx_erlog_db_differ:apply_diff(Diff, PrologState#est.db),
+            NewPrologState = PrologState#est{db = NewDb},
             NewOntState = OntState#ont_state{
-                current_index = Index,
-                local_index = Index,
-                current_address = NewAddr
+                last_processed_index = Index,
+                current_address = NewAddr,
+                prolog_state = NewPrologState
             },
+            %% Check if the next transaction is waiting in pending map.
+            %% This ensures that when history transactions arrive out of order
+            %% (e.g., tx2 before tx1), the pending tx2 gets requeued after tx1.
+            NextIndex = Index + 1,
+            FinalValidationState = case check_pending(NewValidationState, NextIndex) of
+                {found, PendingTx, UpdatedValidationState} ->
+                    ?'log-info'("Re-queueing pending transaction ~p after history sync", [NextIndex]),
+                    receive_transaction(PendingTx),
+                    UpdatedValidationState;
+                {not_found, UpdatedValidationState} ->
+                    UpdatedValidationState
+            end,
             {keep_state, State#state{
                 ont_state = NewOntState,
-                validation_state = NewValidationState
+                validation_state = FinalValidationState
             }}
     end;
 
-%% Catch-all
+%% Handle duplicate registration messages (ignore - we're already syncing)
+syncing(info, {registered, _Index}, _State) ->
+    ?'log-debug'("Ignoring duplicate registration message in syncing state"),
+    keep_state_and_data;
+
+%% Handle goal results for leader (we already processed the goal, ignore our own result)
+syncing(info, #goal_result{}, _State) ->
+    ?'log-debug'("Ignoring goal_result in syncing state (leader already processed)"),
+    keep_state_and_data;
+
 %% Handle connection status queries
 syncing({call, From}, get_connection_status, State) ->
     Status = build_connection_status(State),
     {keep_state_and_data, [{reply, From, {ok, Status}}]};
 
+%% Catch-all
 syncing(Type, Event, _State) ->
     ?'log-warning'("Unhandled event in syncing state: ~p ~p", [Type, Event]),
     keep_state_and_data.
@@ -944,17 +1027,72 @@ waiting_for_goal_result(
 
     {keep_state, State#state{cached_goal_results = NewCachedResults}};
 
-%% Timeout waiting for result
+%% Timeout waiting for result - request history instead of skipping
 waiting_for_goal_result(state_timeout, goal_result_timeout, State) ->
     ?'log-error'("Timeout waiting for goal result from leader"),
-    #state{pending_goal_transaction = PendingTx} = State,
+    #state{
+        namespace = Namespace,
+        pending_goal_transaction = PendingTx
+    } = State,
 
-    %% Mark transaction as invalid due to timeout
-    InvalidTx = PendingTx#transaction{status = invalid},
-    bbsvx_transaction:record_transaction(InvalidTx),
+    TxIndex = PendingTx#transaction.index,
 
-    %% Transition back to syncing state
-    {next_state, syncing, State#state{pending_goal_transaction = undefined}};
+    %% DON'T increment index - we need the processed transaction with its diff
+    %% Request this specific transaction from peers via history request
+    ?'log-warning'("Timeout on transaction ~p - requesting history from peers instead of skipping",
+                   [TxIndex]),
+
+    %% Request the processed transaction from the network
+    %% Peers who have processed it will have the diff attached
+    bbsvx_actor_spray:broadcast_unique_random_subset(
+        Namespace,
+        #ontology_history_request{
+            namespace = Namespace,
+            oldest_index = TxIndex,
+            younger_index = TxIndex
+        },
+        3  %% Ask 3 random peers
+    ),
+
+    %% Transition back to syncing WITHOUT updating ont_state.last_processed_index
+    %% The history response will deliver the processed transaction with diff
+    {next_state, syncing, State#state{
+        pending_goal_transaction = undefined
+        %% Note: ont_state remains unchanged - we still need index TxIndex
+    }};
+
+%% Log leader changes while waiting for goal result
+waiting_for_goal_result(
+    info,
+    {incoming_event, #leader_election_info{payload = #neighbor{chosen_leader = NewLeader}}},
+    #state{namespace = Namespace, pending_goal_transaction = PendingTx} = _State
+) ->
+    %% Get current leader for comparison
+    case bbsvx_actor_leader_manager:get_leader(Namespace) of
+        {ok, CurrentLeader} when CurrentLeader =/= NewLeader, NewLeader =/= undefined ->
+            ?'log-warning'("Leader change detected while waiting for goal result! "
+                          "Current: ~p, New vote: ~p, Pending tx: ~p",
+                          [CurrentLeader, NewLeader, PendingTx#transaction.index]);
+        _ ->
+            ok
+    end,
+    keep_state_and_data;
+
+%% Handle incoming transactions while waiting - store in pending for later processing
+waiting_for_goal_result(
+    cast,
+    {process_transaction, #transaction{index = TxIndex} = Transaction},
+    #state{validation_state = ValidationState} = State
+) ->
+    ?'log-info'("Received transaction ~p while waiting for goal result - storing in pending", [TxIndex]),
+    #validation_state{pending = Pending} = ValidationState,
+    NewPending = Pending#{TxIndex => Transaction},
+    NewValidationState = ValidationState#validation_state{pending = NewPending},
+    {keep_state, State#state{validation_state = NewValidationState}};
+
+%% Allow cross-ontology queries even while waiting for goal result
+waiting_for_goal_result({call, From}, get_prolog_state, #state{ont_state = OntState}) ->
+    {keep_state_and_data, [{reply, From, {ok, OntState#ont_state.prolog_state}}]};
 
 %% Catch-all
 waiting_for_goal_result(Type, Event, _State) ->
@@ -1042,7 +1180,7 @@ validate_transaction(
     %% History transaction ready to be accepted
     ?'log-info'("Accepting history transaction ~p", [TxIndex]),
     bbsvx_transaction:record_transaction(Transaction),
-    {history_accepted, TxIndex, Transaction#transaction.current_address, ValidationState};
+    {history_accepted, TxIndex, Transaction#transaction.current_address, Transaction#transaction.diff, ValidationState};
 
 validate_transaction(
     #transaction{status = processed, index = TxIndex} = Transaction,
@@ -1059,7 +1197,11 @@ validate_transaction(
     NewPending = Pending#{TxIndex => Transaction},
 
     %% Check which transactions in the gap need to be requested
-    MissingIndices = lists:seq(CurrentIndex + 1, TxIndex - 1),
+    %% Guard against invalid range (when CurrentIndex + 1 > TxIndex - 1)
+    MissingIndices = case CurrentIndex + 1 =< TxIndex - 1 of
+        true -> lists:seq(CurrentIndex + 1, TxIndex - 1);
+        false -> []
+    end,
     Now = erlang:system_time(millisecond),
     TimeoutMs = 5000,  %% 5 second timeout
 
@@ -1100,18 +1242,17 @@ validate_transaction(
     {pending, TxIndex, NewValidationState};
 
 validate_transaction(
-    #transaction{status = created, ts_created = TsCreated} = Transaction,
-    CurrentIndex,
+    #transaction{status = created, index = TxIndex} = Transaction,
+    LastProcessedIndex,
     CurrentAddress,
     _Namespace,
     ValidationState
-) ->
-    %% New transaction - assign index
-    NewIndex = CurrentIndex + 1,
+) when TxIndex =:= LastProcessedIndex + 1 ->
+    %% EPTO-delivered transaction with expected index - validate and process
+    ?'log-info'("Transaction ~p is next expected (last_processed=~p)", [TxIndex, LastProcessedIndex]),
 
     ValidatedTx = Transaction#transaction{
         status = validated,
-        index = NewIndex,
         prev_address = CurrentAddress
     },
 
@@ -1119,14 +1260,73 @@ validate_transaction(
     bbsvx_transaction:record_transaction(ValidatedTx),
 
     %% Calculate new address
-    NewCurrentAddress = bbsvx_crypto_service:calculate_hash_address(NewIndex, Transaction),
+    NewCurrentAddress = bbsvx_crypto_service:calculate_hash_address(TxIndex, Transaction),
 
-    %% Update validation state with previous timestamp
+    {ok, ValidatedTx, NewCurrentAddress, ValidationState};
+
+validate_transaction(
+    #transaction{status = created, index = TxIndex} = _Transaction,
+    LastProcessedIndex,
+    _CurrentAddress,
+    _Namespace,
+    ValidationState
+) when TxIndex =< LastProcessedIndex ->
+    %% Duplicate transaction - already processed
+    ?'log-info'("Ignoring duplicate transaction ~p (last_processed=~p)", [TxIndex, LastProcessedIndex]),
+    {duplicate, TxIndex, ValidationState};
+
+validate_transaction(
+    #transaction{status = created, index = TxIndex} = Transaction,
+    LastProcessedIndex,
+    _CurrentAddress,
+    Namespace,
+    ValidationState
+) when TxIndex > LastProcessedIndex + 1 ->
+    %% Gap detected - store in pending and request missing
+    ?'log-info'("Gap detected: got ~p, expected ~p, storing in pending", [TxIndex, LastProcessedIndex + 1]),
+
+    #validation_state{pending = Pending, requested_txs = RequestedTxs} = ValidationState,
+    NewPending = Pending#{TxIndex => Transaction},
+
+    %% Check which transactions in the gap need to be requested
+    %% Guard against invalid range (defensive)
+    MissingIndices = case LastProcessedIndex + 1 =< TxIndex - 1 of
+        true -> lists:seq(LastProcessedIndex + 1, TxIndex - 1);
+        false -> []
+    end,
+    Now = erlang:system_time(millisecond),
+    TimeoutMs = 5000,
+
+    {ToRequest, NewRequestedTxs} = lists:foldl(
+        fun(Index, {AccToRequest, AccRequested}) ->
+            InPending = maps:is_key(Index, NewPending),
+            AlreadyRequested = is_tx_requested(Index, AccRequested, TimeoutMs),
+            case InPending orelse AlreadyRequested of
+                true -> {AccToRequest, AccRequested};
+                false -> {[Index | AccToRequest], AccRequested#{Index => Now}}
+            end
+        end,
+        {[], RequestedTxs},
+        MissingIndices
+    ),
+
+    case ToRequest of
+        [] ->
+            ?'log-debug'("All transactions ~p-~p already pending or requested",
+                        [LastProcessedIndex + 1, TxIndex - 1]);
+        _ ->
+            MinIndex = lists:min(ToRequest),
+            MaxIndex = lists:max(ToRequest),
+            ?'log-info'("Requesting missing segment ~p-~p", [MinIndex, MaxIndex]),
+            request_segment(Namespace, MinIndex, MaxIndex)
+    end,
+
     NewValidationState = ValidationState#validation_state{
-        previous_ts = TsCreated
+        pending = NewPending,
+        requested_txs = NewRequestedTxs
     },
 
-    {ok, ValidatedTx, NewCurrentAddress, NewValidationState};
+    {pending, TxIndex, NewValidationState};
 
 validate_transaction(Transaction, CurrentIndex, _CurrentAddress, Namespace, ValidationState) ->
     %% Out of order - store in pending
@@ -1141,7 +1341,11 @@ validate_transaction(Transaction, CurrentIndex, _CurrentAddress, Namespace, Vali
     {NewRequestedTxs, _Requested} = case TxIndex > CurrentIndex + 1 of
         true ->
             %% Check which transactions in the gap need to be requested
-            MissingIndices = lists:seq(CurrentIndex + 1, TxIndex - 1),
+            %% Guard against invalid range (defensive)
+            MissingIndices = case CurrentIndex + 1 =< TxIndex - 1 of
+                true -> lists:seq(CurrentIndex + 1, TxIndex - 1);
+                false -> []
+            end,
             Now = erlang:system_time(millisecond),
             TimeoutMs = 5000,  %% 5 second timeout
 
@@ -1236,35 +1440,71 @@ process_transaction(
 
     %% Wrap the updated #db_differ{} back into #db{}
     UpdatedDb = PrologDb#db{ref = UpdatedDbDiffer},
-
-    %% TODO: Execute payload (asserta static predicates if present)
-    %% The payload contains [{asserta, StaticPredicates}] but for now we'll skip this
-
     UpdatedPrologState = PrologState#est{db = UpdatedDb},
-    UpdatedOntState = OntState#ont_state{prolog_state = UpdatedPrologState},
 
-    ?'log-info'("Genesis transaction processing complete for ~p", [Namespace]),
-    {ok, Transaction, UpdatedOntState};
+    %% Execute genesis goal payload to assert static ontology predicates
+    #transaction{payload = #goal{payload = GoalPayload}} = Transaction,
+    FinalPrologState = case GoalPayload of
+        [{asserta, StaticPredicates}] when is_list(StaticPredicates) ->
+            ?'log-info'("Asserting ~p static ontology predicates from genesis", [length(StaticPredicates)]),
+            lists:foldl(
+                fun(Predicate, PrologStateAcc) ->
+                    case erlog_int:prove_goal({asserta, Predicate}, PrologStateAcc) of
+                        {succeed, NewPrologStateAcc} -> NewPrologStateAcc;
+                        _Error ->
+                            ?'log-warning'("Failed to assert genesis predicate: ~p", [Predicate]),
+                            PrologStateAcc
+                    end
+                end,
+                UpdatedPrologState,
+                StaticPredicates
+            );
+        _ ->
+            UpdatedPrologState
+    end,
+
+    %% Extract the diffs that were generated during genesis assertion
+    {GenesisDiff, ClearedPrologState} = case FinalPrologState#est.db of
+        #db{ref = #db_differ{op_fifo = OpFifo} = DbDiffer} = Db ->
+            %% Clear the op_fifo for next transaction
+            ClearedDbDiffer = bbsvx_erlog_db_differ:clear_diff(DbDiffer),
+            ClearedDb = Db#db{ref = ClearedDbDiffer},
+            ClearedState = FinalPrologState#est{db = ClearedDb},
+            {OpFifo, ClearedState};
+        _ ->
+            {[], FinalPrologState}
+    end,
+
+    %% Update transaction with the captured diffs
+    UpdatedTransaction = Transaction#transaction{diff = GenesisDiff},
+
+    UpdatedOntState = OntState#ont_state{prolog_state = ClearedPrologState},
+
+    ?'log-info'("Genesis transaction processing complete for ~p with ~p diffs",
+                [Namespace, length(GenesisDiff)]),
+    {ok, UpdatedTransaction, UpdatedOntState};
 
 process_transaction(
     #transaction{type = goal, payload = #goal{} = Goal, namespace = Namespace} = Transaction,
-    #ont_state{prolog_state = #est{db = PrologDb} = PrologState} = OntState,
+    #ont_state{prolog_state = PrologState} = OntState,
     Namespace
 ) ->
     %% Get leader
     {ok, Leader} = bbsvx_actor_leader_manager:get_leader(Namespace),
     MyId = bbsvx_crypto_service:my_id(),
     IsLeader = (Leader == MyId),
+    ?'log-info'("Goal processing: Leader=~p, MyId=~p, IsLeader=~p", [Leader, MyId, IsLeader]),
 
     case IsLeader of
         true ->
             %% We are the leader - execute the goal
             case do_prove_goal(Goal, Transaction#transaction.index, PrologState, true, Namespace) of
-                {_Result, NewPrologState, Diff} ->
+                {_Result, NewPrologState, Diff, Bindings} ->
                     ProcessedTx = Transaction#transaction{
                         status = processed,
                         ts_processed = erlang:system_time(),
-                        diff = Diff
+                        diff = Diff,
+                        bindings = Bindings
                     },
                     {ok, ProcessedTx, OntState#ont_state{prolog_state = NewPrologState}};
 
@@ -1295,7 +1535,21 @@ do_prove_goal(
     ?'log-info'("Executing goal as leader: ~p", [Predicate]),
 
     case erlog_int:prove_goal(Predicate, PrologState) of
-        {succeed, #est{db = #db{ref = #db_differ{op_fifo = OpFifo}}} = NewPrologState} ->
+        {succeed, #est{db = #db{ref = #db_differ{op_fifo = OpFifo} = DbDiffer} = OldDb, bs = Bindings, vn = Vn} = NewPrologState} ->
+            %% Clear the op_fifo for next transaction
+            ClearedDbDiffer = bbsvx_erlog_db_differ:clear_diff(DbDiffer),
+            ClearedDb = OldDb#db{ref = ClearedDbDiffer},
+            ClearedPrologState = NewPrologState#est{db = ClearedDb},
+
+            %% Debug: log raw bindings and state
+            ?'log-info'("DEBUG - Raw Erlog bindings: ~p, Vn: ~p", [Bindings, Vn]),
+            ?'log-info'("DEBUG - Original predicate: ~p", [Predicate]),
+            ?'log-info'("DEBUG - Full final state: ~p", [NewPrologState]),
+
+            %% Extract variable bindings for the result
+            SerializedBindings = serialize_bindings(Bindings),
+            ?'log-info'("Query succeeded with bindings: ~p", [SerializedBindings]),
+
             %% Broadcast result to followers
             GoalResult = #goal_result{
                 namespace = Namespace,
@@ -1303,24 +1557,27 @@ do_prove_goal(
                 signature = <<>>,
                 address = Goal#goal.id,
                 index = TransactionIndex,
-                diff = OpFifo
+                diff = OpFifo,
+                bindings = SerializedBindings
             },
             bbsvx_epto_service:broadcast(Namespace, GoalResult),
 
-            {succeed, NewPrologState, OpFifo};
+            {succeed, ClearedPrologState, OpFifo, SerializedBindings};
 
         {fail, NewPrologState} ->
+            ?'log-warning'("Goal FAILED: ~p", [Predicate]),
             GoalResult = #goal_result{
                 namespace = Namespace,
                 result = fail,
                 signature = <<>>,
                 address = Goal#goal.id,
                 index = TransactionIndex,
-                diff = []
+                diff = [],
+                bindings = []
             },
             bbsvx_epto_service:broadcast(Namespace, GoalResult),
 
-            {fail, NewPrologState, []};
+            {fail, NewPrologState, [], []};
 
         Other ->
             ?'log-error'("Goal execution error: ~p", [Other]),
@@ -1375,11 +1632,46 @@ postprocess_transaction(Transaction, Namespace) ->
 %%%=============================================================================
 
 -doc """
+Serialize Erlog bindings to a simple format for transmission.
+Converts Erlog's internal binding representation to a list of {VarName, Value} tuples.
+
+Erlog bindings come as a map:
+- Atom keys (variable names) map to variable numbers: 'X' => {0}
+- Integer keys (variable numbers) map to values: 0 => bob
+""".
+serialize_bindings(Bindings) when is_map(Bindings) ->
+    %% Extract variable names (atom keys only)
+    VarNames = [K || K <- maps:keys(Bindings), is_atom(K)],
+
+    %% For each variable name, resolve its value
+    lists:filtermap(
+        fun(VarName) ->
+            case maps:get(VarName, Bindings, undefined) of
+                {VarNum} when is_integer(VarNum) ->
+                    %% Follow the chain to get the actual value
+                    case maps:get(VarNum, Bindings, undefined) of
+                        undefined -> false;
+                        Value -> {true, {VarName, Value}}
+                    end;
+                _ -> false
+            end
+        end,
+        VarNames
+    );
+serialize_bindings([]) ->
+    [];
+serialize_bindings(Bindings) when is_list(Bindings) ->
+    %% Already serialized
+    Bindings;
+serialize_bindings(_) ->
+    [].
+
+-doc """
 Applies a goal result received from the leader and continues transaction processing.
 Used by both the waiting_for_goal_result state and cached result handling.
 """.
 apply_goal_result_and_continue(
-    #goal_result{diff = Diff, result = _Result, index = Index},
+    #goal_result{diff = Diff, result = _Result, index = Index, bindings = Bindings},
     PendingTx,
     NewCurrentAddress,
     ValidationState,
@@ -1387,7 +1679,7 @@ apply_goal_result_and_continue(
     Namespace,
     State
 ) ->
-    ?'log-info'("Applying goal result for transaction index ~p", [Index]),
+    ?'log-info'("Applying goal result for transaction index ~p with bindings ~p", [Index, Bindings]),
 
     %% Apply the diff to our Prolog state
     case bbsvx_erlog_db_differ:apply_diff(Diff, PrologState#est.db) of
@@ -1396,11 +1688,12 @@ apply_goal_result_and_continue(
             NewPrologState = PrologState#est{db = NewDb},
             UpdatedOntState = OntState#ont_state{prolog_state = NewPrologState},
 
-            %% Create processed transaction
+            %% Create processed transaction with bindings from goal result
             ProcessedTx = PendingTx#transaction{
                 status = processed,
                 ts_processed = erlang:system_time(),
-                diff = Diff
+                diff = Diff,
+                bindings = Bindings
             },
 
             %% Postprocess the transaction
@@ -1408,8 +1701,7 @@ apply_goal_result_and_continue(
                 ok ->
                     %% Update state with completed transaction
                     FinalOntState = UpdatedOntState#ont_state{
-                        current_index = Index,
-                        local_index = Index,
+                        last_processed_index = Index,
                         current_address = NewCurrentAddress,
                         current_ts = PendingTx#transaction.ts_created
                     },
@@ -1480,13 +1772,56 @@ is_tx_requested(Index, RequestedTxs, TimeoutMs) ->
 
 -doc """
 Builds initial Prolog state for a new ontology.
+Loads common predicates (like ::) that are available to all ontologies.
 """.
 build_initial_prolog_state(Namespace) ->
     DbRepos = bbsvx_ont_service:binary_to_table_name(Namespace),
     DbMod = bbsvx_erlog_db_ets,
     DbRef = DbRepos,
 
-    erlog_int:new(bbsvx_erlog_db_differ, {DbRef, DbMod}).
+    %% Create base Prolog state
+    {ok, BaseState} = erlog_int:new(bbsvx_erlog_db_differ, {DbRef, DbMod}),
+
+    %% Set unknown=fail so missing predicates fail gracefully instead of throwing errors
+    StateWithFlags = set_unknown_flag(fail, BaseState),
+
+    %% Load common predicates available to ALL ontologies
+    {ok, load_common_predicates(StateWithFlags)}.
+
+-doc """
+Loads common predicates into a Prolog state.
+Common predicates are defined in bbsvx_common_predicates and are
+available to all ontologies (e.g., :: for cross-ontology calls).
+""".
+load_common_predicates(#est{db = #db{ref = DbDiffer} = PrologDb} = PrologState) ->
+    CommonPreds = bbsvx_common_predicates:external_predicates(),
+    ?'log-debug'("Loading ~p common predicates", [length(CommonPreds)]),
+
+    UpdatedDbDiffer = lists:foldl(
+        fun({{Functor, Arity}, Mod, Func}, DbDifferAcc) ->
+            case bbsvx_erlog_db_differ:add_compiled_proc(DbDifferAcc, {Functor, Arity}, Mod, Func) of
+                {ok, NewDbDiffer} ->
+                    ?'log-debug'("Added common predicate ~p/~p", [Functor, Arity]),
+                    NewDbDiffer;
+                error ->
+                    ?'log-warning'("Failed to add common predicate ~p/~p", [Functor, Arity]),
+                    DbDifferAcc
+            end
+        end,
+        DbDiffer,
+        CommonPreds
+    ),
+
+    %% Return updated Prolog state
+    PrologState#est{db = PrologDb#db{ref = UpdatedDbDiffer}}.
+
+-doc """
+Sets the 'unknown' flag in the Prolog state flags.
+When set to 'fail', missing predicates fail gracefully instead of throwing errors.
+""".
+set_unknown_flag(Value, #est{fs = Flags} = State) ->
+    NewFlags = lists:keyreplace(unknown, 1, Flags, {unknown, Value, [error, fail, warning]}),
+    State#est{fs = NewFlags}.
 
 -doc """
 Loads transaction history from persistent storage.
@@ -1530,7 +1865,7 @@ do_load_history(Key, #ont_state{prolog_state = PrologState} = OntState, ReposTab
                         }
                     },
                     current_address = CurrentAddress,
-                    local_index = Index
+                    last_processed_index = Index
                 },
                 ReposTable
             )
@@ -1556,10 +1891,6 @@ retrieve_transaction_history(Namespace, OldestIndex, YoungerIndex) ->
         fun(#transaction{index = A}, #transaction{index = B}) -> A =< B end,
         HistResult
     ).
-
-%%%=============================================================================
-%%% Worker Functions
-%%%=============================================================================
 
 %%%=============================================================================
 %%% Service Management Functions

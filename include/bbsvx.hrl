@@ -28,6 +28,7 @@
     namespace = <<>> :: binary(),
     result :: atom(),
     diff :: term(),
+    bindings = [] :: list(),
     index :: integer(),
     address :: binary(),
     signature :: binary()
@@ -62,8 +63,9 @@
     previous_ts :: integer(),
     current_ts :: integer(),
     prolog_state :: erlog_state(),
-    local_index = -1 :: integer(),
-    current_index = 0 :: integer(),
+    %% Single source of truth for processed transactions
+    %% -1 means no transactions processed yet (genesis will be index 0)
+    last_processed_index = -1 :: integer(),
     current_address :: binary(),
     next_address :: binary(),
     contact_nodes :: [node_entry()]
@@ -96,6 +98,7 @@
     external_predicates = [] :: [atom()],
     payload :: term(),
     diff = [] :: [term()],
+    bindings = [] :: list(),
     status = created :: atom()
 }).
 -record(transaction_payload_init_ontology, {
@@ -135,7 +138,8 @@
     lock = <<>> :: binary(),
     source :: node_entry(),
     target :: node_entry(),
-    age = 0 :: non_neg_integer()
+    age = 0 :: non_neg_integer(),
+    status = available :: join_forwarding | joining | registering | available | exchanging | accepting_register | accepting_forward_join
 }).
 
 -type arc() :: #arc{}.
@@ -155,12 +159,14 @@
     ulid :: binary(),
     source :: node_entry(),
     lock :: binary(),
+    connection_type :: atom(),
     spread :: {boolean(), binary()} | undefined
 }).
 -record(evt_arc_connected_out, {
     ulid :: binary(),
     target :: node_entry(),
     lock :: binary(),
+    connection_type :: register | join | forward_join,
     spread :: {boolean(), binary()} | undefined
 }).
 -record(evt_arc_swapped_in, {

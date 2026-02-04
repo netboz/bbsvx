@@ -1,5 +1,5 @@
 ontology(test_inherit).
-from_onyology(test_inherit, bbsvx_root).
+from_ontology(test_inherit, bbsvx_root).
 
 isa(test_inherit, system_object).
 
