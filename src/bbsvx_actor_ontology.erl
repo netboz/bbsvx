@@ -930,7 +930,7 @@ syncing(
             ?'log-debug'("Ignoring duplicate transaction ~p", [TxIndex]),
             keep_state_and_data;
 
-        {history_accepted, Index, NewAddr, Diff, NewValidationState} ->
+        {history_accepted, #transaction{index = Index, current_address = NewAddr, diff = Diff} = HistoryTx, NewValidationState} ->
             ?'log-info'("History transaction ~p accepted with ~p diffs", [Index, length(Diff)]),
             %% Apply the diff to our Prolog state
             #ont_state{prolog_state = PrologState} = OntState,
@@ -941,6 +941,14 @@ syncing(
                 current_address = NewAddr,
                 prolog_state = NewPrologState
             },
+
+            %% Notify WebSocket subscribers about the history transaction
+            try
+                gproc:send({p, l, {diff, Namespace}}, {transaction_processed, HistoryTx})
+            catch
+                _:_ -> ok
+            end,
+
             %% Check if the next transaction is waiting in pending map.
             %% This ensures that when history transactions arrive out of order
             %% (e.g., tx2 before tx1), the pending tx2 gets requeued after tx1.
@@ -1094,6 +1102,14 @@ waiting_for_goal_result(
 waiting_for_goal_result({call, From}, get_prolog_state, #state{ont_state = OntState}) ->
     {keep_state_and_data, [{reply, From, {ok, OntState#ont_state.prolog_state}}]};
 
+%% Allow spray agent to get last processed index while waiting for goal result
+waiting_for_goal_result(
+    {call, From},
+    get_last_processed_index,
+    #state{ont_state = #ont_state{last_processed_index = Index}}
+) ->
+    {keep_state_and_data, [{reply, From, {ok, Index}}]};
+
 %% Catch-all
 waiting_for_goal_result(Type, Event, _State) ->
     ?'log-warning'("Unhandled event in waiting_for_goal_result state: ~p ~p", [Type, Event]),
@@ -1180,7 +1196,7 @@ validate_transaction(
     %% History transaction ready to be accepted
     ?'log-info'("Accepting history transaction ~p", [TxIndex]),
     bbsvx_transaction:record_transaction(Transaction),
-    {history_accepted, TxIndex, Transaction#transaction.current_address, Transaction#transaction.diff, ValidationState};
+    {history_accepted, Transaction, ValidationState};
 
 validate_transaction(
     #transaction{status = processed, index = TxIndex} = Transaction,
@@ -1485,6 +1501,33 @@ process_transaction(
     {ok, UpdatedTransaction, UpdatedOntState};
 
 process_transaction(
+    #transaction{type = goal, status = processed, diff = Diff} = Transaction,
+    #ont_state{prolog_state = PrologState} = OntState,
+    _Namespace
+) when Diff =/= undefined, Diff =/= [] ->
+    %% Already processed transaction (from history) with changes - apply the diff directly
+    ?'log-info'("Processing already-processed transaction ~p from history, applying diff",
+                [Transaction#transaction.index]),
+    case bbsvx_erlog_db_differ:apply_diff(Diff, PrologState#est.db) of
+        {ok, NewDb} ->
+            NewPrologState = PrologState#est{db = NewDb},
+            {ok, Transaction, OntState#ont_state{prolog_state = NewPrologState}};
+        {error, Reason} ->
+            ?'log-error'("Failed to apply history diff: ~p", [Reason]),
+            {error, Reason, OntState}
+    end;
+
+process_transaction(
+    #transaction{type = goal, status = processed} = Transaction,
+    OntState,
+    _Namespace
+) ->
+    %% Already processed transaction (from history) with no changes - just pass through
+    ?'log-info'("Processing already-processed transaction ~p from history (no diff)",
+                [Transaction#transaction.index]),
+    {ok, Transaction, OntState};
+
+process_transaction(
     #transaction{type = goal, payload = #goal{} = Goal, namespace = Namespace} = Transaction,
     #ont_state{prolog_state = PrologState} = OntState,
     Namespace
@@ -1782,11 +1825,17 @@ build_initial_prolog_state(Namespace) ->
     %% Create base Prolog state
     {ok, BaseState} = erlog_int:new(bbsvx_erlog_db_differ, {DbRef, DbMod}),
 
-    %% Set unknown=fail so missing predicates fail gracefully instead of throwing errors
-    StateWithFlags = set_unknown_flag(fail, BaseState),
+    %% Load standard library predicates (length/2, sort/2, append/3, etc.)
+    StateWithLibs = load_standard_libraries(BaseState),
 
-    %% Load common predicates available to ALL ontologies
-    {ok, load_common_predicates(StateWithFlags)}.
+    %% Set unknown=fail so missing predicates fail gracefully instead of throwing errors
+    StateWithFlags = set_unknown_flag(fail, StateWithLibs),
+
+    %% Load common Erlang predicates (:: operator, etc.)
+    StateWithErlangCommon = load_common_predicates(StateWithFlags),
+
+    %% Load common Prolog predicates (goal/1, network registry, etc.)
+    {ok, load_common_prolog_predicates(StateWithErlangCommon)}.
 
 -doc """
 Loads common predicates into a Prolog state.
@@ -1814,6 +1863,57 @@ load_common_predicates(#est{db = #db{ref = DbDiffer} = PrologDb} = PrologState) 
 
     %% Return updated Prolog state
     PrologState#est{db = PrologDb#db{ref = UpdatedDbDiffer}}.
+
+-doc """
+Loads common Prolog predicates from common_predicates.pl into the Prolog state.
+These include goal/1 (action execution), network node registry predicates, etc.
+Available to all ontologies.
+""".
+load_common_prolog_predicates(PrologState) ->
+    %% Get the path to common_predicates.pl
+    case code:priv_dir(bbsvx) of
+        {error, bad_name} ->
+            ?'log-warning'("Cannot find priv dir for bbsvx, skipping common Prolog predicates"),
+            PrologState;
+        PrivDir ->
+            FilePath = filename:join([PrivDir, "ontologies", "common_predicates.pl"]),
+            case erlog_io:read_file(FilePath) of
+                {ok, Terms} ->
+                    ?'log-debug'("Loading ~p common Prolog predicates from ~s",
+                                [length(Terms), FilePath]),
+                    %% Assert each term into the Prolog state
+                    lists:foldl(
+                        fun(Term, StateAcc) ->
+                            case erlog_int:prove_goal({asserta, Term}, StateAcc) of
+                                {succeed, NewState} ->
+                                    NewState;
+                                {fail, _} ->
+                                    ?'log-warning'("Failed to assert common predicate: ~p", [Term]),
+                                    StateAcc
+                            end
+                        end,
+                        PrologState,
+                        Terms
+                    );
+                {error, Reason} ->
+                    ?'log-warning'("Failed to read common_predicates.pl: ~p", [Reason]),
+                    PrologState;
+                Other ->
+                    ?'log-warning'("Unexpected result from erlog_io:read_file: ~p", [Other]),
+                    PrologState
+            end
+    end.
+
+-doc """
+Loads standard Prolog library predicates into the Prolog state.
+This includes the lists library (length/2, sort/2, append/3, member/2, etc.)
+which are required for network node registry operations.
+""".
+load_standard_libraries(#est{db = PrologDb} = PrologState) ->
+    %% Load the lists library (length/2, sort/2, append/3, member/2, reverse/2, insert/3)
+    UpdatedDb = erlog_lib_lists:load(PrologDb),
+    ?'log-debug'("Loaded erlog_lib_lists standard predicates"),
+    PrologState#est{db = UpdatedDb}.
 
 -doc """
 Sets the 'unknown' flag in the Prolog state flags.

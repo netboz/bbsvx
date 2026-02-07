@@ -80,9 +80,9 @@ state_entry_to_map({{Functor, Arity}, clauses, NumberOfClauses, ListOfClauses}) 
         clauses => lists:map(fun clause_to_map/1, ListOfClauses)
     }.
 
-clause_to_map({ClauseNum, Head, {_Bodies, false}}) ->
+clause_to_map({ClauseNum, Head, {_Bodies, _HasCut}}) ->
     [Functor | Params] = tuple_to_list(Head),
-    JsonableParams = lists:map(fun param_to_json/1, Params),
+    JsonableParams = param_list_to_json(Params),
     #{
         clause_num => ClauseNum,
         functor => Functor,
@@ -97,16 +97,31 @@ param_to_json(Tuple) when is_tuple(Tuple) ->
     [Functor | Args] = tuple_to_list(Tuple),
     #{
         functor => Functor,
-        args => lists:map(fun param_to_json/1, Args)
+        args => param_list_to_json(Args)
     };
 param_to_json(List) when is_list(List) ->
-    lists:map(fun param_to_json/1, List);
+    param_list_to_json(List);
 param_to_json(Value) ->
     Value.
 
+%% Handle lists that may be improper (e.g., [H | T] patterns where T is a variable)
+%% Prolog patterns like satisfy_prereq([Prereq | Rest]) are stored as [{0} | {1}]
+%% which is an improper list (tail is a variable, not [] or another cons cell)
+param_list_to_json([]) ->
+    [];
+param_list_to_json([H | T]) when is_list(T) ->
+    [param_to_json(H) | param_list_to_json(T)];
+param_list_to_json([H | T]) ->
+    %% Improper list: T is not a list (e.g., a variable reference {1})
+    #{
+        type => cons,
+        head => param_to_json(H),
+        tail => param_to_json(T)
+    }.
+
 diff_to_json({asserta, FunctorIn, Head, _Body}) ->
     [Functor | Params] = tuple_to_list(Head),
-    JsonableParams = lists:map(fun param_to_json/1, Params),
+    JsonableParams = param_list_to_json(Params),
     {_, Arity} = FunctorIn,
     #{
         operation => asserta,
@@ -115,7 +130,7 @@ diff_to_json({asserta, FunctorIn, Head, _Body}) ->
     };
 diff_to_json({assertz, FunctorIn, Head, _Body}) ->
     [Functor | Params] = tuple_to_list(Head),
-    JsonableParams = lists:map(fun param_to_json/1, Params),
+    JsonableParams = param_list_to_json(Params),
     {_, Arity} = FunctorIn,
     #{
         operation => assertz,
