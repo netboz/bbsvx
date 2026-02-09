@@ -158,6 +158,20 @@ terminate(
     #state{namespace = NameSpace, my_node = #node_entry{node_id = MyNodeId} = MyNode}
 ) ->
     ?'log-info'("spray Agent ~p : Terminating. Reason :~p", [MyNodeId, Reason]),
+
+    %% Broadcast transaction to remove this node from network registry
+    %% This must happen before terminating connections so the transaction can propagate
+    %% Format: goal(disconnect_predicate(...)) - wrapped for action execution
+    NodeIdAtom = binary_to_list(MyNodeId),
+    DisconnectGoal = io_lib:format("goal(disconnect_predicate('~s'))", [NodeIdAtom]),
+    DisconnectGoalBin = list_to_binary(lists:flatten(DisconnectGoal)),
+    case bbsvx_ont_service:prove(NameSpace, DisconnectGoalBin) of
+        {ok, _GoalId} ->
+            ?'log-info'("Broadcast disconnect_predicate transaction for self (~p)", [MyNodeId]);
+        {error, ProveError} ->
+            ?'log-warning'("Failed to broadcast disconnect_predicate: ~p", [ProveError])
+    end,
+
     % Normal termination
     % We need to terminate our in and out connections
     % First we get the outview, and keep a single arc per target node
@@ -234,8 +248,19 @@ handle_event(
     %%  Try to register to the ontology node mesh
     register_namespace(NameSpace, MyNode, ContactNodes),
     {keep_state, State};
-handle_event(enter, _, disconnected, #state{namespace = NameSpace} = State) ->
-    ?'log-info'("spray Agent ~p : Entering disconnected state", [NameSpace]),
+%% Entering disconnected from a connected state - attempt recovery with state_timeout
+handle_event(enter, PrevState, disconnected, #state{namespace = NameSpace} = State)
+  when PrevState =:= connected; PrevState =:= empty_outview; PrevState =:= empty_inview ->
+    ?'log-warning'("spray Agent ~p : Entering disconnected state from ~p, attempting recovery",
+                  [NameSpace, PrevState]),
+    prometheus_gauge:inc(<<"bbsvx_spray_inview_depleted">>, [NameSpace]),
+    %% Attempt immediate recovery
+    attempt_disconnected_recovery(State),
+    %% Set state timeout for retry if still disconnected
+    {keep_state, State, [{state_timeout, 5000, disconnected_recovery}]};
+%% Fallback for unexpected transitions to disconnected
+handle_event(enter, PrevState, disconnected, #state{namespace = NameSpace} = State) ->
+    ?'log-info'("spray Agent ~p : Entering disconnected state from ~p", [NameSpace, PrevState]),
     prometheus_gauge:inc(<<"bbsvx_spray_inview_depleted">>, [NameSpace]),
     {keep_state, State};
 handle_event(
@@ -392,6 +417,20 @@ handle_event(
         [NameSpace]
     ),
     keep_state_and_data;
+%% State timeout for disconnected recovery - retry if still disconnected
+handle_event(
+    state_timeout,
+    disconnected_recovery,
+    disconnected,
+    #state{namespace = NameSpace} = State
+) ->
+    ?'log-info'(
+        "spray Agent ~p : disconnected state, recovery timeout fired, retrying",
+        [NameSpace]
+    ),
+    attempt_disconnected_recovery(State),
+    %% Keep retrying until we reconnect (state_timeout auto-cancels on state change)
+    {keep_state, State, [{state_timeout, 5000, disconnected_recovery}]};
 handle_event(
     info,
     #incoming_event{
@@ -633,6 +672,50 @@ handle_event(
         "spray Agent ~p : empty_outview state, Arc Out disconnected :~p, ignoring",
         [NameSpace, Ulid]
     ),
+    keep_state_and_data;
+%% Connection error in empty_outview - failed to establish replacement connection
+%% This happens when exchange gives us a new target but connection to it fails
+handle_event(
+    info,
+    #incoming_event{
+        origin_arc = _Ulid,
+        event = #evt_connection_error{node = #node_entry{node_id = FailedNodeId} = FailedNode, reason = Reason}
+    },
+    empty_outview,
+    #state{namespace = NameSpace, my_node = #node_entry{node_id = MyNodeId} = MyNode}
+) ->
+    ?'log-warning'(
+        "spray Agent ~p : empty_outview state, connection to ~p failed (reason: ~p), trying recovery",
+        [NameSpace, FailedNode, Reason]
+    ),
+    %% Try registry first, then inview for reconnection
+    InView = bbsvx_arc_registry:get_available_arcs(NameSpace, in),
+    RegistryNodes = get_nodes_from_registry(NameSpace, MyNodeId, FailedNodeId),
+    case {RegistryNodes, InView} of
+        {[_|_], _} ->
+            %% Have registry nodes - use one for reconnection
+            ?'log-info'("spray Agent ~p : Using registry node for recovery (~p candidates)",
+                       [NameSpace, length(RegistryNodes)]),
+            TargetNode = lists:nth(rand:uniform(length(RegistryNodes)), RegistryNodes),
+            supervisor:start_child(
+                bbsvx_sup_client_connections,
+                [forward_join, NameSpace, MyNode, TargetNode, []]
+            );
+        {[], [_|_]} ->
+            %% No registry but have inview - use inview node
+            ?'log-info'("spray Agent ~p : No registry nodes, using inview for recovery",
+                       [NameSpace]),
+            {#arc{source = InViewNode}, _} =
+                lists:nth(rand:uniform(length(InView)), InView),
+            supervisor:start_child(
+                bbsvx_sup_client_connections,
+                [forward_join, NameSpace, MyNode, InViewNode, []]
+            );
+        {[], []} ->
+            %% No registry and no inview - stay put, wait for timeout or incoming connection
+            ?'log-warning'("spray Agent ~p : Connection failed, no recovery options available",
+                          [NameSpace])
+    end,
     keep_state_and_data;
 handle_event(
     info,
@@ -1010,6 +1093,48 @@ handle_event(
         _ ->
             keep_state_and_data
     end;
+%% Connection error in empty_inview - failed to establish replacement connection
+handle_event(
+    info,
+    #incoming_event{
+        origin_arc = _Ulid,
+        event = #evt_connection_error{node = #node_entry{node_id = FailedNodeId} = FailedNode, reason = Reason}
+    },
+    empty_inview,
+    #state{namespace = NameSpace, my_node = #node_entry{node_id = MyNodeId} = MyNode}
+) ->
+    ?'log-warning'(
+        "spray Agent ~p : empty_inview state, connection to ~p failed (reason: ~p), trying recovery",
+        [NameSpace, FailedNode, Reason]
+    ),
+    %% Try registry first, then outview for reconnection
+    OutView = bbsvx_arc_registry:get_available_arcs(NameSpace, out),
+    RegistryNodes = get_nodes_from_registry(NameSpace, MyNodeId, FailedNodeId),
+    case {RegistryNodes, OutView} of
+        {[_|_], _} ->
+            %% Have registry nodes - connect to one and ask it to connect back
+            ?'log-info'("spray Agent ~p : Using registry node for recovery (~p candidates)",
+                       [NameSpace, length(RegistryNodes)]),
+            TargetNode = lists:nth(rand:uniform(length(RegistryNodes)), RegistryNodes),
+            supervisor:start_child(
+                bbsvx_sup_client_connections,
+                [forward_join, NameSpace, MyNode, TargetNode, []]
+            );
+        {[], [_|_]} ->
+            %% No registry but have outview - ask outview node to connect to us
+            ?'log-info'("spray Agent ~p : No registry nodes, using outview for recovery",
+                       [NameSpace]),
+            {#arc{ulid = OutUlid}, _} =
+                lists:nth(rand:uniform(length(OutView)), OutView),
+            send(NameSpace, OutUlid, out, #open_forward_join{
+                lock = <<"Recovery">>, subscriber_node = MyNode
+            });
+        {[], []} ->
+            %% No registry and no outview - should not happen in empty_inview state
+            ?'log-warning'("spray Agent ~p : Connection failed, no recovery options available",
+                          [NameSpace])
+    end,
+    keep_state_and_data;
 handle_event(
     info,
     #incoming_event{
@@ -1371,40 +1496,73 @@ handle_event(
     #incoming_event{
         origin_arc = _Ulid,
         event =
-            #evt_arc_disconnected{ulid = DisconnectedUlid, direction = out}
+            #evt_arc_disconnected{ulid = DisconnectedUlid, direction = out, reason = Reason}
     },
     connected,
-    #state{namespace = NameSpace} = State
+    #state{namespace = NameSpace, my_node = MyNode} = State
 ) ->
-    case bbsvx_arc_registry:get_available_arcs(NameSpace, out) of
+    OutView = bbsvx_arc_registry:get_available_arcs(NameSpace, out),
+    case OutView of
         [] ->
             ?'log-warning'(
-                "spray Agent ~p : Arc Out disconnected :~p, empty outview",
-                [State#state.namespace, DisconnectedUlid]
+                "spray Agent ~p : Arc Out disconnected :~p (reason: ~p), empty outview",
+                [State#state.namespace, DisconnectedUlid, Reason]
             ),
-
             {next_state, empty_outview, State};
         _ ->
+            %% For ungraceful disconnections, duplicate a random arc per SPRAY whitepaper
+            case is_ungraceful_disconnect(Reason) of
+                true ->
+                    ?'log-info'(
+                        "spray Agent ~p : Ungraceful out arc disconnection ~p (reason: ~p), duplicating random arc",
+                        [NameSpace, DisconnectedUlid, Reason]
+                    ),
+                    {#arc{target = RandomTarget}, _} = lists:nth(rand:uniform(length(OutView)), OutView),
+                    open_connection(NameSpace, MyNode, RandomTarget, []);
+                false ->
+                    ?'log-info'(
+                        "spray Agent ~p : Graceful out arc disconnection ~p (reason: ~p)",
+                        [NameSpace, DisconnectedUlid, Reason]
+                    )
+            end,
             keep_state_and_data
     end;
 handle_event(
     info,
     #incoming_event{
         origin_arc = _Ulid,
-        event = #evt_arc_disconnected{ulid = Ulid, direction = in}
+        event = #evt_arc_disconnected{ulid = Ulid, direction = in, reason = Reason}
     },
     connected,
-    #state{namespace = NameSpace} = State
+    #state{namespace = NameSpace, my_node = MyNode} = State
 ) ->
-    case bbsvx_arc_registry:get_available_arcs(NameSpace, in) of
+    InView = bbsvx_arc_registry:get_available_arcs(NameSpace, in),
+    case InView of
         [] ->
             ?'log-warning'(
-                "spray Agent ~p : Arc In disconnected :~p, empty inview",
-                [State#state.namespace, Ulid]
+                "spray Agent ~p : Arc In disconnected :~p (reason: ~p), empty inview",
+                [State#state.namespace, Ulid, Reason]
             ),
-
             {next_state, empty_inview, State};
         _ ->
+            %% For ungraceful disconnections, duplicate a random arc per SPRAY whitepaper
+            case is_ungraceful_disconnect(Reason) of
+                true ->
+                    ?'log-info'(
+                        "spray Agent ~p : Ungraceful in arc disconnection ~p (reason: ~p), requesting duplicate from random inview peer",
+                        [NameSpace, Ulid, Reason]
+                    ),
+                    %% Ask a random inview peer to open a connection to us
+                    {#arc{ulid = RandomUlid}, _} = lists:nth(rand:uniform(length(InView)), InView),
+                    send(NameSpace, RandomUlid, in, #open_forward_join{
+                        lock = <<"ArcRecreate">>, subscriber_node = MyNode
+                    });
+                false ->
+                    ?'log-info'(
+                        "spray Agent ~p : Graceful in arc disconnection ~p (reason: ~p)",
+                        [NameSpace, Ulid, Reason]
+                    )
+            end,
             keep_state_and_data
     end;
 handle_event(
@@ -1751,6 +1909,55 @@ handle_event(
         [State#state.namespace, exchange_in_busy]
     ),
     {keep_state, State};
+%% Exchange timeout handler - fires when we don't receive exchange_out or exchange_accept in time
+handle_event(
+    timeout,
+    timeout,
+    connected,
+    #state{
+        namespace = NameSpace,
+        current_exchange_peer = #arc{ulid = PeerUlid} = CurrentExchangePeer,
+        exchange_direction = ExchangeDirection,
+        proposed_sample = ProposedSample
+    } = State
+) when CurrentExchangePeer =/= undefined ->
+    ?'log-warning'(
+        "spray Agent ~p : Exchange timeout (direction: ~p, peer: ~p), resetting exchange state",
+        [NameSpace, ExchangeDirection, CurrentExchangePeer#arc.target]
+    ),
+    prometheus_counter:inc(<<"bbsvx_spray_exchange_timeout">>, [NameSpace, ExchangeDirection]),
+
+    %% Notify the peer that we're cancelling the exchange
+    send(NameSpace, PeerUlid, ExchangeDirection, #exchange_cancelled{
+        reason = exchange_timeout,
+        namespace = NameSpace
+    }),
+
+    %% Mark proposed arcs back as available since exchange timed out
+    lists:foreach(
+        fun(#exchange_entry{ulid = Ulid, lock = Lock}) ->
+            case bbsvx_arc_registry:get_arc(NameSpace, out, Ulid) of
+                {ok, {#arc{status = exchanging}, Pid}} ->
+                    %% Arc is still present and in exchanging state - exchange failed
+                    %% Change lock and mark as available again
+                    NewLock = bbsvx_client_connection:get_lock(?LOCK_SIZE),
+                    Pid ! {send, #change_lock{current_lock = Lock, new_lock = NewLock}},
+                    bbsvx_arc_registry:update_status(NameSpace, out, Ulid, available);
+                _ ->
+                    ok
+            end
+        end,
+        ProposedSample
+    ),
+    {keep_state, State#state{
+        current_exchange_peer = undefined,
+        exchange_direction = undefined,
+        proposed_sample = [],
+        incoming_sample = []
+    }};
+%% Exchange timeout when not actually exchanging - just ignore (stale timeout)
+handle_event(timeout, timeout, connected, State) ->
+    {keep_state, State};
 handle_event(
     info,
     #incoming_event{
@@ -2021,6 +2228,17 @@ handle_event(Type, Msg, StateName, StateData) ->
 %%% Internal functions
 %%%=============================================================================
 
+%% Determine if a disconnection reason indicates an ungraceful/unexpected failure.
+%% Graceful reasons (part of SPRAY protocol operations): mirror, mirrored, swapped, normal, shutdown
+%% Ungraceful reasons (unexpected failures): crashed, killed, noproc, etc.
+-spec is_ungraceful_disconnect(atom()) -> boolean().
+is_ungraceful_disconnect(mirror) -> false;
+is_ungraceful_disconnect(mirrored) -> false;
+is_ungraceful_disconnect(swapped) -> false;
+is_ungraceful_disconnect(normal) -> false;
+is_ungraceful_disconnect(shutdown) -> false;
+is_ungraceful_disconnect(_Other) -> true.
+
 -doc """
 Initiate proposed connections received from an exchange.
 
@@ -2080,11 +2298,25 @@ swap_connections(
     Type :: mirror | normal,
     ExchangeEntry :: exchange_entry()
 ) ->
-    supervisor:startchild_ret().
+    ok | {error, term()} | supervisor:startchild_ret().
+%% Mirror swap: trigger in-place module switch on existing client_connection
+%% This avoids creating a new connection - the existing socket is reused
+swap_connection(
+    NameSpace,
+    _MyNode,
+    mirror,
+    #exchange_entry{
+        ulid = Ulid,
+        lock = NewLock
+    }
+) ->
+    ?'log-info'("spray Agent ~p : Triggering in-place mirror for arc ~p", [NameSpace, Ulid]),
+    bbsvx_arc_registry:trigger_mirror(NameSpace, Ulid, NewLock);
+%% Normal swap: create new client connection to target
 swap_connection(
     NameSpace,
     MyNode,
-    Type,
+    normal,
     #exchange_entry{
         target = TargetNode,
         ulid = Ulid,
@@ -2093,7 +2325,7 @@ swap_connection(
 ) ->
     supervisor:start_child(
         bbsvx_sup_client_connections,
-        [join, NameSpace, MyNode, TargetNode, Ulid, Lock, Type, []]
+        [join, NameSpace, MyNode, TargetNode, Ulid, Lock, normal, []]
     ).
 
 %%-----------------------------------------------------------------------------
@@ -2278,7 +2510,7 @@ react_quitted_node(
     #evt_node_quitted{node_id = QuittedNodeId, reason = Reason},
     #state{
         namespace = NameSpace,
-        my_node = MyNode,
+        my_node = #node_entry{node_id = MyNodeId} = MyNode,
         contact_nodes = ContactNodes
     } =
         State
@@ -2287,119 +2519,171 @@ react_quitted_node(
         "Node ~p quitted with reason ~p, Reacting to isolation by re-registering",
         [QuittedNodeId, Reason]
     ),
-    %% Select random node from contact nodes and re-register
-    %% TODO: What if node that quitted is the only node in contact nodes
-    RandomNode =
-        lists:nth(
-            rand:uniform(length(ContactNodes)), ContactNodes
-        ),
+
+    %% First try to get nodes from network registry (ontology KB)
+    %% This gives us a better view of recently connected nodes than static contact_nodes
+    RegistryNodes = get_nodes_from_registry(NameSpace, MyNodeId, QuittedNodeId),
+
+    %% Choose target node: prefer registry nodes, fall back to contact_nodes
+    TargetNode = case RegistryNodes of
+        [_|_] ->
+            %% Have registry nodes - pick random one
+            ?'log-info'("spray Agent ~p : Using ~p nodes from network registry for reconnection",
+                       [NameSpace, length(RegistryNodes)]),
+            lists:nth(rand:uniform(length(RegistryNodes)), RegistryNodes);
+        [] ->
+            %% No registry nodes - fall back to contact_nodes
+            ?'log-info'("spray Agent ~p : No registry nodes, falling back to contact_nodes",
+                       [NameSpace]),
+            lists:nth(rand:uniform(length(ContactNodes)), ContactNodes)
+    end,
 
     supervisor:start_child(
         bbsvx_sup_client_connections,
-        [register, NameSpace, MyNode, RandomNode, []]
+        [register, NameSpace, MyNode, TargetNode, []]
     ),
-    ?'log-info'("13", []),
+    ?'log-info'("Reconnecting to node ~p after isolation", [TargetNode]),
     {keep_state, State};
-%% Manage empty outview
+%% Manage empty outview - try registry first for more entropy, fallback to inview
 react_quitted_node(
     [],
     _,
     FilteredInView,
     _,
     #evt_node_quitted{node_id = QuittedNodeId, reason = Reason},
-    #state{namespace = NameSpace, my_node = MyNode} = State
+    #state{namespace = NameSpace, my_node = #node_entry{node_id = MyNodeId} = MyNode} = State
 ) ->
     ?'log-info'(
-        "Node ~p quitted with reason ~p, empty outview, joining node "
-        "in inview",
+        "Node ~p quitted with reason ~p, empty outview",
         [QuittedNodeId, Reason]
     ),
-    %% get random node from InView
-    {#arc{source = TargetNode}, _} =
-        lists:nth(
-            rand:uniform(length(FilteredInView)), FilteredInView
-        ),
+
+    %% Try registry first for more network entropy (avoids circular arcs)
+    RegistryNodes = get_nodes_from_registry(NameSpace, MyNodeId, QuittedNodeId),
+
+    TargetNode = case RegistryNodes of
+        [_|_] ->
+            %% Have registry nodes - pick random one for better topology diversity
+            ?'log-info'("spray Agent ~p : Empty outview - using registry node for entropy (~p candidates)",
+                       [NameSpace, length(RegistryNodes)]),
+            lists:nth(rand:uniform(length(RegistryNodes)), RegistryNodes);
+        [] ->
+            %% No registry nodes - fallback to inview
+            ?'log-info'("spray Agent ~p : Empty outview - no registry nodes, using inview",
+                       [NameSpace]),
+            {#arc{source = InViewNode}, _} =
+                lists:nth(rand:uniform(length(FilteredInView)), FilteredInView),
+            InViewNode
+    end,
 
     supervisor:start_child(
         bbsvx_sup_client_connections,
         [forward_join, NameSpace, MyNode, TargetNode, []]
     ),
     {keep_state, State};
-%% Manage empty inview
+%% Manage empty inview - try registry first for more entropy, fallback to outview
 react_quitted_node(
     FilteredOutView,
     _,
     [],
     _,
     #evt_node_quitted{node_id = QuittedNodeId, reason = Reason},
-    #state{namespace = NameSpace, my_node = MyNode} = State
+    #state{namespace = NameSpace, my_node = #node_entry{node_id = MyNodeId} = MyNode} = State
 ) ->
     ?'log-info'(
-        "Node ~p quitted with reason ~p, ack node in outview to foin me",
+        "Node ~p quitted with reason ~p, empty inview",
         [QuittedNodeId, Reason]
     ),
-    %% get random node from Outview and ask it to connect to us
-    {#arc{ulid = DestUlid}, _} =
-        lists:nth(
-            rand:uniform(length(FilteredOutView)), FilteredOutView
-        ),
-    %%TODO: For now we do it as forward join but we should create a dedicated pro
-    %% to handle this case
-    send(NameSpace, DestUlid, out, #open_forward_join{
-        lock = <<"Depleted">>, subscriber_node = MyNode
-    }),
+
+    %% Try registry first for more network entropy (avoids circular arcs)
+    RegistryNodes = get_nodes_from_registry(NameSpace, MyNodeId, QuittedNodeId),
+
+    case RegistryNodes of
+        [_|_] ->
+            %% Have registry nodes - connect to a random one for topology diversity
+            %% This introduces a new node into our partial view
+            ?'log-info'("spray Agent ~p : Empty inview - using registry node for entropy (~p candidates)",
+                       [NameSpace, length(RegistryNodes)]),
+            TargetNode = lists:nth(rand:uniform(length(RegistryNodes)), RegistryNodes),
+            supervisor:start_child(
+                bbsvx_sup_client_connections,
+                [forward_join, NameSpace, MyNode, TargetNode, []]
+            );
+        [] ->
+            %% No registry nodes - fallback to asking outview node to connect back
+            ?'log-info'("spray Agent ~p : Empty inview - no registry nodes, using outview",
+                       [NameSpace]),
+            {#arc{ulid = DestUlid}, _} =
+                lists:nth(rand:uniform(length(FilteredOutView)), FilteredOutView),
+            send(NameSpace, DestUlid, out, #open_forward_join{
+                lock = <<"Depleted">>, subscriber_node = MyNode
+            })
+    end,
     {keep_state, State};
-%% Manage normal case
+%% Manage normal case - both views non-empty after removing quitted node
+%% Per SPRAY whitepaper: each lost arc has probability (1 - 1/|P|) of being replaced
+%% by duplicating a random arc from the same view
 react_quitted_node(
     FilteredOutView,
     CountRemovedOut,
-    _FilteredInView,
-    _CountRemovedIn,
+    FilteredInView,
+    CountRemovedIn,
     #evt_node_quitted{node_id = QuittedNodeId, reason = Reason},
     #state{namespace = NameSpace, my_node = MyNode} = State
 ) ->
     ?'log-info'(
-        "Node ~p quitted with reason ~p, Recreating connections. FilteredOutV"
-        "iew ~p  count ~p",
-        [QuittedNodeId, Reason, FilteredOutView, CountRemovedOut]
+        "Node ~p quitted with reason ~p, Recreating connections. "
+        "OutView size ~p, removed ~p. InView size ~p, removed ~p",
+        [QuittedNodeId, Reason, length(FilteredOutView), CountRemovedOut,
+         length(FilteredInView), CountRemovedIn]
     ),
-    case CountRemovedOut > 1 of
-        true ->
-            lists:foreach(
-                fun(IndexL) ->
-                    Rand = rand:uniform(),
+    %% Recreate outview arcs probabilistically
+    OutViewSize = length(FilteredOutView),
+    lists:foreach(
+        fun(_) ->
+            %% Probability of replacement: 1 - 1/|P| where |P| is partial view size
+            %% With minimum floor of 0.5 to ensure reconnection at small view sizes
+            Probability = max(0.5, 1 - (1 / OutViewSize)),
+            case rand:uniform() < Probability of
+                true ->
+                    {RandomArc, _} = lists:nth(rand:uniform(OutViewSize), FilteredOutView),
                     ?'log-info'(
-                        "spray Agent : Rand is ~p   gap is ~p",
-                        [Rand, 1 / (CountRemovedOut + IndexL - 1)]
+                        "spray Agent ~p : Duplicating outview arc to ~p (prob ~p)",
+                        [NameSpace, RandomArc#arc.target, Probability]
                     ),
-
-                    case Rand of
-                        X when X > 1 / (CountRemovedOut + IndexL - 1) ->
-                            %% Select a random arc
-                            {RandomArc, _} =
-                                lists:nth(
-                                    rand:uniform(length(FilteredOutView)),
-                                    FilteredOutView
-                                ),
-                            supervisor:start_child(
-                                bbsvx_sup_client_connections,
-                                [
-                                    forward_join,
-                                    NameSpace,
-                                    MyNode,
-                                    RandomArc#arc.target,
-                                    []
-                                ]
-                            );
-                        _ ->
-                            ok
-                    end
-                end,
-                lists:seq(1, CountRemovedOut - 1)
-            );
-        false ->
-            ok
-    end,
+                    supervisor:start_child(
+                        bbsvx_sup_client_connections,
+                        [forward_join, NameSpace, MyNode, RandomArc#arc.target, []]
+                    );
+                false ->
+                    ok
+            end
+        end,
+        lists:seq(1, CountRemovedOut)
+    ),
+    %% Recreate inview arcs probabilistically by asking random inview peers to connect to us
+    InViewSize = length(FilteredInView),
+    lists:foreach(
+        fun(_) ->
+            %% Probability of replacement: 1 - 1/|P| where |P| is partial view size
+            %% With minimum floor of 0.5 to ensure reconnection at small view sizes
+            Probability = max(0.5, 1 - (1 / InViewSize)),
+            case rand:uniform() < Probability of
+                true ->
+                    {RandomArc, _} = lists:nth(rand:uniform(InViewSize), FilteredInView),
+                    ?'log-info'(
+                        "spray Agent ~p : Requesting inview duplicate from ~p (prob ~p)",
+                        [NameSpace, RandomArc#arc.source, Probability]
+                    ),
+                    send(NameSpace, RandomArc#arc.ulid, in, #open_forward_join{
+                        lock = <<"NodeQuitted">>, subscriber_node = MyNode
+                    });
+                false ->
+                    ok
+            end
+        end,
+        lists:seq(1, CountRemovedIn)
+    ),
     {keep_state, State};
 %% catch all
 react_quitted_node(
@@ -2437,6 +2721,139 @@ react_quitted_node(
 reset_age(NameSpace, Ulid) ->
     bbsvx_arc_registry:reset_age(NameSpace, out, Ulid),
     ok.
+
+%%-----------------------------------------------------------------------------
+%% @doc
+%% attempt_disconnected_recovery/1
+%% Attempt to reconnect when in disconnected state using network registry
+%% or falling back to contact_nodes.
+%%
+%% TODO: Currently uses forward_join connection type, but this is semantically
+%% incorrect - forward_join should be reserved for SPRAY protocol's forward join
+%% mechanism. We need to:
+%% 1. Create a new connection type specifically for recovery (e.g., 'recover')
+%%    alongside existing types: register, join, forward_join
+%% 2. Add security validation to prevent unauthorized nodes from reconnecting:
+%%    - Node authentication/authorization
+%%    - Rate limiting recovery attempts
+%%    - Validating node was previously part of the network
+%%
+%% TODO: Recovery node selection is currently random, which may repeatedly pick
+%% the same dead node. Improvement options:
+%% 1. Use Prolog backtracking: instead of findall, prove network_node/4 directly
+%%    and keep the Erlog continuation in state. On each state_timeout, backtrack
+%%    to get the next node. This is the "pure" logic programming approach.
+%% 2. Track tried nodes: store registry nodes list in state on enter, pop head
+%%    on each timeout. When exhausted, fall back to contact_nodes.
+%% Note: While disconnected, we can't receive transactions, so the registry
+%% won't change - no need to re-query on each attempt.
+%% @end
+%% ----------------------------------------------------------------------------
+
+-spec attempt_disconnected_recovery(#state{}) -> ok.
+attempt_disconnected_recovery(#state{
+    namespace = NameSpace,
+    my_node = #node_entry{node_id = MyNodeId} = MyNode,
+    contact_nodes = ContactNodes
+}) ->
+    %% Try to get nodes from network registry first
+    RegistryNodes = get_nodes_from_registry(NameSpace, MyNodeId, <<>>),
+    case {RegistryNodes, ContactNodes} of
+        {[_|_], _} ->
+            %% Have registry nodes - pick random one for reconnection
+            TargetNode = lists:nth(rand:uniform(length(RegistryNodes)), RegistryNodes),
+            ?'log-info'("spray Agent ~p : disconnected recovery using registry node ~p (~p candidates)",
+                       [NameSpace, TargetNode#node_entry.node_id, length(RegistryNodes)]),
+            %% TODO: Replace forward_join with dedicated 'recover' connection type
+            supervisor:start_child(
+                bbsvx_sup_client_connections,
+                [forward_join, NameSpace, MyNode, TargetNode, []]
+            ),
+            ok;
+        {[], [_|_]} ->
+            %% No registry nodes - fall back to contact_nodes
+            TargetNode = lists:nth(rand:uniform(length(ContactNodes)), ContactNodes),
+            ?'log-info'("spray Agent ~p : disconnected recovery using contact node ~p",
+                       [NameSpace, TargetNode#node_entry.node_id]),
+            %% TODO: Replace forward_join with dedicated 'recover' connection type
+            supervisor:start_child(
+                bbsvx_sup_client_connections,
+                [forward_join, NameSpace, MyNode, TargetNode, []]
+            ),
+            ok;
+        {[], []} ->
+            %% No recovery options available
+            ?'log-warning'("spray Agent ~p : disconnected recovery failed - no registry nodes and no contact_nodes",
+                          [NameSpace]),
+            ok
+    end.
+
+%%-----------------------------------------------------------------------------
+%% @doc
+%% get_nodes_from_registry/3
+%% Query the ontology KB to get network nodes for reconnection.
+%% Returns a list of node_entry records, excluding self and the quitted node.
+%% @end
+%% ----------------------------------------------------------------------------
+
+-spec get_nodes_from_registry(binary(), binary(), binary()) -> [node_entry()].
+get_nodes_from_registry(NameSpace, MyNodeId, QuittedNodeId) ->
+    case bbsvx_actor_ontology:get_prolog_state(NameSpace) of
+        {ok, PrologState} ->
+            %% Query: findall(node(NodeId, Host, Port), network_node(NodeId, Host, Port, _), Nodes)
+            Goal = {findall,
+                    {node, {'_NodeId'}, {'_Host'}, {'_Port'}},
+                    {network_node, {'_NodeId'}, {'_Host'}, {'_Port'}, {'_Timestamp'}},
+                    {'_Nodes'}},
+            case bbsvx_erlog_db_local_prove:local_prove(Goal, PrologState) of
+                {succeed, Bindings} when is_map(Bindings) ->
+                    %% Extract the Nodes list from bindings (bindings are a map)
+                    %% Variable references are stored as {N} tuples pointing to key N
+                    NodesList = case maps:get('_Nodes', Bindings, undefined) of
+                        {VarRef} when is_integer(VarRef) ->
+                            %% Dereference the variable
+                            maps:get(VarRef, Bindings, []);
+                        List when is_list(List) ->
+                            List;
+                        _ ->
+                            []
+                    end,
+                    case NodesList of
+                        L when is_list(L), L =/= [] ->
+                            %% Convert to node_entry records, filtering out self and quitted node
+                            %% Also convert host from Prolog ip(A,B,C,D) format to Erlang {A,B,C,D} tuple
+                            lists:filtermap(
+                                fun({node, NodeId, Host, Port}) when NodeId =/= MyNodeId,
+                                                                     NodeId =/= QuittedNodeId ->
+                                    ConvertedHost = convert_prolog_host(Host),
+                                    {true, #node_entry{node_id = NodeId, host = ConvertedHost, port = Port}};
+                                   (_) ->
+                                    false
+                                end,
+                                L
+                            );
+                        _ ->
+                            []
+                    end;
+                {fail} ->
+                    ?'log-debug'("No network nodes found in registry for ~p", [NameSpace]),
+                    []
+            end;
+        {error, Reason} ->
+            ?'log-warning'("Failed to get Prolog state for network registry: ~p", [Reason]),
+            []
+    end.
+
+%%-----------------------------------------------------------------------------
+%% Convert Prolog host format ip(A,B,C,D) to Erlang tuple {A,B,C,D}
+%% Prolog stores IPs as ip(A,B,C,D) which becomes {ip, A, B, C, D} in Erlang
+%%-----------------------------------------------------------------------------
+convert_prolog_host({ip, A, B, C, D}) when is_integer(A), is_integer(B),
+                                           is_integer(C), is_integer(D) ->
+    {A, B, C, D};
+convert_prolog_host(Host) ->
+    %% Already in correct format or unknown format - pass through
+    Host.
 
 %%-----------------------------------------------------------------------------
 %% @doc

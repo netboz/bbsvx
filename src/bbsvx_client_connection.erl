@@ -212,22 +212,21 @@ init([register, NameSpace, MyNode, TargetNode, Options, Ulid]) ->
 
 %%%=============================================================================
 %%% Terminate Callbacks
+%%% Note: evt_arc_disconnected events are now emitted by arc_registry when it
+%%% detects process DOWN. This ensures exactly-once event emission for all cases.
 %%%=============================================================================
 
-%% Called from server connection when this outgoing arc is mirrored
+%% Called from arc_registry when this outgoing arc is mirrored
 terminate(
     {shutdown, mirror},
     connected,
-    #state{ulid = MyUlid, namespace = NameSpace, my_node = MyNode} = State
+    #state{ulid = _MyUlid, namespace = NameSpace, my_node = _MyNode} = State
 ) ->
     ?'log-info'(
         "~p Terminating connection from ~p, to ~p while in state ~p "
         "with reason ~p",
         [?MODULE, State#state.my_node, State#state.target_node, connected, mirror]
     ),
-    arc_event(NameSpace, MyUlid, #evt_arc_disconnected{
-        ulid = MyUlid, direction = out, origin_node = MyNode, reason = mirror
-    }),
     prometheus_gauge:dec(<<"bbsvx_spray_outview_size">>, [NameSpace]),
     ranch_tcp:send(
         State#state.socket,
@@ -239,49 +238,55 @@ terminate(
     ),
     gen_tcp:close(State#state.socket),
     ok;
-%% Called when other side indicateds it closed this arc because
-%% it was swapped
+%% Called when other side indicates it closed this arc because it was swapped
 terminate(
     {shutdown, swapped},
     connected,
-    #state{ulid = MyUlid, namespace = NameSpace, my_node = MyNode} = State
+    #state{ulid = _MyUlid, namespace = NameSpace, my_node = _MyNode} = State
 ) ->
     ?'log-info'(
         "~p Terminating connection from ~p, to ~p while in state ~p "
         "with reason ~p",
         [?MODULE, State#state.my_node, State#state.target_node, connected, swapped]
     ),
-    arc_event(NameSpace, MyUlid, #evt_arc_disconnected{
-        ulid = MyUlid, direction = out, origin_node = MyNode, reason = swapped
-    }),
     prometheus_gauge:dec(<<"bbsvx_spray_outview_size">>, [NameSpace]),
     ok;
 terminate(
-    Reason, connected, #state{ulid = MyUlid, namespace = NameSpace, my_node = MyNode} = State
+    Reason, connected, #state{ulid = _MyUlid, namespace = NameSpace, my_node = _MyNode} = State
 ) ->
     ?'log-info'(
         "~p Terminating connection from ~p, to ~p while in state ~p "
         "with reason ~p",
         [?MODULE, State#state.my_node, State#state.target_node, connected, Reason]
     ),
-    arc_event(NameSpace, MyUlid, #evt_arc_disconnected{
-        ulid = MyUlid, direction = out, origin_node = MyNode, reason = Reason
-    }),
     prometheus_gauge:dec(<<"bbsvx_spray_outview_size">>, [NameSpace]),
     ok;
 terminate(
-    Reason, PreviousState, #state{ulid = MyUlid, namespace = NameSpace, my_node = MyNode} = State
+    Reason, PreviousState, #state{ulid = _MyUlid, namespace = NameSpace, my_node = _MyNode} = State
 ) ->
     ?'log-warning'(
         "~p Terminating connection from ~p, to ~p while in state ~p "
         "with reason ~p",
         [?MODULE, State#state.my_node, State#state.target_node, PreviousState, Reason]
     ),
-    arc_event(NameSpace, MyUlid, #evt_arc_disconnected{
-        ulid = MyUlid, direction = out, origin_node = MyNode, reason = Reason
-    }),
     prometheus_gauge:dec(<<"bbsvx_spray_outview_size">>, [NameSpace]),
-
+    ok;
+%% Handle terminate with mirrored_state (during module switch before state transformation)
+terminate(
+    Reason, PreviousState, {mirrored_state, Ulid, _NameSpace, MyNode, TargetNode, _Lock, Socket, _Buffer}
+) ->
+    ?'log-warning'(
+        "~p Terminating mirrored connection from ~p, to ~p while in state ~p "
+        "with reason ~p",
+        [?MODULE, MyNode, TargetNode, PreviousState, Reason]
+    ),
+    %% Metrics already updated by server_connection before module switch
+    %% Just close the socket if still open
+    case Socket of
+        undefined -> ok;
+        _ -> gen_tcp:close(Socket)
+    end,
+    ?'log-info'("~p Mirrored connection ~p terminated cleanly", [?MODULE, Ulid]),
     ok.
 
 code_change(_Vsn, State, Data, _Extra) ->
@@ -889,6 +894,32 @@ join(Type, Event, State) ->
     state()
 ) ->
     gen_statem:state_function_result().
+%% Handle enter from server_connection module switch (mirrored_state format)
+%% This happens when a server_connection receives header_connection_closed{reason=mirrored}
+%% and switches callback module to client_connection via change_callback_module action
+connected(
+    enter,
+    _PrevState,
+    {mirrored_state, Ulid, NameSpace, MyNode, TargetNode, Lock, Socket, Buffer}
+) ->
+    ?'log-info'("~p Entered connected state via module switch (mirror), transforming state", [?MODULE]),
+    %% Transform mirrored_state into proper client_connection state record
+    NewState = #state{
+        ulid = Ulid,
+        type = connected,  % Already connected
+        namespace = NameSpace,
+        my_node = MyNode,
+        target_node = TargetNode,
+        join_timer = undefined,
+        current_lock = Lock,
+        socket = Socket,
+        options = [],
+        buffer = Buffer
+    },
+    %% Arc direction swap and metrics already handled by server_connection before module switch
+    %% Just keep the new state and continue as a normal client connection
+    {keep_state, NewState};
+
 connected(
     enter,
     _,
@@ -925,19 +956,96 @@ connected(info, {send, Event}, #state{socket = Socket} = State) when
     Socket =/= undefined ->
     gen_tcp:send(Socket, encode_message_helper(Event)),
     {keep_state, State};
+%% Handle switch_to_server cast from arc_registry:trigger_mirror
+%% This performs an in-place mirror: client_connection becomes server_connection
+connected(cast, {switch_to_server, CurrentLock, NewLock},
+          #state{ulid = Ulid, namespace = NameSpace, socket = Socket,
+                 my_node = MyNode, target_node = TargetNode,
+                 current_lock = CurrentLock, buffer = Buffer} = _State) ->
+    ?'log-info'("~p Switch to server triggered for arc ~p (in-place mirror)", [?MODULE, Ulid]),
+
+    %% 1. Send header_connection_closed to notify peer about mirror
+    ranch_tcp:send(Socket, encode_message_helper(#header_connection_closed{
+        namespace = NameSpace,
+        ulid = Ulid,
+        reason = mirrored
+    })),
+
+    %% 2. Update arc registry: move from outview to inview
+    case bbsvx_arc_registry:swap_direction(NameSpace, Ulid, CurrentLock, NewLock, out, in) of
+        ok ->
+            ?'log-info'("~p Arc ~p direction swapped out->in, switching to server_connection", [?MODULE, Ulid]),
+
+            %% 3. Update metrics
+            prometheus_gauge:dec(<<"bbsvx_spray_outview_size">>, [NameSpace]),
+            prometheus_gauge:inc(<<"bbsvx_spray_inview_size">>, [NameSpace]),
+
+            %% 4. Create state for server_connection
+            %% Note: In a mirror, source/target swap:
+            %% - I was client (source=MyNode, target=TargetNode)
+            %% - I become server (origin_node=TargetNode, my_node=MyNode)
+            MirroredState = {mirrored_state,
+                            Ulid,
+                            NameSpace,
+                            MyNode,        % my_node stays the same
+                            TargetNode,    % becomes origin_node in server
+                            NewLock,
+                            Socket,
+                            Buffer},
+
+            %% 5. Switch to server_connection module
+            {next_state, connected, MirroredState,
+             [{change_callback_module, bbsvx_server_connection}]};
+        {error, Reason} ->
+            ?'log-error'("~p Failed to swap arc direction for mirror: ~p", [?MODULE, Reason]),
+            {stop, {shutdown, mirror_swap_failed}}
+    end;
+%% Handle switch_to_server with lock mismatch
+connected(cast, {switch_to_server, ExpectedLock, _NewLock},
+          #state{ulid = Ulid, current_lock = ActualLock}) ->
+    ?'log-error'("~p Switch to server failed for arc ~p - lock mismatch (expected ~p, got ~p)",
+                [?MODULE, Ulid, ExpectedLock, ActualLock]),
+    {stop, {shutdown, lock_mismatch}};
 connected(info, {tcp_closed, Socket}, #state{socket = Socket, ulid = MyUlid}) ->
     ?'log-info'("~p Connection out closed ~p Reason tcp_closed", [?MODULE, MyUlid]),
+    {stop, normal};
+%% Handle tcp_closed during module switch (before state is transformed)
+connected(info, {tcp_closed, Socket}, {mirrored_state, Ulid, _Ns, _MyNode, _TargetNode, _Lock, Socket, _Buffer}) ->
+    ?'log-info'("~p Connection out closed (during mirror) ~p Reason tcp_closed", [?MODULE, Ulid]),
     {stop, normal};
 connected(info, {terminate, Reason}, #state{ulid = MyUlid}) ->
     ?'log-info'("~p Connection out closed ~p Reason ~p", [?MODULE, MyUlid, Reason]),
     {stop, normal};
-%% Ignore all other events
-connected(Type, Event, State) ->
+%% Handle terminate during module switch (before state is transformed)
+connected(info, {terminate, Reason}, {mirrored_state, Ulid, _Ns, _MyNode, _TargetNode, _Lock, _Socket, _Buffer}) ->
+    ?'log-info'("~p Connection out closed (during mirror) ~p Reason ~p", [?MODULE, Ulid, Reason]),
+    {stop, normal};
+%% Ignore all other events with normal state
+connected(Type, Event, #state{socket = Socket} = State) ->
     ?'log-warning'(
         "~p Connected Ignoring event ~p  on socket ~p ~n",
-        [?MODULE, {Type, Event}, State#state.socket]
+        [?MODULE, {Type, Event}, Socket]
     ),
-    {keep_state, State}.
+    {keep_state, State};
+%% Transform mirrored_state on first event (since enter callback doesn't fire for same-state transition)
+%% This handles the case where change_callback_module preserves the state name (connected → connected)
+connected(Type, Event, {mirrored_state, Ulid, NameSpace, MyNode, TargetNode, Lock, Socket, Buffer}) ->
+    ?'log-info'("~p Transforming mirrored_state to proper state on first event", [?MODULE]),
+    %% Transform to proper state record
+    NewState = #state{
+        ulid = Ulid,
+        type = connected,
+        namespace = NameSpace,
+        my_node = MyNode,
+        target_node = TargetNode,
+        join_timer = undefined,
+        current_lock = Lock,
+        socket = Socket,
+        options = [],
+        buffer = Buffer
+    },
+    %% Re-dispatch the event with the transformed state
+    connected(Type, Event, NewState).
 
 %%%=============================================================================
 %%% All state events
@@ -1032,6 +1140,45 @@ parse_packet(
             %% Forward registration to ontology actor
             gproc:send({n, l, {bbsvx_actor_ontology, NameSpace}}, {registered, CurrentIndex}),
             parse_packet(BinLeft, State);
+        {complete, #header_connection_closed{reason = mirrored}, Index} ->
+            %% Mirror swap: the peer's server_connection switched to client_connection
+            %% and is notifying us. We need to switch from client_connection to server_connection.
+            ?'log-info'("~p Client received mirror notification for arc ~p, switching to server_connection",
+                       [?MODULE, MyUlid]),
+            <<_:Index/binary, BinLeft/binary>> = Buffer,
+
+            %% Generate new lock for the mirrored arc
+            NewLock = get_lock(?LOCK_SIZE),
+
+            %% Update arc registry: move from outview to inview
+            case bbsvx_arc_registry:swap_direction(NameSpace, MyUlid, State#state.current_lock, NewLock, out, in) of
+                ok ->
+                    ?'log-info'("~p Arc ~p direction swapped out->in, switching to server_connection", [?MODULE, MyUlid]),
+
+                    %% Update metrics
+                    prometheus_gauge:dec(<<"bbsvx_spray_outview_size">>, [NameSpace]),
+                    prometheus_gauge:inc(<<"bbsvx_spray_inview_size">>, [NameSpace]),
+
+                    %% Create state for server_connection
+                    %% Note: In receiving mirror notification:
+                    %% - I was client (my_node=MyNode, target_node=TargetNode)
+                    %% - I become server (my_node=MyNode, origin_node=TargetNode)
+                    MirroredState = {mirrored_state,
+                                    MyUlid,
+                                    NameSpace,
+                                    State#state.my_node,     % my_node stays the same
+                                    State#state.target_node, % becomes origin_node in server
+                                    NewLock,
+                                    State#state.socket,
+                                    BinLeft},
+
+                    %% Switch to server_connection module
+                    {next_state, connected, MirroredState,
+                     [{change_callback_module, bbsvx_server_connection}]};
+                {error, Reason} ->
+                    ?'log-error'("~p Failed to swap arc direction for mirror: ~p", [?MODULE, Reason]),
+                    {stop, {shutdown, mirror_swap_failed}, State}
+            end;
         {complete, #header_connection_closed{reason = Reason}, Index} ->
             %% Other side notify us about the connection being closed
             <<_:Index/binary, _BinLeft/binary>> = Buffer,
@@ -1054,6 +1201,13 @@ parse_packet(
             <<_:Index/binary, _BinLeft/binary>> = Buffer,
             ?'log-info'("Connection received terminate message: ~p", [Reason]),
             {stop, normal};
+        %% Catch-all for unexpected server-side messages (may arrive after module switch)
+        %% This handles messages like open_forward_join, exchange_in, etc. that were in flight
+        {complete, UnexpectedMsg, Index} ->
+            <<_:Index/binary, BinLeft/binary>> = Buffer,
+            ?'log-warning'("~p Received unexpected message (possibly in-flight during module switch): ~p",
+                          [?MODULE, UnexpectedMsg]),
+            parse_packet(BinLeft, State);
         {incomplete, Buffer} ->
             {keep_state, State#state{buffer = Buffer}}
     end.
