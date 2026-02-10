@@ -143,8 +143,7 @@ syncing → Continue processing
 }).
 
 -record(validation_state, {
-    pending = #{} :: map(),  %% #{Index => Transaction}
-    requested_txs = #{} :: #{integer() => integer()}  %% #{Index => RequestTimestamp}
+    pending = #{} :: map()  %% #{Index => Transaction}
 }).
 
 -type validation_state() :: #validation_state{}.
@@ -762,7 +761,7 @@ syncing(
 syncing(
     info,
     #ontology_history{list_tx = ListTransactions},
-    #state{validation_state = ValidationState} = State
+    State
 ) ->
     ?'log-info'("Received history: ~p transactions", [length(ListTransactions)]),
 
@@ -782,21 +781,7 @@ syncing(
         ListTransactions
     ),
 
-    %% Remove received transactions from requested_txs
-    #validation_state{requested_txs = RequestedTxs} = ValidationState,
-    ReceivedIndices = [Tx#transaction.index || Tx <- ListTransactions],
-    NewRequestedTxs = lists:foldl(
-        fun(Index, Acc) -> maps:remove(Index, Acc) end,
-        RequestedTxs,
-        ReceivedIndices
-    ),
-
-    ?'log-debug'("Cleaned up ~p requested transactions, ~p still pending request",
-                [length(ReceivedIndices), maps:size(NewRequestedTxs)]),
-
-    NewValidationState = ValidationState#validation_state{requested_txs = NewRequestedTxs},
-
-    {keep_state, State#state{validation_state = NewValidationState}};
+    {keep_state, State};
 
 %% State queries for workers
 syncing({call, From}, get_prolog_state, #state{ont_state = OntState}) ->
@@ -868,9 +853,16 @@ syncing(
                                     NewValidationState
                             end,
 
+                            %% Clean up stale cached goal results
+                            CleanedCache = cleanup_stale_cached_results(
+                                State#state.cached_goal_results,
+                                ValidatedTx#transaction.index
+                            ),
+
                             {keep_state, State#state{
                                 ont_state = UpdatedOntState,
-                                validation_state = FinalValidationState
+                                validation_state = FinalValidationState,
+                                cached_goal_results = CleanedCache
                             }};
 
                         {error, PostprocessReason} ->
@@ -919,7 +911,15 @@ syncing(
                         current_address = NewCurrentAddress,
                         current_ts = ValidatedTx#transaction.ts_created
                     },
-                    {keep_state, State#state{ont_state = UpdatedOntState}}
+                    %% Clean up stale cached goal results
+                    CleanedCache = cleanup_stale_cached_results(
+                        State#state.cached_goal_results,
+                        ValidatedTx#transaction.index
+                    ),
+                    {keep_state, State#state{
+                        ont_state = UpdatedOntState,
+                        cached_goal_results = CleanedCache
+                    }}
             end;
 
         {pending, TxIndex, NewValidationState} ->
@@ -1209,39 +1209,21 @@ validate_transaction(
     ?'log-info'("Transaction ~p arrives out of order (current=~p), storing in pending",
                 [TxIndex, CurrentIndex]),
 
-    #validation_state{pending = Pending, requested_txs = RequestedTxs} = ValidationState,
+    #validation_state{pending = Pending} = ValidationState,
     NewPending = Pending#{TxIndex => Transaction},
 
     %% Check which transactions in the gap need to be requested
-    %% Guard against invalid range (when CurrentIndex + 1 > TxIndex - 1)
+    %% Only request if not already in pending
     MissingIndices = case CurrentIndex + 1 =< TxIndex - 1 of
         true -> lists:seq(CurrentIndex + 1, TxIndex - 1);
         false -> []
     end,
-    Now = erlang:system_time(millisecond),
-    TimeoutMs = 5000,  %% 5 second timeout
 
-    {ToRequest, NewRequestedTxs} = lists:foldl(
-        fun(Index, {AccToRequest, AccRequested}) ->
-            InPending = maps:is_key(Index, NewPending),
-            AlreadyRequested = is_tx_requested(Index, AccRequested, TimeoutMs),
+    ToRequest = [Index || Index <- MissingIndices, not maps:is_key(Index, NewPending)],
 
-            case InPending orelse AlreadyRequested of
-                true ->
-                    {AccToRequest, AccRequested};  %% Skip - already have it or requested
-                false ->
-                    {[Index | AccToRequest], AccRequested#{Index => Now}}
-            end
-        end,
-        {[], RequestedTxs},
-        MissingIndices
-    ),
-
-    %% Request the range if any transactions need requesting
     case ToRequest of
         [] ->
-            ?'log-debug'("All transactions ~p-~p already pending or requested",
-                        [CurrentIndex + 1, TxIndex - 1]);
+            ?'log-debug'("All transactions ~p-~p already pending", [CurrentIndex + 1, TxIndex - 1]);
         _ ->
             MinIndex = lists:min(ToRequest),
             MaxIndex = lists:max(ToRequest),
@@ -1250,11 +1232,7 @@ validate_transaction(
             request_segment(Namespace, MinIndex, MaxIndex)
     end,
 
-    NewValidationState = ValidationState#validation_state{
-        pending = NewPending,
-        requested_txs = NewRequestedTxs
-    },
-
+    NewValidationState = ValidationState#validation_state{pending = NewPending},
     {pending, TxIndex, NewValidationState};
 
 validate_transaction(
@@ -1301,35 +1279,21 @@ validate_transaction(
     %% Gap detected - store in pending and request missing
     ?'log-info'("Gap detected: got ~p, expected ~p, storing in pending", [TxIndex, LastProcessedIndex + 1]),
 
-    #validation_state{pending = Pending, requested_txs = RequestedTxs} = ValidationState,
+    #validation_state{pending = Pending} = ValidationState,
     NewPending = Pending#{TxIndex => Transaction},
 
     %% Check which transactions in the gap need to be requested
-    %% Guard against invalid range (defensive)
+    %% Only request if not already in pending
     MissingIndices = case LastProcessedIndex + 1 =< TxIndex - 1 of
         true -> lists:seq(LastProcessedIndex + 1, TxIndex - 1);
         false -> []
     end,
-    Now = erlang:system_time(millisecond),
-    TimeoutMs = 5000,
 
-    {ToRequest, NewRequestedTxs} = lists:foldl(
-        fun(Index, {AccToRequest, AccRequested}) ->
-            InPending = maps:is_key(Index, NewPending),
-            AlreadyRequested = is_tx_requested(Index, AccRequested, TimeoutMs),
-            case InPending orelse AlreadyRequested of
-                true -> {AccToRequest, AccRequested};
-                false -> {[Index | AccToRequest], AccRequested#{Index => Now}}
-            end
-        end,
-        {[], RequestedTxs},
-        MissingIndices
-    ),
+    ToRequest = [Index || Index <- MissingIndices, not maps:is_key(Index, NewPending)],
 
     case ToRequest of
         [] ->
-            ?'log-debug'("All transactions ~p-~p already pending or requested",
-                        [LastProcessedIndex + 1, TxIndex - 1]);
+            ?'log-debug'("All transactions ~p-~p already pending", [LastProcessedIndex + 1, TxIndex - 1]);
         _ ->
             MinIndex = lists:min(ToRequest),
             MaxIndex = lists:max(ToRequest),
@@ -1337,11 +1301,7 @@ validate_transaction(
             request_segment(Namespace, MinIndex, MaxIndex)
     end,
 
-    NewValidationState = ValidationState#validation_state{
-        pending = NewPending,
-        requested_txs = NewRequestedTxs
-    },
-
+    NewValidationState = ValidationState#validation_state{pending = NewPending},
     {pending, TxIndex, NewValidationState};
 
 validate_transaction(Transaction, CurrentIndex, _CurrentAddress, Namespace, ValidationState) ->
@@ -1350,60 +1310,33 @@ validate_transaction(Transaction, CurrentIndex, _CurrentAddress, Namespace, Vali
     ?'log-info'("Transaction ~p out of order (current=~p), storing in pending",
                 [TxIndex, CurrentIndex]),
 
-    #validation_state{pending = Pending, requested_txs = RequestedTxs} = ValidationState,
+    #validation_state{pending = Pending} = ValidationState,
     NewPending = Pending#{TxIndex => Transaction},
 
     %% Request missing segment if there's a gap
-    {NewRequestedTxs, _Requested} = case TxIndex > CurrentIndex + 1 of
+    case TxIndex > CurrentIndex + 1 of
         true ->
-            %% Check which transactions in the gap need to be requested
-            %% Guard against invalid range (defensive)
+            %% Only request if not already in pending
             MissingIndices = case CurrentIndex + 1 =< TxIndex - 1 of
                 true -> lists:seq(CurrentIndex + 1, TxIndex - 1);
                 false -> []
             end,
-            Now = erlang:system_time(millisecond),
-            TimeoutMs = 5000,  %% 5 second timeout
-
-            {ToRequest, UpdatedRequestedTxs} = lists:foldl(
-                fun(Index, {AccToRequest, AccRequested}) ->
-                    InPending = maps:is_key(Index, NewPending),
-                    AlreadyRequested = is_tx_requested(Index, AccRequested, TimeoutMs),
-
-                    case InPending orelse AlreadyRequested of
-                        true ->
-                            {AccToRequest, AccRequested};
-                        false ->
-                            {[Index | AccToRequest], AccRequested#{Index => Now}}
-                    end
-                end,
-                {[], RequestedTxs},
-                MissingIndices
-            ),
-
-            %% Request the range if any transactions need requesting
+            ToRequest = [Index || Index <- MissingIndices, not maps:is_key(Index, NewPending)],
             case ToRequest of
                 [] ->
-                    ?'log-debug'("All transactions ~p-~p already pending or requested",
-                                [CurrentIndex + 1, TxIndex - 1]),
-                    {UpdatedRequestedTxs, false};
+                    ?'log-debug'("All transactions ~p-~p already pending", [CurrentIndex + 1, TxIndex - 1]);
                 _ ->
                     MinIndex = lists:min(ToRequest),
                     MaxIndex = lists:max(ToRequest),
                     ?'log-info'("Requesting segment ~p-~p (~p transactions)",
                                [MinIndex, MaxIndex, length(ToRequest)]),
-                    request_segment(Namespace, MinIndex, MaxIndex),
-                    {UpdatedRequestedTxs, true}
+                    request_segment(Namespace, MinIndex, MaxIndex)
             end;
         false ->
-            {RequestedTxs, false}
+            ok
     end,
 
-    NewValidationState = ValidationState#validation_state{
-        pending = NewPending,
-        requested_txs = NewRequestedTxs
-    },
-
+    NewValidationState = ValidationState#validation_state{pending = NewPending},
     {pending, TxIndex, NewValidationState}.
 
 %%-----------------------------------------------------------------------------
@@ -1760,11 +1693,18 @@ apply_goal_result_and_continue(
                             ValidationState
                     end,
 
+                    %% Clean up stale cached goal results
+                    CleanedCache = cleanup_stale_cached_results(
+                        State#state.cached_goal_results,
+                        Index
+                    ),
+
                     %% Transition back to syncing state
                     {next_state, syncing, State#state{
                         ont_state = FinalOntState,
                         validation_state = FinalValidationState,
-                        pending_goal_transaction = undefined
+                        pending_goal_transaction = undefined,
+                        cached_goal_results = CleanedCache
                     }};
 
                 {error, PostprocessReason} ->
@@ -1800,18 +1740,17 @@ check_pending(ValidationState, NextIndex) ->
     end.
 
 -doc """
-Checks if a transaction has been requested recently (within timeout).
-Returns true if already requested and not timed out, false otherwise.
+Removes stale entries from cached_goal_results map.
+Entries with index <= LastProcessedIndex are removed since those transactions
+have already been processed (or skipped).
 """.
-is_tx_requested(Index, RequestedTxs, TimeoutMs) ->
-    case maps:get(Index, RequestedTxs, undefined) of
-        undefined ->
-            false;  %% Not requested
-        RequestedAt ->
-            Now = erlang:system_time(millisecond),
-            Age = Now - RequestedAt,
-            Age < TimeoutMs  %% True if still fresh, false if timed out
-    end.
+cleanup_stale_cached_results(CachedResults, LastProcessedIndex) ->
+    maps:filter(
+        fun(Index, _Result) ->
+            Index > LastProcessedIndex
+        end,
+        CachedResults
+    ).
 
 -doc """
 Builds initial Prolog state for a new ontology.
