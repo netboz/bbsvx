@@ -179,16 +179,16 @@ running(
         case Vote of
             undefined ->
                 %% No valid neighbors
-                ?'log-info'("Leader election: Vote is undefined, defaulting to MyId"),
+                ?'log-debug'("Leader election: Vote is undefined, defaulting to MyId"),
                 {MyId, T, bbsvx_crypto_service:sign(term_to_binary(T))};
             MyId ->
-                ?'log-info'("Leader election: Vote is myself"),
+                ?'log-debug'("Leader election: Vote is myself"),
                 {MyId, T, bbsvx_crypto_service:sign(term_to_binary(T))};
             _ ->
-                ?'log-info'("Leader election: Vote is ~p (not me)", [Vote]),
+                ?'log-debug'("Leader election: Vote is ~p (not me)", [Vote]),
                 {Vote, Ts, SignedTs}
         end,
-    ?'log-info'("Leader election: FinalVote=~p, ValidNeighbors=~p", [FinalVote, length(ValidNeighbors)]),
+    ?'log-debug'("Leader election: FinalVote=~p, ValidNeighbors=~p", [FinalVote, length(ValidNeighbors)]),
     PublicKey = bbsvx_crypto_service:get_public_key(),
     Payload =
         #neighbor{

@@ -11,6 +11,8 @@ services:
         - 10300
         - 8085
         - 9090
+      env_file:
+        - .env
       environment:
         - TZ="Europe/Paris"
         - DOCKER_COMPOSE=true
@@ -37,6 +39,8 @@ services:
       - 10300
       - 8085
       - 9090
+    env_file:
+      - .env
     environment:
       - TZ="Europe/Paris"
       - DOCKER_COMPOSE=true

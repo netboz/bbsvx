@@ -360,8 +360,8 @@ read_transaction(Namespace, TransactonAddress) ->
 string_to_eterm(String) when is_binary(String) ->
     string_to_eterm(binary_to_list(String));
 string_to_eterm(String) ->
-    %% We add a space at the end of the string to parse because of a probable error in prolog parser
-    case erlog_scan:tokens([], String ++ " ", 1) of
+    %% Erlog scanner requires a period followed by whitespace to end a term
+    case erlog_scan:tokens([], String ++ ". ", 1) of
         {done, {ok, Tokk, _}, _} ->
             case erlog_parse:term(Tokk) of
                 {ok, Eterms} ->

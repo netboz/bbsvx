@@ -241,13 +241,15 @@ running(
     %  "node_id": NodeId
     %   }
     % }
+    %% Convert IP tuple to string for JSON encoding
+    HostStr = format_host(Host),
     Data =
         #{
             action => <<"add">>,
             node_id => NodeId,
             metadata =>
                 #{
-                    host => Host,
+                    host => HostStr,
                     port => Port,
                     namespace => Namespace,
                     node_id => NodeId
@@ -318,7 +320,7 @@ running(
 ) ->
     %% Prepare body as json :
     %% {
-    %   "action": "add",
+    %   "action": "remove",
     %   "node_id": "node12345",
     %   "metadata": {
     %     "host": Host,
@@ -327,25 +329,27 @@ running(
     %  "node_id": NodeId
     %   }
     % }
+    %% Convert IP tuple to string for JSON encoding
+    HostStr = format_host(Host),
     Data =
         #{
-            action => <<"add">>,
+            action => <<"remove">>,
             node_id => NodeId,
             metadata =>
                 #{
-                    host => Host,
+                    host => HostStr,
                     port => Port,
                     namespace => Namespace,
                     node_id => NodeId
                 }
         },
-    %?'log-info'("add node post data: ~p", [Data]),
+    %?'log-info'("remove node post data: ~p", [Data]),
     %% Encode Data to json
     Json = jiffy:encode(Data),
     %% Post json data to http://graph-visualizer/nodes
     httpc:request(
         post,
-        {"http://graph-visualizer:3400/nodes/add", [], "application/json", Json},
+        {"http://graph-visualizer:3400/nodes/remove", [], "application/json", Json},
         [],
         []
     ),

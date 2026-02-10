@@ -349,20 +349,14 @@
               'Content-Type': 'application/json'
             },
             body: JSON.stringify(payload)
-          })
-            .then(response => {
-              if (!response.ok) {
-                console.error(`Error: ${response.status} - ${response.statusText}`);
-              }
-              return response.json();
-            })
-            .catch(error => console.error('Fetch error:', error));
+          });
           if (response.ok) {
-            console.log(`Node ${node_id} killed successfully.`);
+            const jsonData = await response.json();
+            console.log(`Node ${node_id} killed successfully.`, jsonData);
             alert(`Node ${node_id} killed successfully.`);
           } else {
-            console.error(`Failed to kill node ${node_id}:`, response.statusText);
-            alert(`Failed to kill node ${node_id}: ${response.statusText}`);
+            console.error(`Failed to kill node ${node_id}: ${response.status} ${response.statusText}`);
+            alert(`Failed to kill node ${node_id}: ${response.status} ${response.statusText}`);
           }
         } catch (error) {
           console.error(`Error killing node ${node_id}:`, error);

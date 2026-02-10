@@ -406,7 +406,7 @@ call_claude_api(ApiKey, Prompt) ->
     }),
 
     HttpOptions = [
-        {timeout, 30000},
+        {timeout, 90000},
         {connect_timeout, 10000}
     ],
     Options = [{body_format, binary}],

@@ -170,6 +170,29 @@ docker compose up  --scale bbsvx_client=1    # Run with 1 client
 docker compose up  --scale bbsvx_client=N -d # Scale to N clients
 ```
 
+### Testing with Babylon-Bubblepod Client
+The babylon-bubblepod client (BabylonJS VR frontend) is located at `/home/yan/src/babylon-bubblepod`.
+
+**Important:** The client connects directly to Docker container internal IPs, not via localhost port mappings.
+
+```bash
+# Start BBSvx cluster (at least 3 nodes needed)
+docker compose down -v  # Clean start
+docker compose up --scale bbsvx_client=3 -d
+
+# Get root node internal IP
+docker inspect bbsvx-bbsvx_root-1 --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}'
+# Example output: 172.19.0.7
+
+# Start babylon-bubblepod dev server
+cd /home/yan/src/babylon-bubblepod && npm run dev
+# Client runs at http://localhost:5173/
+
+# Connect using internal IP (example):
+# Node Address: ws://172.19.0.7:8085/websocket
+# Namespace: bbsvx:root
+```
+
 ## Architecture Overview
 
 BBSvx is a blockchain-powered BBS (Bulletin Board System) built on Erlang/OTP with the following key components:

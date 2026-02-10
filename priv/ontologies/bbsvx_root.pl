@@ -1,82 +1,112 @@
-ontology(root).   %% Thing is the root class from which all derive 
-isa(thing, thing).  
-relation(isa(Child, Ancestor)).
+%% =============================================================================
+%% BBSvx Root Ontology
+%% Defines the base class hierarchy that all ontologies inherit from
+%% =============================================================================
 
-%% Transitive isa rule
+ontology(root).
+
+%% =============================================================================
+%% Root Class: thing
+%% All classes derive from thing
+%% =============================================================================
+
+%% thing is the root - it is its own parent (reflexive base case)
+isa(thing, thing).
+
+%% Transitive isa rule for class hierarchy
 isa(Child, Ancestor) :-
     isa(Child, Father),
     isa(Father, Ancestor),
-    Child \= Father,  % Prevent infinite loops
+    Child \= Father,
     Father \= Ancestor.
-instantiable(thing).      
-have_attribute(thing, name).  
 
-action(assert(instance_of(InstabceName, ThingOrChildThingClass)), [isa(InstanceName, thing), create_instance(ThingOrChildThingClass, InstanceName)], 
-    instance_of(ThingOrChildThingClass, InstanceName)).
+%% All things can have a name
+have_attribute(thing, name).
 
-%%  Define ontology type
+%% =============================================================================
+%% Ontology Class
+%% Represents a namespace/ontology as a first-class entity
+%% =============================================================================
 
 isa(ontology, thing).
-  %% Action to trigger ontology creation
+
 action(create_ontology_predicate(OntologyName, shared),
-         [],
-         instance_of(ontology, OntologyName)).
+    [],
+    instance_of(ontology, OntologyName)).
 
-%% Define event type 
-isa(event, thing).  
-have_attribute(event, timestamp). 
-have_attribute(event, duration). 
-have_attribute(event, emitted). 
-relation(subscribed_to(EventPattern)).  
+%% =============================================================================
+%% Event Class
+%% For pub/sub event handling
+%% =============================================================================
 
-emitted(event, Event) :-     
-   false.  
+isa(event, thing).
+have_attribute(event, timestamp).
+have_attribute(event, duration).
 
-subscribed(Thing, EventPattern) :-     
-   subscribed_predicate(Thing, EventPattern).  
+%% Event emission and subscription
+action(emit_event(Event), [], emitted(Event)).
+action(subscribe_event(EventPattern), [], subscribed(EventPattern)).
+action(unsubscribe_event(EventPattern), [], unsubscribed(EventPattern)).
 
-action(emit_event_predicate(Event), [], emitted(Event)).  
-action(subscribe_event_predicate(EventPattern), [], subscribed(EventPattern)).  
-action(unsubscribe_event_predicate(EventPattern), [], unsubscribed(EventPattern)).  
+%% =============================================================================
+%% Visible Thing Class (Effect Layer)
+%% Base class for all entities that can be rendered in 3D space
+%% =============================================================================
 
-%% Define a bbsvx node  
-isa(node, thing). 
-have_attribute(node, node_ip). 
-have_attribute(node, node_id).  
-
-node_ip(Node, NodeIp) :-     
-   instance_of(node, Node),     
-   node_ip_predicate(NodeIp).  
-
-node_id(Node, NodeId) :-     
-   instance_of(node, Node),     
-   node_id_predicate(NodeId).  
-
-relation(connected_to(node)).  
-
-connected_to(Node) :-     
-   instance_of(node,Node),     
-   is_connected_to_predicate(Node).  
-
-not_connected_to(Node) :-     
-   \+connected_to(Node).  
-
-action(connect_predicate(Node), [instance_of(node, Node), not_connected_to(Node)], connected_to(Node)). 
-action(disconnect(Node), [connected_to(Node)], not_connected_to(Node)).
-
-
-%% Define a visible object
 isa(visible_thing, thing).
-have_attribute(visible, position).      % 3D coordinates
-have_attribute(visible, rotation).      % 3D rotation
-have_attribute(visible, scale).         % 3D scale
-have_attribute(visible, mesh_type).     % sphere, box, custom, etc.
-have_attribute(visible, material).      % color, texture, shader
-have_attribute(visible, visibility).    % true/false
+have_attribute(visible_thing, position).      %% vec3(X, Y, Z)
+have_attribute(visible_thing, rotation).      %% vec3(RX, RY, RZ) in radians
+have_attribute(visible_thing, scale).         %% vec3(SX, SY, SZ)
+have_attribute(visible_thing, mesh_type).     %% sphere, box, custom, generated
+have_attribute(visible_thing, material).      %% color, texture reference
+have_attribute(visible_thing, visibility).    %% true/false
 
-%% Define animal types as visible things
+%% =============================================================================
+%% Animal Class Hierarchy
+%% Example domain classes
+%% =============================================================================
+
 isa(animal, visible_thing).
 isa(rabbit, animal).
+isa(dog, animal).
+isa(lion, animal).
+isa(wolf, animal).
+isa(fox, animal).
 
-%% Test instance of a rabbit
-rabbit(bunny).
+%% =============================================================================
+%% Test Instances
+%% Example animal instances for testing the ontology system
+%% =============================================================================
+
+%% A family of rabbits
+instance_of(rabbit, bunny).
+attribute(bunny, position, vec3(-5, 0, 0)).
+attribute(bunny, name, 'Bunny the Rabbit').
+
+instance_of(rabbit, fluffy).
+attribute(fluffy, position, vec3(-3, 0, 2)).
+attribute(fluffy, name, 'Fluffy').
+
+%% Some dogs
+instance_of(dog, rex).
+attribute(rex, position, vec3(5, 0, 0)).
+attribute(rex, name, 'Rex the Dog').
+
+instance_of(dog, spot).
+attribute(spot, position, vec3(7, 0, -2)).
+attribute(spot, name, 'Spot').
+
+%% A lion
+instance_of(lion, simba).
+attribute(simba, position, vec3(0, 0, 10)).
+attribute(simba, name, 'Simba the Lion').
+
+%% A wolf
+instance_of(wolf, grey).
+attribute(grey, position, vec3(-8, 0, -5)).
+attribute(grey, name, 'Grey Wolf').
+
+%% A fox
+instance_of(fox, foxy).
+attribute(foxy, position, vec3(10, 0, 5)).
+attribute(foxy, name, 'Foxy').
